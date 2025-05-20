@@ -1,0 +1,180 @@
+/* Filename: HTML/tyle.css */
+
+/* Grundlegende Stile und Variablen */
+:root {
+    --primary-color: #007AFF; /* iOS Blue */
+    --secondary-color: #f2f2f7; /* iOS Light Gray */
+    --text-color: #1c1c1e; /* iOS Dark Gray */
+    --error-color: #FF3B30; /* iOS Red */
+    --success-color: #34C759; /* iOS Green */
+    --border-radius: 8px;
+    --spacing-unit: 15px;
+}
+
+/* Stellt sicher, dass der Body den Viewport ausfüllt und Safe Areas berücksichtigt */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overscroll-behavior: none; /* Verhindert "Pull-to-Refresh"-Verhalten */
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #fff; /* Weißer Hintergrund */
+    color: var(--text-color);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box; /* Padding wird in die Höhe/Breite einbezogen */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Stellt sicher, dass der Container mindestens die volle Höhe hat */
+}
+
+.container {
+    padding: var(--spacing-unit);
+    flex-grow: 1; /* Nimmt verfügbaren Platz ein */
+    display: flex;
+    flex-direction: column;
+}
+
+h1, h2 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-top: 0;
+    margin-bottom: var(--spacing-unit);
+}
+h1 { font-size: 1.8em; }
+h2 { font-size: 1.3em; margin-top: calc(var(--spacing-unit) * 1.5); border-top: 1px solid var(--secondary-color); padding-top: var(--spacing-unit); }
+
+/* Steuerelemente */
+.controls {
+    display: grid;
+    grid-template-columns: 1fr; /* Standard: eine Spalte */
+    gap: calc(var(--spacing-unit) * 0.8);
+    margin-bottom: calc(var(--spacing-unit) * 1.5);
+}
+
+/* Zweispaltiges Layout für breitere Bildschirme */
+@media (min-width: 600px) {
+    .controls {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+button {
+    padding: 12px 15px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    appearance: none; /* Entfernt Standard-OS-Styling */
+    -webkit-appearance: none;
+}
+
+button:hover {
+    background-color: #005ecb; /* Etwas dunkleres Blau */
+}
+
+button:active {
+    transform: scale(0.98); /* Leichter Klick-Effekt */
+}
+
+#clearResultBtn {
+    background-color: #6c757d; /* Grauer Button */
+}
+#clearResultBtn:hover {
+    background-color: #5a6268;
+}
+
+
+/* Ergebnisbereich */
+.results {
+    margin-top: var(--spacing-unit);
+    flex-grow: 1; /* Nimmt restlichen Platz ein */
+    display: flex;
+    flex-direction: column;
+}
+
+#resultArea {
+    background-color: var(--secondary-color);
+    padding: var(--spacing-unit);
+    border-radius: var(--border-radius);
+    min-height: 150px; /* Mindesthöhe für den Bereich */
+    overflow-y: auto; /* Scrollbar, falls Inhalt zu groß wird */
+    flex-grow: 1; /* Nimmt verfügbaren Platz im .results Container ein */
+    word-wrap: break-word; /* Lange Strings umbrechen */
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#resultArea img,
+#resultArea embed {
+    max-width: 100%; /* Bilder/PDFs an Breite anpassen */
+    height: auto; /* Seitenverhältnis beibehalten */
+    display: block; /* Verhindert zusätzliche Abstände */
+    margin-top: var(--spacing-unit);
+    border-radius: calc(var(--border-radius) / 2);
+    border: 1px solid #ddd;
+}
+
+#resultArea pre {
+    white-space: pre-wrap; /* Zeilenumbrüche im Text beibehalten */
+    word-wrap: break-word;
+    background-color: #e9e9eb; /* Leicht anderer Hintergrund für Text */
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: var(--spacing-unit);
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 13px;
+}
+
+#resultArea .error {
+    color: var(--error-color);
+    font-weight: bold;
+}
+
+#resultArea .success {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+#placeholderText {
+    color: #8e8e93; /* iOS Gray */
+    text-align: center;
+    margin-top: 30px;
+}
+
+/* Statusanzeige (Loading Spinner) */
+.status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    margin-bottom: var(--spacing-unit);
+    border-radius: var(--border-radius);
+    background-color: rgba(0, 0, 0, 0.05); /* Leicht transparent */
+}
+
+.status p {
+    margin: 0 10px 0 0;
+    font-style: italic;
+    color: #6c757d;
+}
+
+.spinner {
+    border: 3px solid #f3f3f3; /* Light grey */
+    border-top: 3px solid var(--primary-color); /* Blue */
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

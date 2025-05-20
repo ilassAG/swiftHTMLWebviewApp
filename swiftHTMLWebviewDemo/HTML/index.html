@@ -1,0 +1,47 @@
+<!-- Filename: HTML/index.html -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <!-- Wichtig für korrekte Skalierung und Verhinderung von Zoom auf iOS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Swift Bridge Demo</title>
+    <link rel="stylesheet" href="style.css?v=7">
+    <!-- Verhindert das "Springen" beim Antippen von Elementen -->
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+    </style>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+</head>
+<body>
+    <div class="container">
+        <h1>SwiftUI Bridge Demo</h1>
+
+        <div class="controls">
+            <button id="scanDocPdfBtn">Dokument Scannen (PDF mit OCR)</button>
+            <button id="scanDocPngBtn">Dokument Scannen (PNG mit OCR)</button>
+            <button id="takePhotoFrontBtn">Foto aufnehmen (Front)</button>
+            <button id="takePhotoBackBtn">Foto aufnehmen (Rück)</button>
+            <button id="scanBarcodeBtn">QR/EAN Scannen</button>
+            <button id="clearResultBtn">Ergebnis löschen</button>
+        </div>
+
+        <div class="results">
+            <h2>V7 Ergebnis:</h2>
+            <div id="statusArea" class="status loading" style="display: none;">
+                <p>Aktion wird ausgeführt...</p>
+                <div class="spinner"></div>
+            </div>
+            <div id="resultArea">
+                <p id="placeholderText">Noch keine Aktion ausgeführt.</p>
+                <!-- Hier werden Ergebnisse dynamisch eingefügt -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=7"></script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!-- Filename: HTML/pdf.html  -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Viewer</title>
+  <!-- PDF.js von einem CDN einbinden -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      overflow: hidden;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    header button {
+      padding: 8px 12px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    #viewerContainer {
+      text-align: center;
+    }
+    .pdf-navigation {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .pdf-navigation button {
+      padding: 8px 12px;
+      margin: 0 5px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    #pdfCanvas {
+      border: 1px solid #ddd;
+      /* Der Canvas passt sich nun maximal an die Viewportgröße an */
+      max-width: 100vw;
+      max-height: calc(100vh - 160px);
+      width: auto;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+    #errorMessage {
+      color: red;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <button onclick="window.history.back()">Zurück</button>
+  </header>
+  <h1 style="text-align: center;">PDF Viewer</h1>
+  <div id="viewerContainer">
+    <div class="pdf-navigation">
+      <button id="prevPageBtn">Vorherige Seite</button>
+      <button id="nextPageBtn">Nächste Seite</button>
+      <span>Seite: <span id="pageNum">1</span> / <span id="pageCount">?</span></span>
+    </div>
+    <canvas id="pdfCanvas"></canvas>
+  </div>
+  <div id="errorMessage"></div>
+  
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
+    
+    // PDF-Daten aus dem Session Storage abrufen
+    let pdfDataUrl = sessionStorage.getItem("pdfData");
+    
+    if (!pdfDataUrl) {
+      document.getElementById("errorMessage").textContent = "Kein PDF-Daten gefunden.";
+    } else {
+      let pdfDoc = null,
+          pageNum = 1,
+          pageRendering = false,
+          pageNumPending = null,
+          // Wir starten mit einem Basis-Scale, der später durch CSS begrenzt wird
+          scale = 1.5,
+          canvas = document.getElementById('pdfCanvas'),
+          ctx = canvas.getContext('2d');
+      
+      function renderPage(num) {
+        pageRendering = true;
+        pdfDoc.getPage(num).then(function(page) {
+          let viewport = page.getViewport({ scale: scale });
+          // Setze die Canvas-Größe entsprechend des Viewports
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          
+          let renderContext = {
+            canvasContext: ctx,
+            viewport: viewport
+          };
+          page.render(renderContext).promise.then(function() {
+            pageRendering = false;
+            document.getElementById('pageNum').textContent = num;
+            if (pageNumPending !== null) {
+              renderPage(pageNumPending);
+              pageNumPending = null;
+            }
+          });
+        });
+      }
+      
+      function queueRenderPage(num) {
+        if (pageRendering) {
+          pageNumPending = num;
+        } else {
+          renderPage(num);
+        }
+      }
+      
+      document.getElementById('prevPageBtn').addEventListener('click', function() {
+        if (pageNum <= 1) return;
+        pageNum--;
+        queueRenderPage(pageNum);
+      });
+      
+      document.getElementById('nextPageBtn').addEventListener('click', function() {
+        if (pageNum >= pdfDoc.numPages) return;
+        pageNum++;
+        queueRenderPage(pageNum);
+      });
+      
+      // Den Base64-Teil extrahieren und in ein Uint8Array umwandeln
+      let base64String = pdfDataUrl.split(',')[1];
+      let raw = atob(base64String);
+      let rawLength = raw.length;
+      let array = new Uint8Array(new ArrayBuffer(rawLength));
+      for (let i = 0; i < rawLength; i++) {
+        array[i] = raw.charCodeAt(i);
+      }
+      
+      pdfjsLib.getDocument({ data: array }).promise.then(function(pdfDoc_) {
+        pdfDoc = pdfDoc_;
+        document.getElementById('pageCount').textContent = pdfDoc.numPages;
+        renderPage(pageNum);
+      }).catch(function(error) {
+        document.getElementById("errorMessage").textContent = "PDF konnte nicht geladen werden: " + error;
+      });
+    }
+  </script>
+</body>
+</html>
