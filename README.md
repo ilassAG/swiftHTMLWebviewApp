@@ -176,6 +176,3 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-## Contact
-
-For questions or support, please contact [your-email@example.com].
