@@ -23,29 +23,34 @@ enum AppError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .userCancelled:
-            return "Aktion vom Benutzer abgebrochen."
+            return NSLocalizedString("error.appError.userCancelled", comment: "User cancelled action")
         case .featureNotAvailable(let feature):
-            return "\(feature) ist auf diesem Gerät oder unter den aktuellen Bedingungen nicht verfügbar."
+            // Der 'feature'-String selbst wird bereits lokalisiert übergeben (z.B. NSLocalizedString("error.featureNotAvailable.camera", comment: ""))
+            return String(format: NSLocalizedString("error.appError.featureNotAvailable", comment: "Feature not available message format"), feature)
         case .cameraPermissionDenied:
-            return "Zugriff auf die Kamera wurde verweigert. Bitte in den Einstellungen erlauben."
+            return NSLocalizedString("error.appError.cameraPermissionDenied", comment: "Camera permission denied")
         case .internalError(let message):
-            return "Ein interner Fehler ist aufgetreten: \(message)"
+            // Die 'message' wird oft einen bereits lokalisierten String enthalten oder einen dynamischen Wert
+            return String(format: NSLocalizedString("error.appError.internalError", comment: "Internal error message format"), message)
         case .pdfCreationFailed:
-            return "PDF-Dokument konnte nicht erstellt werden."
+            return NSLocalizedString("error.appError.pdfCreationFailed", comment: "PDF creation failed")
         case .ocrFailed(let underlyingError):
-            let baseMessage = "Texterkennung (OCR) ist fehlgeschlagen."
             if let error = underlyingError {
-                return "\(baseMessage) Fehler: \(error.localizedDescription)"
+                return String(format: NSLocalizedString("error.appError.ocrFailed.withError", comment: "OCR failed with specific error"), error.localizedDescription)
             }
-            return baseMessage
+            return NSLocalizedString("error.appError.ocrFailed.base", comment: "OCR failed")
         case .imageConversionFailed(let reason):
-            return "Bild konnte nicht konvertiert werden: \(reason)"
+            // Die 'reason' wird oft einen bereits lokalisierten String enthalten oder einen dynamischen Wert
+            return String(format: NSLocalizedString("error.appError.imageConversionFailed", comment: "Image conversion failed message format"), reason)
         case .invalidRequest(let reason):
-            return "Ungültige Anfrage von JavaScript: \(reason)"
+            // Die 'reason' wird oft einen bereits lokalisierten String enthalten oder einen dynamischen Wert
+            return String(format: NSLocalizedString("error.appError.invalidRequest", comment: "Invalid request message format"), reason)
         case .webViewCommunicationError(let reason):
-             return "Fehler bei der Kommunikation mit WebView: \(reason)"
+            // Die 'reason' wird oft einen bereits lokalisierten String enthalten oder einen dynamischen Wert
+            return String(format: NSLocalizedString("error.appError.webViewCommunicationError", comment: "WebView communication error message format"), reason)
         case .invalidConfiguration(let reason):
-            return "Fehler bei der Konfiguration: \(reason)"
+            // Die 'reason' wird oft einen bereits lokalisierten String enthalten oder einen dynamischen Wert
+            return String(format: NSLocalizedString("error.appError.invalidConfiguration", comment: "Invalid configuration message format"), reason)
         }
     }
 }

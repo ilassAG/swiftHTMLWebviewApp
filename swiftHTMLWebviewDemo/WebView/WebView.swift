@@ -28,7 +28,7 @@ struct WebView: UIViewRepresentable {
         if let remoteURL = URL(string: Configuration.serverHTMLPath) {
             let request = URLRequest(url: remoteURL)
             webView.load(request)
-            print("Loading remote HTML from: \(remoteURL)")
+            print(String(format: NSLocalizedString("status.webView.loadingRemoteHTML", comment: "Loading remote HTML status format"), remoteURL.absoluteString))
         } else {
             loadLocalHTML(in: webView)
         }
@@ -85,14 +85,16 @@ struct WebView: UIViewRepresentable {
     private func loadLocalHTML(in webView: WKWebView) {
         if let url = Bundle.main.url(forResource: htmlFileName, withExtension: "html", subdirectory: "HTML") {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            print("Fallback: Loading local HTML from: \(url)")
+            print(String(format: NSLocalizedString("status.webView.loadingLocalHTML", comment: "Loading local HTML fallback status format"), url.absoluteString))
         } else {
-            print("Error: Could not find \(htmlFileName).html in HTML subdirectory.")
+            print(String(format: NSLocalizedString("error.webView.localHTMLNotFound", comment: "Local HTML file not found error format"), htmlFileName))
+            // Der HTML-String selbst wird hier nicht lokalisiert, da er eine Fallback-Fehlerseite ist.
+            // Eine vollständig lokalisierte Fehlerseite wäre aufwändiger.
             let errorHTML = """
             <html><head><title>Error</title></head><body style='font-family: sans-serif; padding: 20px;'>
-            <h1>Fehler</h1>
-            <p>Die erforderliche HTML-Datei konnte nicht geladen werden.</p>
-            <p>Stellen Sie sicher, dass sich '\(htmlFileName).html', 'style.css' und 'script.js' im Ordner 'HTML' befinden und dieser zum Bundle hinzugefügt wurde.</p>
+            <h1>Error</h1>
+            <p>The required HTML file could not be loaded.</p>
+            <p>Please ensure that '\(htmlFileName).html', 'style.css', and 'script.js' are in the 'HTML' folder and added to the bundle.</p>
             </body></html>
             """
             webView.loadHTMLString(errorHTML, baseURL: nil)
@@ -114,10 +116,10 @@ struct WebView: UIViewRepresentable {
                 print("Received message from JS: \(body)")
                 parent.onScriptMessage(body)
             } else {
-                print("Error: Could not parse message body as [String: Any]. Body: \(message.body)")
+                print(String(format: NSLocalizedString("error.webView.jsParseError", comment: "JS message parse error format"), String(describing: message.body)))
                 // Korrektur: ?? entfernt, da localizedDescription nicht optional ist
                 let errorPayload: [String: Any] = [
-                    "error": AppError.invalidRequest("Nachricht von JS konnte nicht gelesen werden.").localizedDescription
+                    "error": AppError.invalidRequest(NSLocalizedString("error.webView.jsParseError.generic", comment: "Generic JS message parse error")).localizedDescription
                 ]
                 parent.webViewStore.sendDataToWebView(data: errorPayload)
             }
@@ -136,14 +138,15 @@ struct WebView: UIViewRepresentable {
             print("Remote page failed loading: \(error.localizedDescription)")
             if let localURL = Bundle.main.url(forResource: parent.htmlFileName, withExtension: "html", subdirectory: "HTML") {
                 webView.loadFileURL(localURL, allowingReadAccessTo: localURL.deletingLastPathComponent())
-                print("Fallback: Loading local HTML from: \(localURL)")
+                print(String(format: NSLocalizedString("status.webView.loadingLocalHTML", comment: "Loading local HTML fallback status format"), localURL.absoluteString))
             } else {
-                print("Error: Could not find \(parent.htmlFileName).html in HTML subdirectory.")
+                print(String(format: NSLocalizedString("error.webView.localHTMLNotFound", comment: "Local HTML file not found error format"), parent.htmlFileName))
+                // Der HTML-String selbst wird hier nicht lokalisiert, da er eine Fallback-Fehlerseite ist.
                 let errorHTML = """
                 <html><head><title>Error</title></head><body style='font-family: sans-serif; padding: 20px;'>
-                <h1>Fehler</h1>
-                <p>Die erforderliche HTML-Datei konnte nicht geladen werden.</p>
-                <p>Stellen Sie sicher, dass sich '\(parent.htmlFileName).html', 'style.css' und 'script.js' im Ordner 'HTML' befinden und dieser zum Bundle hinzugefügt wurde.</p>
+                <h1>Error</h1>
+                <p>The required HTML file could not be loaded.</p>
+                <p>Please ensure that '\(parent.htmlFileName).html', 'style.css', and 'script.js' are in the 'HTML' folder and added to the bundle.</p>
                 </body></html>
                 """
                 webView.loadHTMLString(errorHTML, baseURL: nil)

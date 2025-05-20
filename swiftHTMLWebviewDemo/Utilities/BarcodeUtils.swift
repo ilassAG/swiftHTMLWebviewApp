@@ -61,19 +61,27 @@ enum BarcodeUtils {
 
     static func mapSymbologyToDisplayName(_ symbology: VNBarcodeSymbology) -> String {
         switch symbology {
-        case .qr: return "QR Code"
-        case .ean13: return "EAN-13"
-        case .ean8: return "EAN-8"
-        case .code128: return "Code 128"
-        case .code39: return "Code 39"
-        case .code93: return "Code 93"
-        case .upce: return "UPC-E"
-        case .pdf417: return "PDF417"
-        case .aztec: return "Aztec"
-        case .itf14: return "ITF-14"
-        case .dataMatrix: return "Data Matrix"
+        case .qr: return NSLocalizedString("barcode.type.qr", comment: "QR Code type name")
+        case .ean13: return NSLocalizedString("barcode.type.ean13", comment: "EAN-13 type name")
+        case .ean8: return NSLocalizedString("barcode.type.ean8", comment: "EAN-8 type name")
+        case .code128: return NSLocalizedString("barcode.type.code128", comment: "Code 128 type name")
+        case .code39: return NSLocalizedString("barcode.type.code39", comment: "Code 39 type name")
+        case .code93: return NSLocalizedString("barcode.type.code93", comment: "Code 93 type name")
+        case .upce: return NSLocalizedString("barcode.type.upce", comment: "UPC-E type name")
+        case .pdf417: return NSLocalizedString("barcode.type.pdf417", comment: "PDF417 type name")
+        case .aztec: return NSLocalizedString("barcode.type.aztec", comment: "Aztec type name")
+        case .itf14: return NSLocalizedString("barcode.type.itf14", comment: "ITF-14 type name")
+        case .dataMatrix: return NSLocalizedString("barcode.type.datamatrix", comment: "Data Matrix type name")
         default:
-            return symbology.rawValue
+            // Fallback für unbekannte oder neue Symbologien
+            let rawValueKey = "barcode.type.\(symbology.rawValue.lowercased())"
+            let localizedRawValue = NSLocalizedString(rawValueKey, comment: "Raw barcode type name as fallback")
+            // Wenn der rawValueKey nicht in den Strings-Dateien ist, gibt NSLocalizedString den Key selbst zurück.
+            // Wir prüfen, ob das der Fall ist, und geben dann den rawValue direkt zurück, um "barcode.type.xyz" zu vermeiden.
+            if localizedRawValue == rawValueKey {
+                return symbology.rawValue // Reiner rawValue als letzter Ausweg
+            }
+            return localizedRawValue // Gibt den lokalisierten rawValue zurück, falls vorhanden
         }
     }
 }

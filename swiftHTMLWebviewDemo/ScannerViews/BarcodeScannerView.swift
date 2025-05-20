@@ -35,7 +35,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
             if isPresented {
                 if !uiViewController.isScanning {
                     guard BarcodeScannerView.isAvailable else {
-                        print("Error: DataScanner is not available (likely missing camera permission).")
+                        print(NSLocalizedString("error.dataScanner.notAvailable", comment: "DataScanner not available error"))
                         completion(.failure(.cameraPermissionDenied))
                         isPresented = false
                         return
@@ -44,8 +44,8 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                         try uiViewController.startScanning()
                         print("BarcodeScanner started scanning.")
                     } catch {
-                        print("Error starting barcode scanner: \(error.localizedDescription)")
-                        completion(.failure(.internalError("Scanner konnte nicht gestartet werden: \(error.localizedDescription)")))
+                        print(String(format: NSLocalizedString("error.dataScanner.startFailed", comment: "DataScanner start failed error format"), error.localizedDescription))
+                        completion(.failure(.internalError(String(format: NSLocalizedString("error.dataScanner.startFailed", comment: "DataScanner start failed error format"), error.localizedDescription))))
                         isPresented = false
                     }
                 }
@@ -94,7 +94,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
 
                     if let code = barcode.payloadStringValue {
                         let formatString = BarcodeUtils.mapSymbologyToDisplayName(symbology)
-                        print("Barcode recognized: \(code) (Format: \(formatString))")
+                        print(String(format: NSLocalizedString("status.barcodeRecognized", comment: "Barcode recognized status format"), code, formatString))
 
                         // JSON-Verarbeitung für Konfigurationsänderung
                         if let jsonData = code.data(using: .utf8) {
@@ -106,7 +106,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
 
                                         let storedToken = AppSettings.shared.securityToken
                                         if scannedToken == storedToken {
-                                            print("Security token match. Updating server URL to: \(newUrl)")
+                                            print(String(format: NSLocalizedString("status.securityToken.match", comment: "Security token match status format"), newUrl))
                                             AppSettings.shared.serverURL = newUrl
                                             // Die completion wird hier nicht direkt mit dem Code aufgerufen,
                                             // da die ContentView das Neuladen der WebView übernimmt.
@@ -134,12 +134,12 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                                             }
                                             return
                                         } else {
-                                            print("Security token mismatch. Scanned: \(scannedToken), Stored: \(storedToken)")
+                                            print(String(format: NSLocalizedString("error.securityToken.mismatch", comment: "Security token mismatch error format"), scannedToken, storedToken))
                                             // Fehlerbehandlung für Token-Mismatch
                                             hasCompleted = true
                                             scanner.stopScanning()
                                             Task { @MainActor in
-                                                parent.completion(.failure(.invalidConfiguration("Ungültiges Sicherheitstoken.")))
+                                                parent.completion(.failure(.invalidConfiguration(NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error"))))
                                                 parent.isPresented = false
                                             }
                                             return
@@ -147,7 +147,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                                     }
                                 }
                             } catch {
-                                print("Failed to parse JSON from QR code: \(error.localizedDescription)")
+                                print(String(format: NSLocalizedString("error.qr.jsonParseFailed", comment: "QR JSON parse failed error format"), error.localizedDescription))
                                 // Kein kritischer Fehler, wenn JSON nicht geparst werden kann, fahre mit normaler Barcode-Verarbeitung fort.
                             }
                         }
@@ -162,12 +162,12 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                         }
                         return
                     } else {
-                         print("Warning: Recognized barcode has no string value.")
+                         print(NSLocalizedString("warning.barcode.noStringValue", comment: "Barcode has no string value warning"))
                     }
                 case .text:
                     continue
                 @unknown default:
-                    print("Warning: Unrecognized item type detected.")
+                    print(NSLocalizedString("warning.dataScanner.unrecognizedItem", comment: "Unrecognized item type warning"))
                     continue
                 }
             }
@@ -175,7 +175,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
 
         func dataScanner(_ dataScanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
              guard !hasCompleted else { return }
-             print("DataScanner became unavailable with error object: \(error)")
+             print(String(format: NSLocalizedString("error.dataScanner.unavailable", comment: "DataScanner unavailable error format"), error.localizedDescription))
              hasCompleted = true
              let appError: AppError
 
@@ -183,9 +183,9 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
              case .cameraRestricted:
                  appError = .cameraPermissionDenied
              case .unsupported:
-                 appError = .internalError("Scanner wird auf diesem Gerät nicht unterstützt: \(error.localizedDescription)")
+                 appError = .internalError(String(format: NSLocalizedString("error.internalError.scannerNotSupported", comment: "Scanner not supported error format"), error.localizedDescription))
              @unknown default:
-                 appError = .internalError("Unbekannter Scanner-Fehler: \(error.localizedDescription)")
+                 appError = .internalError(String(format: NSLocalizedString("error.internalError.unknownScannerError", comment: "Unknown scanner error format"), error.localizedDescription))
              }
 
              Task { @MainActor in

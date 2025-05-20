@@ -26,8 +26,8 @@ class TextRecognizer {
             for i in 0..<self.cameraScan.pageCount {
                 dispatchGroup.enter()
                 guard let cgImage = self.cameraScan.imageOfPage(at: i).cgImage else {
-                    print("Error: Could not get CGImage for page \(i).")
-                    ocrError = ocrError ?? AppError.internalError("CGImage für Seite \(i) konnte nicht erstellt werden.")
+                    print(String(format: NSLocalizedString("error.ocr.cgImageFailed", comment: "CGImage creation for OCR failed error format"), i))
+                    ocrError = ocrError ?? AppError.internalError(String(format: NSLocalizedString("error.internalError.cgImageCreationFailed", comment: "Internal CGImage creation for OCR failed error format"), i))
                     dispatchGroup.leave()
                     continue
                 }
@@ -38,7 +38,7 @@ class TextRecognizer {
                          ocrError = ocrError ?? error
                     } else if let observations = request.results as? [VNRecognizedTextObservation] {
                         let pageText = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-                        print("OCR-Ergebnis für Seite \(i): \(pageText)")
+                        print(String(format: NSLocalizedString("status.ocr.pageResult", comment: "OCR page result status format"), i, pageText))
                         recognizedTexts[i] = pageText
                     } else {
                         recognizedTexts[i] = ""
@@ -66,7 +66,7 @@ class TextRecognizer {
                      let sortedTexts = recognizedTexts.sorted { $0.key < $1.key }.map { $0.value }
                      // Füge Seitentrenner hinzu, wenn mehr als eine Seite erkannt wurde
                      let fullText = sortedTexts.enumerated().map { index, text in
-                         return (sortedTexts.count > 1 ? "--- Seite \(index + 1) ---\n" : "") + text
+                         return (sortedTexts.count > 1 ? String(format: NSLocalizedString("ocr.pageSeparator", comment: "OCR page separator format"), index + 1) + "\n" : "") + text
                      }.joined(separator: "\n\n")
 
                      completionHandler(.success(fullText))

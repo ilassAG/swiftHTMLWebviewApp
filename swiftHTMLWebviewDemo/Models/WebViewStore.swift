@@ -47,9 +47,9 @@ private var hasReloadedFromOrigin: Bool = false
 
     private func attemptToLoad(urlToLoad: String?, isRetry: Bool = false) {
         guard let urlString = urlToLoad, let url = URL(string: urlString) else {
-            print("Error: Invalid URL string: \(String(describing: urlToLoad))")
+            print(String(format: NSLocalizedString("error.url.invalid", comment: "Invalid URL string error format"), String(describing: urlToLoad)))
             // Wenn die konfigurierte URL ungültig ist, sofort zur Default-URL wechseln
-            switchToDefaultURLAndLoad(reason: "Ungültige konfigurierte URL")
+            switchToDefaultURLAndLoad(reason: NSLocalizedString("error.url.invalid", comment: "Invalid configured URL reason for switching to default"))
             return
         }
 
@@ -62,12 +62,12 @@ private var hasReloadedFromOrigin: Bool = false
         }
         
         if internalLoadAttempts >= maxLoadAttempts {
-            print("Error: Maximum load attempts (\(maxLoadAttempts)) reached for \(urlString). Switching to default URL.")
-            switchToDefaultURLAndLoad(reason: "Maximale Ladeversuche erreicht")
+            print(String(format: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max load attempts reached error format"), maxLoadAttempts, urlString))
+            switchToDefaultURLAndLoad(reason: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max load attempts reached reason for switching to default"))
             return
         }
 
-        print("Attempting to load URL: \(url) (Attempt: \(internalLoadAttempts + 1))")
+        print(String(format: NSLocalizedString("status.url.loadingAttempt", comment: "Attempting to load URL status format"), url.absoluteString, internalLoadAttempts + 1))
         isLoading = true
         self.webView.stopLoading() // Vorheriges Laden stoppen
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
@@ -75,7 +75,7 @@ private var hasReloadedFromOrigin: Bool = false
     }
 
     private func switchToDefaultURLAndLoad(reason: String) {
-        print("Switching to default URL. Reason: \(reason)")
+        print(String(format: NSLocalizedString("error.url.switchToDefault.reason", comment: "Switching to default URL reason format"), reason))
         AppSettings.shared.resetToDefaultURL()
         let defaultUrlString = AppSettings.shared.serverURL
         self.currentURLString = defaultUrlString // UI informieren
@@ -87,7 +87,7 @@ private var hasReloadedFromOrigin: Bool = false
             let request = URLRequest(url: defaultUrl)
             self.webView.load(request)
         } else {
-            print("CRITICAL Error: Default URL is also invalid: \(defaultUrlString)")
+            print(String(format: NSLocalizedString("error.url.defaultInvalid", comment: "Critical error: Default URL invalid format"), defaultUrlString))
             isLoading = false
             // Hier könnte man eine lokale Fehlerseite laden oder einen Alert anzeigen
         }
@@ -215,8 +215,8 @@ private var hasReloadedFromOrigin: Bool = false
                 self?.attemptToLoad(urlToLoad: currentAttemptUrl, isRetry: true)
             }
         } else {
-            print("Max retries reached for \(currentAttemptUrl). Switching to default URL.")
-            switchToDefaultURLAndLoad(reason: "Maximale Ladeversuche nach Fehler erreicht")
+            print(String(format: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max retries reached for URL format"), currentAttemptUrl)) // Note: Using the same key as above but context is slightly different
+            switchToDefaultURLAndLoad(reason: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max load attempts after error reason")) // Same key, different comment for clarity
         }
     }
 
@@ -244,14 +244,14 @@ private var hasReloadedFromOrigin: Bool = false
     func sendDataToWebView(data: [String: Any]) {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
-            print("Error: Could not serialize data to JSON string: \(data)")
+            print(String(format: NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to serialize to JSON string error"), String(describing: data)))
 
             // Korrektur: ?? entfernt, da localizedDescription nicht optional ist.
-            let fallbackErrorMessage = AppError.internalError("Failed to create JSON response.").localizedDescription
+            let fallbackErrorMessage = AppError.internalError(NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to create JSON response fallback message")).localizedDescription
             let fallbackError: [String: Any] = ["error": fallbackErrorMessage]
 
             let fallbackJson = try? JSONSerialization.data(withJSONObject: fallbackError)
-            let fallbackString = String(data: fallbackJson ?? Data(), encoding: .utf8) ?? "{ \"error\": \"Internal Swift Error: Critical failure.\" }"
+            let fallbackString = String(data: fallbackJson ?? Data(), encoding: .utf8) ?? "{ \"error\": \"\(NSLocalizedString("error.internalError.criticalFailure", comment: "Critical internal Swift error fallback"))\" }"
             evaluateJavaScript(script: "window.handleNativeResult(\(fallbackString));")
             return
         }

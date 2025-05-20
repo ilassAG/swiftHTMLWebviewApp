@@ -31,7 +31,7 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
-                    Text("Loading: \(webViewStore.currentURLString ?? "")")
+                    Text(String(format: NSLocalizedString("loading.url", comment: "Loading URL message"), webViewStore.currentURLString ?? ""))
                         .font(.headline)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -74,12 +74,12 @@ struct ContentView: View {
                          handleBarcodeScanResult(result)
                     }
                 } else {
-                     Text("Barcode Scanner wird auf diesem Gerät nicht unterstützt.")
+                     Text(NSLocalizedString("error.barcodeScannerNotSupported.message", comment: "Barcode scanner not supported message"))
                          .padding()
                          .onAppear {
                              let action = currentRequest?["action"] as? String
                              // Korrektur: AppError Instanz übergeben
-                             webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable("Barcode Scanner"))
+                             webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
                              showBarcodeScanner = false
                          }
                  }
@@ -91,7 +91,7 @@ struct ContentView: View {
         guard let action = message["action"] as? String else {
             print("Error: Received message from JS without 'action' key.")
             // Korrektur: AppError Instanz übergeben
-            webViewStore.sendErrorToWebView(action: nil, error: AppError.invalidRequest("Fehlender 'action'-Parameter"))
+            webViewStore.sendErrorToWebView(action: nil, error: AppError.invalidRequest(NSLocalizedString("error.invalidRequest.missingAction", comment: "Missing action parameter error")))
             return
         }
 
@@ -106,7 +106,7 @@ struct ContentView: View {
              guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
                  print("Error: Camera not available.")
                  // Korrektur: AppError Instanz übergeben
-                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable("Kamera"))
+                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera")))
                  currentRequest = nil
                  return
              }
@@ -116,7 +116,7 @@ struct ContentView: View {
             guard BarcodeScannerView.isSupported else {
                  print("Error: DataScanner is not supported on this device.")
                  // Korrektur: AppError Instanz übergeben
-                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable("Barcode Scanner"))
+                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
                  currentRequest = nil
                  return
              }
@@ -125,7 +125,7 @@ struct ContentView: View {
         default:
             print("Error: Received unknown action from JS: \(action)")
             // Korrektur: AppError Instanz übergeben
-            webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest("Unbekannte Aktion: \(action)"))
+            webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)))
             currentRequest = nil
         }
     }
@@ -146,7 +146,7 @@ struct ContentView: View {
             guard !images.isEmpty else {
                 print("Error: Document scan returned success but no images.")
                  // Korrektur: AppError Instanz übergeben
-                webViewStore.sendErrorToWebView(action: action, error: AppError.internalError("Keine Bilder vom Scanner erhalten."))
+                webViewStore.sendErrorToWebView(action: action, error: AppError.internalError(NSLocalizedString("error.internalError.noImagesFromScanner", comment: "No images from scanner error")))
                 currentRequest = nil // Reset nicht vergessen
                 return
             }
@@ -160,7 +160,8 @@ struct ContentView: View {
                         createAndSendDocumentResponse(action: action, images: images, text: recognizedText, outputType: outputType, pageCount: scan.pageCount)
                     case .failure(let ocrError):
                         print("OCR failed: \(ocrError.localizedDescription)")
-                        webViewStore.sendErrorToWebView(action: action, error: ocrError) // Sende den spezifischen OCR-Fehler
+                        // ocrError ist bereits ein AppError und somit lokalisiert
+                        webViewStore.sendErrorToWebView(action: action, error: ocrError)
                     }
                      currentRequest = nil // Reset nach Abschluss der asynchronen Operation
                 }
@@ -201,7 +202,7 @@ struct ContentView: View {
                  response["format"] = (imageFormat == .png) ? "png" : "jpeg"
              } else {
                  // Korrektur: AppError Instanz übergeben
-                 webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed("Keine Bilder konnten konvertiert werden."))
+                 webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed(NSLocalizedString("error.imageConversionFailed.noImagesConverted", comment: "No images could be converted error")))
                  return
              }
         }
@@ -226,7 +227,7 @@ struct ContentView: View {
                 webViewStore.sendResultToWebView(result: response)
             } else {
                  // Korrektur: AppError Instanz übergeben
-                webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed("Bild konnte nicht in \(outputType) konvertiert werden."))
+                webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed(String(format: NSLocalizedString("error.imageConversionFailed.specificType", comment: "Image could not be converted to specific type error format"), outputType)))
             }
 
         case .failure(let error):
@@ -241,13 +242,13 @@ struct ContentView: View {
         switch result {
         case .success(let scanResult):
             if scanResult.code == "configChanged" && scanResult.format == "JSONConfig" {
-                print("Configuration changed via QR code. Reloading WebView.")
+                print(NSLocalizedString("status.configurationChanged.reloading", comment: "Configuration changed, reloading webview status"))
                 // Die URL wurde bereits in AppSettings durch BarcodeScannerView geändert.
                 // webViewStore.reloadCurrentOrNewURL() wird die neue URL laden.
                 webViewStore.reloadCurrentOrNewURL()
                 // Kein sendResultToWebView, da die Aktion das Neuladen der UI ist.
             } else {
-                print("Barcode scan successful: \(scanResult.code) (\(scanResult.format))")
+                print(String(format: NSLocalizedString("status.barcodeScan.success", comment: "Barcode scan successful status format"), scanResult.code, scanResult.format))
                 let response: [String: Any] = [
                     "action": action,
                     "code": scanResult.code,
@@ -257,7 +258,7 @@ struct ContentView: View {
             }
 
         case .failure(let error):
-            print("Barcode scan failed: \(error.localizedDescription)")
+            print(String(format: NSLocalizedString("error.barcodeScan.failed", comment: "Barcode scan failed error format"), error.localizedDescription))
             webViewStore.sendErrorToWebView(action: action, error: error)
         }
         currentRequest = nil
@@ -269,7 +270,7 @@ struct ContentView: View {
         // Wir müssen nur den Fall abfangen, dass *kein* Ergebnis kam (Abbruch durch User).
         // Wenn currentRequest noch gesetzt ist, wurde kein Ergebnis/Fehler vom Coordinator gemeldet.
         if let request = currentRequest, let action = request["action"] as? String {
-             print("Sheet dismissed while request '\(action)' was potentially active. Sending cancellation error.")
+             print(String(format: NSLocalizedString("warning.sheetDismissed.requestActive", comment: "Sheet dismissed while request active warning format"), action))
              // Korrektur: AppError Instanz übergeben
              webViewStore.sendErrorToWebView(action: action, error: AppError.userCancelled)
              currentRequest = nil

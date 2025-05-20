@@ -22,7 +22,7 @@ struct ImagePickerView: UIViewControllerRepresentable {
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             print("Error: Camera source type is not available on this device.")
             DispatchQueue.main.async {
-                 completion(.failure(.featureNotAvailable("Kamera")))
+                 completion(.failure(.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera"))))
                  isPresented = false
             }
             return picker
@@ -64,7 +64,7 @@ struct ImagePickerView: UIViewControllerRepresentable {
                 parent.completion(.success(image))
             } else {
                 print("Error: Could not retrieve original image from picker.")
-                parent.completion(.failure(.internalError("Bild konnte nicht von der Kamera empfangen werden.")))
+                parent.completion(.failure(.internalError(NSLocalizedString("error.internalError.imageNotReceived", comment: "Image not received from camera error"))))
             }
             parent.isPresented = false // Schließen
         }

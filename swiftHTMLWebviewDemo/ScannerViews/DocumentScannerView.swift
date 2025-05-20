@@ -56,10 +56,10 @@ struct DocumentScannerView: UIViewControllerRepresentable {
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            print("Document scan failed with error: \(error.localizedDescription)")
+            print(String(format: NSLocalizedString("error.documentScan.failed", comment: "Document scan failed error format"), error.localizedDescription))
             // Korrektur: Dispatch auf Main Actor
             Task { @MainActor in
-                parent.completion(.failure(.internalError("Dokumentenscan fehlgeschlagen: \(error.localizedDescription)")))
+                parent.completion(.failure(.internalError(String(format: NSLocalizedString("error.internalError.documentScanFailed", comment: "Document scan failed internal error format"), error.localizedDescription))))
                 parent.isPresented = false
             }
         }

@@ -15,8 +15,8 @@ enum PDFGenerator {
         guard !images.isEmpty else { return nil }
 
         let pdfMetaData = [
-            kCGPDFContextCreator: "swiftHTMLWebviewDemo App",
-            kCGPDFContextAuthor: "User via App"
+            kCGPDFContextCreator: NSLocalizedString("pdf.creator", comment: "PDF Creator metadata"),
+            kCGPDFContextAuthor: NSLocalizedString("pdf.author", comment: "PDF Author metadata")
         ]
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = pdfMetaData as [String: Any]
