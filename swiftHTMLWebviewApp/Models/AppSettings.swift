@@ -1,8 +1,11 @@
 //
 //  AppSettings.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by Roo on 20.05.2025.
+//  This class manages application settings using UserDefaults.
+//  It provides a singleton `shared` instance to access and modify
+//  settings like the server URL and security token. Default values are
+//  registered and can be reset.
 //
 
 import Foundation

@@ -1,9 +1,11 @@
 //
 //  ScannerViews/BarcodeScannerView.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025 (Letzter Versuch mit Kurzform für Enum Cases)
+//  This file provides a SwiftUI view that uses VisionKit's DataScannerViewController
+//  to scan barcodes. It handles scanner setup, delegate methods, and communicates
+//  results or errors back to the ContentView. It also includes logic to process
+//  special QR codes for changing app configuration.
 //
 
 import SwiftUI
@@ -108,13 +110,20 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                                         if scannedToken == storedToken {
                                             print(String(format: NSLocalizedString("status.securityToken.match", comment: "Security token match status format"), newUrl))
                                             AppSettings.shared.serverURL = newUrl
+
+                                            // Optional: Verarbeite newSecurityToken
+                                            if let newSecurityToken = json["newSecurityToken"] as? String, !newSecurityToken.isEmpty {
+                                                AppSettings.shared.securityToken = newSecurityToken
+                                                print(String(format: NSLocalizedString("status.newSecurityToken.set", comment: "New security token set status format"), newSecurityToken))
+                                            }
+
                                             // Die completion wird hier nicht direkt mit dem Code aufgerufen,
                                             // da die ContentView das Neuladen der WebView übernimmt.
                                             // Wir signalisieren Erfolg, aber ohne den Barcode-Inhalt direkt weiterzugeben,
-                                            // da die Aktion (URL-Änderung) wichtiger ist.
+                                            // da die Aktion (URL-Änderung und ggf. Token-Änderung) wichtiger ist.
                                             // Alternativ könnte man einen speziellen Erfolgstyp für "configChanged" einführen.
                                             // Fürs Erste rufen wir die normale completion auf, aber ContentView wird
-                                            // durch die Änderung in AppSettings.shared.serverURL getriggert,
+                                            // durch die Änderung in AppSettings.shared.serverURL (und ggf. securityToken) getriggert,
                                             // die WebView neu zu laden (via scenePhase oder einen direkteren Mechanismus).
                                             // Um das Neuladen explizit anzustoßen, könnte man hier eine Notification posten
                                             // oder direkt auf den webViewStore zugreifen, falls er hier verfügbar wäre.

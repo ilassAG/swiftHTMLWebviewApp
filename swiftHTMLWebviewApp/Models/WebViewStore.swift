@@ -1,9 +1,12 @@
 //
 //  Models/WebViewStore.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025 (Überflüssiges Nil Coalescing entfernt)
+//  This class acts as an ObservableObject to manage the state of the WKWebView.
+//  It handles the creation, configuration, and loading of URLs for the WebView.
+//  It also implements WKNavigationDelegate to manage navigation events (start, finish, fail)
+//  and includes logic for retrying failed loads and switching to a default URL if necessary.
+//  Communication from Swift to JavaScript (sending results/errors) is also managed here.
 //
 
 import Foundation

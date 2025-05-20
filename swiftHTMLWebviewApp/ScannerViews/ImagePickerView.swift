@@ -1,8 +1,11 @@
 //
 //  ScannerViews/ImagePickerView.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
+//  This file provides a SwiftUI view that wraps `UIImagePickerController` to allow
+//  users to take photos using the device camera. It handles camera availability,
+//  selection of front or rear camera, and communicates the captured image
+//  or any errors back to the `ContentView` via a completion handler.
 //
 
 import SwiftUI

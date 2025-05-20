@@ -1,9 +1,11 @@
 //
 //  ScannerViews/DocumentScannerView.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025 (@MainActor vom Coordinator entfernt)
+//  This file provides a SwiftUI view that uses VisionKit's VNDocumentCameraViewController
+//  to scan documents. It handles the presentation of the document scanner,
+//  its delegate callbacks (success, cancellation, failure), and communicates the
+//  scan results or errors back to the ContentView. Ensures callbacks are on the main thread.
 //
 
 import SwiftUI

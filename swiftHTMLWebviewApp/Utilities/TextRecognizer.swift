@@ -1,8 +1,11 @@
 //
 //  Utilities/TextRecognizer.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
+//  This class uses the Vision framework to perform Optical Character Recognition (OCR)
+//  on images obtained from a `VNDocumentCameraScan`. It processes each page of the scan,
+//  recognizes text, and returns the combined text (with page separators if multiple pages)
+//  or an error via a completion handler.
 //
 
 import Foundation

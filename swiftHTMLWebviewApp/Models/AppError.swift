@@ -1,8 +1,11 @@
 //
 //  Models/AppError.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
+//  This file defines a custom error enum `AppError` that conforms to `LocalizedError`.
+//  It's used throughout the app to provide specific, user-friendly error messages
+//  for various scenarios, such as user cancellations, feature unavailability,
+//  permission denials, and internal issues. These errors are often sent to the WebView.
 //
 
 import Foundation

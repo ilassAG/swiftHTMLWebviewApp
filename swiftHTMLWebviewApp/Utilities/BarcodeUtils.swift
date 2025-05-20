@@ -1,9 +1,11 @@
 //
 //  Utilities/BarcodeUtils.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025 (Verwendung von Array statt Set für Symbologies)
+//  This utility provides helper functions for barcode scanning.
+//  It includes a function to map an array of barcode type strings (e.g., "qr", "ean13")
+//  to a Set of `DataScannerViewController.RecognizedDataType` for configuring the scanner.
+//  It also maps `VNBarcodeSymbology` to a localized display name.
 //
 
 import Foundation

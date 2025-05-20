@@ -74,3 +74,5 @@
 "error.internalError.cgImageCreationFailed" = "CGImage für Seite %d konnte nicht erstellt werden.";
 "error.internalError.jsonResponseFailed" = "JSON-Antwort konnte nicht erstellt werden.";
 "error.internalError.criticalFailure" = "Interner Swift-Fehler: Kritischer Fehler.";
+/* New security token set status format */
+"status.newSecurityToken.set" = "Neuer Sicherheitstoken gesetzt: %@";

@@ -1,9 +1,11 @@
 //
 //  WebView/WebView.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025 (Nil Coalescing entfernt)
+//  This file defines the `WebView` struct, a SwiftUI `UIViewRepresentable` that wraps a `WKWebView`.
+//  It's responsible for displaying web content, either from a remote server or local HTML files.
+//  It sets up the communication bridge with JavaScript and handles navigation delegate methods.
+//  The `Coordinator` class within manages delegate callbacks and JavaScript message handling.
 //
 
 import SwiftUI

@@ -1,10 +1,11 @@
 //
 //  Configuration.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025
-//  x
+//  This file defines global configuration constants for the application.
+//  It includes settings like the JavaScript message handler name,
+//  default JPEG compression quality, default barcode types for scanning,
+//  the local HTML filename, and the server HTML path (retrieved from AppSettings).
 
 import Foundation
 import Vision // <--- Hinzugefügt für VNBarcodeSymbology

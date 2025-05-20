@@ -1,8 +1,9 @@
 //
 //  Utilities/ImageConverter.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
+//  This utility provides functions to convert UIImage objects to data URLs (Base64 encoded strings)
+//  in either PNG or JPEG format. It's used to prepare images for transmission to the WebView.
 //
 
 import Foundation

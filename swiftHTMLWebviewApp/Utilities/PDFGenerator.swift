@@ -1,8 +1,10 @@
 //
 //  Utilities/PDFGenerator.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by KI-Generiert am 05.10.2023.
+//  This utility provides functions to generate PDF documents from an array of UIImage objects.
+//  It can return the PDF as raw Data or as a Base64 encoded data URL string.
+//  Used for creating PDF output from scanned documents or images.
 //
 
 import Foundation

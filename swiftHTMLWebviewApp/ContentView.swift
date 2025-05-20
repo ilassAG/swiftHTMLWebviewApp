@@ -1,10 +1,9 @@
 //
 //  ContentView.swift
-//  swiftHTMLWebviewDemo
+//  swiftHTMLWebviewApp
 //
-//  Created by Peter Vogel on 02.04.25. (Original)
-//  Updated by KI-Generiert am 05.10.2023.
-//  Korrektur: 02.04.2025
+//  This file defines the main view of the application, managing the WebView and interactions
+//  with native features like camera and document scanning. It's the entry point for the UI.
 //
 
 import SwiftUI
