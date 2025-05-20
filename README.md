@@ -4,6 +4,10 @@
 
 ---
 
+![App Screenshot](media/screenshot01.png)
+
+---
+
 ## Features
 
 - **Secure WebView**: Loads remote or local HTML/JS content in a sandboxed environment.
@@ -173,6 +177,3 @@ You can generate a QR code from this JSON using any online QR code generator.
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
-
----
-
