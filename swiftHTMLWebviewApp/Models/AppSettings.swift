@@ -15,7 +15,7 @@ class AppSettings {
 
     private let userDefaults = UserDefaults.standard
     private let serverUrlKey = "server_url_preference"
-    private let defaultServerUrl = "https://apps.ilass.com/swiftHTMLWebviewDemo/"
+    private let defaultServerUrl = "https://apps.ilass.com/swiftHTMLWebviewApp/"
     private let securityTokenKey = "security_token_preference"
     private let defaultSecurityToken = "CHANGEmeASAP!"
 
