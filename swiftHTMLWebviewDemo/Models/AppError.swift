@@ -18,6 +18,7 @@ enum AppError: LocalizedError {
     case imageConversionFailed(String) // z.B. "Could not get JPEG data"
     case invalidRequest(String) // z.B. "Missing action parameter"
     case webViewCommunicationError(String)
+    case invalidConfiguration(String) // z.B. "Ungültiges Sicherheitstoken."
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +44,8 @@ enum AppError: LocalizedError {
             return "Ungültige Anfrage von JavaScript: \(reason)"
         case .webViewCommunicationError(let reason):
              return "Fehler bei der Kommunikation mit WebView: \(reason)"
+        case .invalidConfiguration(let reason):
+            return "Fehler bei der Konfiguration: \(reason)"
         }
     }
 }

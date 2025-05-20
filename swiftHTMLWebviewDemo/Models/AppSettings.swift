@@ -13,6 +13,8 @@ class AppSettings {
     private let userDefaults = UserDefaults.standard
     private let serverUrlKey = "server_url_preference"
     private let defaultServerUrl = "https://apps.ilass.com/swiftHTMLWebviewDemo/"
+    private let securityTokenKey = "security_token_preference"
+    private let defaultSecurityToken = "CHANGEmeASAP!"
 
     var serverURL: String {
         get {
@@ -25,13 +27,30 @@ class AppSettings {
         }
     }
 
+    var securityToken: String {
+        get {
+            userDefaults.string(forKey: securityTokenKey) ?? defaultSecurityToken
+        }
+        set {
+            userDefaults.set(newValue, forKey: securityTokenKey)
+        }
+    }
+
     func registerDefaults() {
-        // Registriere den Standardwert, damit er in den Einstellungen angezeigt wird,
-        // bevor der Benutzer ihn zum ersten Mal ändert.
-        userDefaults.register(defaults: [serverUrlKey: defaultServerUrl])
+        // Registriere die Standardwerte, damit sie in den Einstellungen angezeigt werden,
+        // bevor der Benutzer sie zum ersten Mal ändert.
+        userDefaults.register(defaults: [
+            serverUrlKey: defaultServerUrl,
+            securityTokenKey: defaultSecurityToken
+        ])
     }
 
     func resetToDefaultURL() {
         serverURL = defaultServerUrl
+    }
+
+    // Optional: Eine Funktion zum Zurücksetzen des Security Tokens auf den Standardwert
+    func resetToDefaultSecurityToken() {
+        securityToken = defaultSecurityToken
     }
 }

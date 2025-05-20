@@ -96,6 +96,63 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                         let formatString = BarcodeUtils.mapSymbologyToDisplayName(symbology)
                         print("Barcode recognized: \(code) (Format: \(formatString))")
 
+                        // JSON-Verarbeitung für Konfigurationsänderung
+                        if let jsonData = code.data(using: .utf8) {
+                            do {
+                                if let json = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
+                                    if let toolmode = json["toolmode"] as? String, toolmode == "changeConfig",
+                                       let scannedToken = json["securityToken"] as? String,
+                                       let newUrl = json["defaultServerUrl"] as? String, !newUrl.isEmpty {
+
+                                        let storedToken = AppSettings.shared.securityToken
+                                        if scannedToken == storedToken {
+                                            print("Security token match. Updating server URL to: \(newUrl)")
+                                            AppSettings.shared.serverURL = newUrl
+                                            // Die completion wird hier nicht direkt mit dem Code aufgerufen,
+                                            // da die ContentView das Neuladen der WebView übernimmt.
+                                            // Wir signalisieren Erfolg, aber ohne den Barcode-Inhalt direkt weiterzugeben,
+                                            // da die Aktion (URL-Änderung) wichtiger ist.
+                                            // Alternativ könnte man einen speziellen Erfolgstyp für "configChanged" einführen.
+                                            // Fürs Erste rufen wir die normale completion auf, aber ContentView wird
+                                            // durch die Änderung in AppSettings.shared.serverURL getriggert,
+                                            // die WebView neu zu laden (via scenePhase oder einen direkteren Mechanismus).
+                                            // Um das Neuladen explizit anzustoßen, könnte man hier eine Notification posten
+                                            // oder direkt auf den webViewStore zugreifen, falls er hier verfügbar wäre.
+                                            // Da der Coordinator keinen direkten Zugriff auf den webViewStore in ContentView hat,
+                                            // verlassen wir uns auf den bestehenden Mechanismus in ContentView (scenePhase)
+                                            // oder fügen später einen dedizierten Notification-Handler in ContentView hinzu.
+
+                                            hasCompleted = true
+                                            scanner.stopScanning()
+                                            Task { @MainActor in
+                                                // Wir signalisieren Erfolg, aber die ContentView muss das Neuladen handhaben.
+                                                // Wir könnten hier einen speziellen Wert oder eine leere Zeichenkette zurückgeben,
+                                                // um anzuzeigen, dass die Konfiguration geändert wurde.
+                                                // Fürs Erste geben wir den ursprünglichen Code zurück, aber die Hauptaktion ist die URL-Änderung.
+                                                parent.completion(.success((code: "configChanged", format: "JSONConfig")))
+                                                parent.isPresented = false
+                                            }
+                                            return
+                                        } else {
+                                            print("Security token mismatch. Scanned: \(scannedToken), Stored: \(storedToken)")
+                                            // Fehlerbehandlung für Token-Mismatch
+                                            hasCompleted = true
+                                            scanner.stopScanning()
+                                            Task { @MainActor in
+                                                parent.completion(.failure(.invalidConfiguration("Ungültiges Sicherheitstoken.")))
+                                                parent.isPresented = false
+                                            }
+                                            return
+                                        }
+                                    }
+                                }
+                            } catch {
+                                print("Failed to parse JSON from QR code: \(error.localizedDescription)")
+                                // Kein kritischer Fehler, wenn JSON nicht geparst werden kann, fahre mit normaler Barcode-Verarbeitung fort.
+                            }
+                        }
+
+                        // Normale Barcode-Verarbeitung, wenn keine Konfigurationsänderung
                         hasCompleted = true
                         scanner.stopScanning()
 

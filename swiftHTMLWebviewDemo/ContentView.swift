@@ -240,13 +240,21 @@ struct ContentView: View {
         let action = currentRequest?["action"] as? String ?? "scanBarcode"
         switch result {
         case .success(let scanResult):
-            print("Barcode scan successful: \(scanResult.code) (\(scanResult.format))")
-            let response: [String: Any] = [
-                "action": action,
-                "code": scanResult.code,
-                "format": scanResult.format
-            ]
-            webViewStore.sendResultToWebView(result: response)
+            if scanResult.code == "configChanged" && scanResult.format == "JSONConfig" {
+                print("Configuration changed via QR code. Reloading WebView.")
+                // Die URL wurde bereits in AppSettings durch BarcodeScannerView geändert.
+                // webViewStore.reloadCurrentOrNewURL() wird die neue URL laden.
+                webViewStore.reloadCurrentOrNewURL()
+                // Kein sendResultToWebView, da die Aktion das Neuladen der UI ist.
+            } else {
+                print("Barcode scan successful: \(scanResult.code) (\(scanResult.format))")
+                let response: [String: Any] = [
+                    "action": action,
+                    "code": scanResult.code,
+                    "format": scanResult.format
+                ]
+                webViewStore.sendResultToWebView(result: response)
+            }
 
         case .failure(let error):
             print("Barcode scan failed: \(error.localizedDescription)")
