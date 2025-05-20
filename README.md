@@ -118,6 +118,21 @@ You can configure the app by scanning a QR code containing a JSON payload. This 
 - `defaultServerUrl` is the new server URL to use
 - `securityToken` is the new token (optional)
 
+### Advanced: Change Security Token via QR Code
+
+You can also use a QR code to change the security token directly by including the `newSecurityToken` field:
+
+```json
+{
+  "toolmode": "changeConfig",
+  "defaultServerUrl": "https://www.ilass.com/",
+  "securityToken": "CHANGEmeASAP!",
+  "newSecurityToken": "myNewToken"
+}
+```
+
+- `newSecurityToken` will update the app's security token after scanning the QR code.
+
 ### Example QR Code Payload
 
 ```json
@@ -125,6 +140,17 @@ You can configure the app by scanning a QR code containing a JSON payload. This 
   "toolmode": "changeConfig",
   "defaultServerUrl": "https://apps.ilass.com/swiftHTMLWebviewApp/",
   "securityToken": "CHANGEmeASAP!"
+}
+```
+
+Or, to change the security token:
+
+```json
+{
+  "toolmode": "changeConfig",
+  "defaultServerUrl": "https://www.ilass.com/",
+  "securityToken": "CHANGEmeASAP!",
+  "newSecurityToken": "sfdsfsdfsd"
 }
 ```
 
