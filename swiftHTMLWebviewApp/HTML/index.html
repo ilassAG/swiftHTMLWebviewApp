@@ -6,7 +6,7 @@
     <!-- Wichtig für korrekte Skalierung und Verhinderung von Zoom auf iOS -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Swift Bridge Demo</title>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=8">
     <!-- Verhindert das "Springen" beim Antippen von Elementen -->
     <style>
         * { -webkit-tap-highlight-color: transparent; }
@@ -41,12 +41,13 @@
                     Transparent zuschneiden
                 </label>
             </div>
+            <button id="confettiBtn">Konfetti!</button>
             <button id="scanBarcodeBtn">QR/EAN Scannen</button>
             <button id="clearResultBtn">Ergebnis löschen</button>
         </div>
 
         <div class="results">
-            <h2>V7 Ergebnis:</h2>
+            <h2>V8 Ergebnis:</h2>
             <div id="statusArea" class="status loading" style="display: none;">
                 <p>Aktion wird ausgeführt...</p>
                 <div class="spinner"></div>
@@ -58,6 +59,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=7"></script>
+    <script src="script.js?v=8"></script>
 </body>
 </html>

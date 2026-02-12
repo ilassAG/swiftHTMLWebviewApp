@@ -148,6 +148,14 @@ button:active {
     background-color: #5a6268;
 }
 
+#confettiBtn {
+    background: linear-gradient(135deg, #ff7b00, #ff2d55 55%, #007aff);
+}
+
+#confettiBtn:hover {
+    filter: brightness(1.06);
+}
+
 
 /* Ergebnisbereich */
 .results {

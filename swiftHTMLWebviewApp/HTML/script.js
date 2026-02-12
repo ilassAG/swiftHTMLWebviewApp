@@ -10,12 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const photoBackgroundMode = document.getElementById('photoBackgroundMode');
     const photoBackgroundColor = document.getElementById('photoBackgroundColor');
     const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
+    const confettiBtn = document.getElementById('confettiBtn');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
     const clearResultBtn = document.getElementById('clearResultBtn');
 
     const statusArea = document.getElementById('statusArea');
     const resultArea = document.getElementById('resultArea');
     const placeholderText = document.getElementById('placeholderText');
+    const confettiInitialLabel = "Konfetti!";
+    const confettiMoreLabel = "mehr Konfetti";
 
     // --- Event Listeners ---
     scanDocPdfBtn.addEventListener('click', () => {
@@ -42,6 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     takePhotoBackBtn.addEventListener('click', () => {
         sendMessageToSwift(createPhotoRequest("back"));
+    });
+
+    confettiBtn?.addEventListener('click', () => {
+        sendMessageToSwift({ action: "launchConfetti" });
     });
 
     scanBarcodeBtn.addEventListener('click', () => {
@@ -97,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         photoBackgroundMode.disabled = !removeChecked;
         photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
         cropTransparentCheckbox.disabled = !cropEnabled;
-        if (!cropEnabled) {
+        if (!cropEnabled && !removeChecked) {
             cropTransparentCheckbox.checked = false;
         }
     }
@@ -106,8 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function sendMessageToSwift(message) {
         if (window.webkit?.messageHandlers?.swiftBridge) {
             console.log("Sending message to Swift:", message);
-            showLoadingStatus(`Aktion '${message.action}' wird ausgeführt...`);
-            clearResultArea(false); // Ergebnisbereich leeren, aber Placeholder nicht zeigen
+            const isConfettiAction = message.action === "launchConfetti";
+            if (!isConfettiAction) {
+                showLoadingStatus(`Aktion '${message.action}' wird ausgeführt...`);
+                clearResultArea(false); // Ergebnisbereich leeren, aber Placeholder nicht zeigen
+            }
             window.webkit.messageHandlers.swiftBridge.postMessage(message);
         } else {
             console.error("Swift Bridge (window.webkit.messageHandlers.swiftBridge) ist nicht verfügbar.");
@@ -118,9 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Globale Funktion, die von Swift aufgerufen wird
     window.handleNativeResult = function(result) {
         console.log("Received result from Swift:", result);
-        hideLoadingStatus(); // Ladeanzeige ausblenden
+        if (result.action !== "launchConfetti") {
+            hideLoadingStatus(); // Ladeanzeige ausblenden
+        }
 
-        clearResultArea(false); // Ergebnisbereich leeren
+        if (result.action !== "launchConfetti") {
+            clearResultArea(false); // Ergebnisbereich leeren
+        }
 
         if (result.error) {
             displayError(result.error);
@@ -134,6 +148,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case "takePhoto":
                 displayPhotoResult(result);
+                break;
+            case "launchConfetti":
+                handleConfettiResult(result);
                 break;
             case "scanBarcode":
                 displayBarcodeResult(result);
@@ -209,6 +226,24 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
              displayError("Keine gültigen Bilddaten für das Foto empfangen.");
         }
+    }
+
+    function handleConfettiResult(result) {
+        if (confettiBtn) {
+            confettiBtn.textContent = confettiMoreLabel;
+        }
+
+        if (placeholderText && placeholderText.parentElement === resultArea) {
+            placeholderText.remove();
+        }
+
+        const info = document.createElement('p');
+        if (typeof result?.burstCount === 'number') {
+            info.textContent = `Konfetti gestartet (Salve ${result.burstCount}).`;
+        } else {
+            info.textContent = "Konfetti gestartet.";
+        }
+        resultArea.appendChild(info);
     }
 
     function displayBarcodeResult(result) {
@@ -308,11 +343,15 @@ document.addEventListener('DOMContentLoaded', () => {
              photoBackgroundMode.disabled = disabled || !removeChecked;
              photoBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
              cropTransparentCheckbox.disabled = disabled || !cropEnabled;
-             if (!cropEnabled || disabled) {
+             if (!cropEnabled && !removeChecked) {
                  cropTransparentCheckbox.checked = false;
              }
          }
      }
+
+    if (confettiBtn) {
+        confettiBtn.textContent = confettiInitialLabel;
+    }
 
     // Initiales Leeren beim Laden (optional, falls HTML schon leer ist)
     clearResultArea();

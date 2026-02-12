@@ -27,16 +27,25 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             if webViewStore.isLoading {
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
+                    Spacer()
+                    Image("512")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 132, height: 132)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
                     ProgressView()
-                        .scaleEffect(1.5)
+                        .tint(.gray)
                     Text(String(format: NSLocalizedString("loading.url", comment: "Loading URL message"), webViewStore.currentURLString ?? ""))
-                        .font(.headline)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                        .padding(.horizontal, 24)
+                    Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(UIColor.systemBackground))
+                .background(Color.white)
                 .ignoresSafeArea()
             } else {
                 // Korrektur: Stelle sicher, dass webViewStore an WebView übergeben wird
@@ -120,6 +129,20 @@ struct ContentView: View {
                  return
              }
             self.showBarcodeScanner = true
+
+        case "launchConfetti":
+            guard let burstCount = ConfettiOverlayPresenter.shared.launchBurst() else {
+                webViewStore.sendErrorToWebView(action: action, error: AppError.internalError("Confetti overlay could not be attached."))
+                currentRequest = nil
+                return
+            }
+            let response: [String: Any] = [
+                "action": action,
+                "launched": true,
+                "burstCount": burstCount
+            ]
+            webViewStore.sendResultToWebView(result: response)
+            currentRequest = nil
 
         default:
             print("Error: Received unknown action from JS: \(action)")

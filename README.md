@@ -4,7 +4,7 @@
 
 ---
 
-![App Screenshot](media/screenshot01.png)
+![App Screenshot (V8)](media/v8screenshot.png)
 
 ---
 
@@ -12,6 +12,8 @@
 
 - **Secure WebView**: Loads remote or local HTML/JS content in a sandboxed environment.
 - **Native Integration**: Access device camera, scan documents, scan barcodes/QR codes, and generate PDFs.
+- **Photo Background Processing**: Remove photo background in native code, choose transparent or solid color background, and optionally crop transparent whitespace.
+- **Confetti Effect**: Trigger native confetti bursts from JavaScript (`Konfetti!` / `mehr Konfetti`) with burst counter feedback.
 - **Configurable via QR Code**: Change server URLs and security tokens by scanning a QR code.
 - **Localized**: Multi-language support (English, German, French, Spanish, Japanese, Chinese).
 - **Settings Bundle**: User-configurable server URL and security token.
@@ -52,16 +54,40 @@ Use the following pattern in your JavaScript code:
 
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({
-  action: "scanDocument" | "takePhoto" | "scanBarcode",
+  action: "scanDocument" | "takePhoto" | "scanBarcode" | "launchConfetti",
   // ...additional parameters depending on action
 });
 ```
 
 #### Supported Actions
 
-- **scanDocument**: Opens the document scanner. Returns scanned images (optionally with OCR text).
-- **takePhoto**: Opens the camera. Returns a captured image.
+- **scanDocument**: Opens the document scanner. Returns scanned images/PDF (optionally with OCR text).
+- **takePhoto**: Opens the camera. Supports optional native background removal and transparent crop.
 - **scanBarcode**: Opens the barcode/QR scanner. Returns scanned code and format.
+- **launchConfetti**: Triggers a native confetti burst overlay and returns launch metadata.
+
+### New in V8: JavaScript Parameters
+
+#### `takePhoto` request
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `camera` | `"front"` \| `"back"` | no | Camera side. |
+| `outputType` | `"jpeg"` \| `"png"` | no | Desired output format. If `background: "transparent"` is used, output is forced to PNG by native code. |
+| `removeBackground` | `boolean` | no | Enables native subject/background separation. |
+| `background` | `"transparent"` \| `"color"` | no | Target background mode after removal. |
+| `backgroundColor` | `"#RRGGBB"` | no | Fill color used when `background: "color"`. |
+| `cropTransparent` | `boolean` | no | If `true` and `background: "transparent"`, trims transparent whitespace around the subject. |
+
+#### `launchConfetti` request
+
+No additional parameters are required:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: "launchConfetti"
+});
+```
 
 #### Example: Scan Document
 
@@ -78,7 +104,11 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({
   action: "takePhoto",
-  camera: "front" // or "rear"
+  camera: "front",
+  removeBackground: true,
+  background: "transparent", // "transparent" or "color"
+  backgroundColor: "#FFFFFF", // used for "color"
+  cropTransparent: true
 });
 ```
 
@@ -91,13 +121,26 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 });
 ```
 
+#### Example: Launch Confetti
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: "launchConfetti"
+});
+```
+
 ### Receiving Results in JS
 
 The app will call a global JS function with the result:
 
 ```js
 window.handleNativeResult = function(result) {
-  // result: { action, images, pdfData, text, code, format, error, ... }
+  // result examples:
+  // - takePhoto: { action, imageData, format, backgroundRemoved?, background?, backgroundColor?, cropped? }
+  // - launchConfetti: { action, launched, burstCount }
+  // - scanDocument: { action, images|pdfData, pages, text?, format }
+  // - scanBarcode: { action, code, format }
+  // - errors: { action?, error }
   // Handle the result or error
 };
 ```
