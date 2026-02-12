@@ -25,6 +25,18 @@
             <button id="scanDocPngBtn">Dokument Scannen (PNG mit OCR)</button>
             <button id="takePhotoFrontBtn">Foto aufnehmen (Front)</button>
             <button id="takePhotoBackBtn">Foto aufnehmen (Rück)</button>
+            <div class="photo-options">
+                <label class="photo-options-toggle">
+                    <input type="checkbox" id="removeBackgroundCheckbox">
+                    Hintergrund entfernen
+                </label>
+                <label class="photo-options-label" for="photoBackgroundMode">Hintergrund:</label>
+                <select id="photoBackgroundMode" disabled>
+                    <option value="transparent">Transparent</option>
+                    <option value="color">Farbe</option>
+                </select>
+                <input type="color" id="photoBackgroundColor" value="#ffffff" disabled>
+            </div>
             <button id="scanBarcodeBtn">QR/EAN Scannen</button>
             <button id="clearResultBtn">Ergebnis löschen</button>
         </div>

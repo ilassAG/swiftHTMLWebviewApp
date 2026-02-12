@@ -214,26 +214,91 @@ struct ContentView: View {
         case .success(let image):
             print("Photo capture successful.")
             let outputType = currentRequest?["outputType"] as? String ?? "jpeg"
-            let imageFormat: ImageConverter.ImageFormat = (outputType.lowercased() == "png") ? .png : .jpeg()
+            let shouldRemoveBackground = currentRequest?["removeBackground"] as? Bool ?? false
+            let backgroundStyle = BackgroundRemoval.BackgroundStyle(
+                backgroundMode: currentRequest?["background"] as? String,
+                backgroundColorHex: currentRequest?["backgroundColor"] as? String
+            )
 
-            if let imageDataURL = ImageConverter.convertImageToDataURL(image: image, format: imageFormat) {
-                let response: [String: Any] = [
-                    "action": action,
-                    "imageData": imageDataURL,
-                    // Korrektur: Überprüfe den Enum-Wert für den Format-String
-                    "format": (imageFormat == .png) ? "png" : "jpeg"
-                ]
-                webViewStore.sendResultToWebView(result: response)
-            } else {
-                 // Korrektur: AppError Instanz übergeben
-                webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed(String(format: NSLocalizedString("error.imageConversionFailed.specificType", comment: "Image could not be converted to specific type error format"), outputType)))
+            guard shouldRemoveBackground else {
+                sendPhotoResult(action: action, image: image, requestedOutputType: outputType, backgroundRemoved: false, backgroundStyle: backgroundStyle)
+                currentRequest = nil
+                return
+            }
+
+            guard BackgroundRemoval.isSupported else {
+                webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable("Background Removal"))
+                currentRequest = nil
+                return
+            }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let processedImage = try BackgroundRemoval.removeBackground(from: image, style: backgroundStyle)
+                    DispatchQueue.main.async {
+                        self.sendPhotoResult(action: action, image: processedImage, requestedOutputType: outputType, backgroundRemoved: true, backgroundStyle: backgroundStyle)
+                        self.currentRequest = nil
+                    }
+                } catch {
+                    let appError: AppError
+                    if let knownError = error as? AppError {
+                        appError = knownError
+                    } else {
+                        appError = .internalError("Background removal failed: \(error.localizedDescription)")
+                    }
+
+                    DispatchQueue.main.async {
+                        self.webViewStore.sendErrorToWebView(action: action, error: appError)
+                        self.currentRequest = nil
+                    }
+                }
             }
 
         case .failure(let error):
             print("Photo capture failed: \(error.localizedDescription)")
             webViewStore.sendErrorToWebView(action: action, error: error)
+            currentRequest = nil
         }
-        currentRequest = nil
+    }
+
+    private func sendPhotoResult(action: String, image: UIImage, requestedOutputType: String, backgroundRemoved: Bool, backgroundStyle: BackgroundRemoval.BackgroundStyle) {
+        let outputTypeLower = requestedOutputType.lowercased()
+        let imageFormat: ImageConverter.ImageFormat
+
+        // Transparenter Hintergrund funktioniert nur mit PNG.
+        if backgroundRemoved && backgroundStyle.isTransparent {
+            imageFormat = .png
+        } else {
+            imageFormat = (outputTypeLower == "png") ? .png : .jpeg()
+        }
+
+        if let imageDataURL = ImageConverter.convertImageToDataURL(image: image, format: imageFormat) {
+            var response: [String: Any] = [
+                "action": action,
+                "imageData": imageDataURL,
+                "format": (imageFormat == .png) ? "png" : "jpeg"
+            ]
+
+            if backgroundRemoved {
+                response["backgroundRemoved"] = true
+                response["background"] = backgroundStyle.responseMode
+                if let colorHex = backgroundStyle.responseColorHex {
+                    response["backgroundColor"] = colorHex
+                }
+            }
+
+            webViewStore.sendResultToWebView(result: response)
+        } else {
+            webViewStore.sendErrorToWebView(
+                action: action,
+                error: AppError.imageConversionFailed(
+                    String(
+                        format: NSLocalizedString("error.imageConversionFailed.specificType", comment: "Image could not be converted to specific type error format"),
+                        requestedOutputType
+                    )
+                )
+            )
+        }
     }
 
     private func handleBarcodeScanResult(_ result: Result<(code: String, format: String), AppError>) {

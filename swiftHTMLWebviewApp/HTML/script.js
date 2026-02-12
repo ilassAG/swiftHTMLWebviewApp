@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const scanDocPngBtn = document.getElementById('scanDocPngBtn');
     const takePhotoFrontBtn = document.getElementById('takePhotoFrontBtn');
     const takePhotoBackBtn = document.getElementById('takePhotoBackBtn');
+    const removeBackgroundCheckbox = document.getElementById('removeBackgroundCheckbox');
+    const photoBackgroundMode = document.getElementById('photoBackgroundMode');
+    const photoBackgroundColor = document.getElementById('photoBackgroundColor');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
     const clearResultBtn = document.getElementById('clearResultBtn');
 
@@ -33,21 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     takePhotoFrontBtn.addEventListener('click', () => {
-        const request = {
-            action: "takePhoto",
-            camera: "front",
-            outputType: "jpeg" // Standard JPEG
-        };
-        sendMessageToSwift(request);
+        sendMessageToSwift(createPhotoRequest("front"));
     });
 
     takePhotoBackBtn.addEventListener('click', () => {
-        const request = {
-            action: "takePhoto",
-            camera: "back",
-            outputType: "jpeg"
-        };
-        sendMessageToSwift(request);
+        sendMessageToSwift(createPhotoRequest("back"));
     });
 
     scanBarcodeBtn.addEventListener('click', () => {
@@ -60,8 +53,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     clearResultBtn.addEventListener('click', clearResultArea);
+    removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
+    updatePhotoOptionControls();
 
     // --- Funktionen ---
+
+    function createPhotoRequest(camera) {
+        const shouldRemoveBackground = Boolean(removeBackgroundCheckbox?.checked);
+        const background = photoBackgroundMode?.value || "transparent";
+        const backgroundColor = normalizeHexColor(photoBackgroundColor?.value || "#ffffff");
+        const outputType = (shouldRemoveBackground && background === "transparent") ? "png" : "jpeg";
+
+        return {
+            action: "takePhoto",
+            camera,
+            outputType,
+            removeBackground: shouldRemoveBackground,
+            background,
+            backgroundColor
+        };
+    }
+
+    function normalizeHexColor(hexColor) {
+        const raw = String(hexColor || "").trim();
+        const normalized = raw.startsWith("#") ? raw : `#${raw}`;
+        return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : "#FFFFFF";
+    }
+
+    function updatePhotoOptionControls() {
+        if (!photoBackgroundMode || !photoBackgroundColor) {
+            return;
+        }
+
+        const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+        const backgroundMode = photoBackgroundMode.value || "transparent";
+
+        photoBackgroundMode.disabled = !removeChecked;
+        photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+    }
 
     // Sendet eine Nachricht an die Swift Bridge
     function sendMessageToSwift(message) {
@@ -151,6 +181,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayPhotoResult(result) {
         if (result.imageData) {
              resultArea.appendChild(createResultHeader(`Foto (${result.format?.toUpperCase()}):`));
+
+            if (result.backgroundRemoved) {
+                const backgroundInfo = document.createElement('p');
+                if (result.background === "color") {
+                    backgroundInfo.textContent = `Hintergrund entfernt (${result.backgroundColor || "#FFFFFF"})`;
+                } else {
+                    backgroundInfo.textContent = "Hintergrund entfernt (transparent)";
+                }
+                resultArea.appendChild(backgroundInfo);
+            }
+
             const img = document.createElement('img');
             img.src = result.imageData;
             img.alt = 'Aufgenommenes Foto';
@@ -245,6 +286,17 @@ document.addEventListener('DOMContentLoaded', () => {
      function disableButtons(disabled) {
          const buttons = document.querySelectorAll('.controls button');
          buttons.forEach(button => button.disabled = disabled);
+
+         if (removeBackgroundCheckbox) {
+             removeBackgroundCheckbox.disabled = disabled;
+         }
+
+         if (photoBackgroundMode && photoBackgroundColor) {
+             const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+             const isColorMode = (photoBackgroundMode.value || "transparent") === "color";
+             photoBackgroundMode.disabled = disabled || !removeChecked;
+             photoBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
+         }
      }
 
     // Initiales Leeren beim Laden (optional, falls HTML schon leer ist)
