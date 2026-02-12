@@ -101,6 +101,10 @@ button:active {
     font-size: 14px;
 }
 
+.photo-options-crop {
+    width: 100%;
+}
+
 .photo-options-label {
     font-size: 14px;
     color: #3a3a3c;

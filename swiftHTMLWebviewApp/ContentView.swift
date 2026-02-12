@@ -215,13 +215,14 @@ struct ContentView: View {
             print("Photo capture successful.")
             let outputType = currentRequest?["outputType"] as? String ?? "jpeg"
             let shouldRemoveBackground = currentRequest?["removeBackground"] as? Bool ?? false
+            let cropTransparent = currentRequest?["cropTransparent"] as? Bool ?? false
             let backgroundStyle = BackgroundRemoval.BackgroundStyle(
                 backgroundMode: currentRequest?["background"] as? String,
                 backgroundColorHex: currentRequest?["backgroundColor"] as? String
             )
 
             guard shouldRemoveBackground else {
-                sendPhotoResult(action: action, image: image, requestedOutputType: outputType, backgroundRemoved: false, backgroundStyle: backgroundStyle)
+                sendPhotoResult(action: action, image: image, requestedOutputType: outputType, backgroundRemoved: false, backgroundStyle: backgroundStyle, cropped: false)
                 currentRequest = nil
                 return
             }
@@ -234,9 +235,16 @@ struct ContentView: View {
 
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let processedImage = try BackgroundRemoval.removeBackground(from: image, style: backgroundStyle)
+                    let processedImage = try BackgroundRemoval.removeBackground(from: image, style: backgroundStyle, cropTransparent: cropTransparent)
                     DispatchQueue.main.async {
-                        self.sendPhotoResult(action: action, image: processedImage, requestedOutputType: outputType, backgroundRemoved: true, backgroundStyle: backgroundStyle)
+                        self.sendPhotoResult(
+                            action: action,
+                            image: processedImage,
+                            requestedOutputType: outputType,
+                            backgroundRemoved: true,
+                            backgroundStyle: backgroundStyle,
+                            cropped: cropTransparent && backgroundStyle.isTransparent
+                        )
                         self.currentRequest = nil
                     }
                 } catch {
@@ -261,7 +269,7 @@ struct ContentView: View {
         }
     }
 
-    private func sendPhotoResult(action: String, image: UIImage, requestedOutputType: String, backgroundRemoved: Bool, backgroundStyle: BackgroundRemoval.BackgroundStyle) {
+    private func sendPhotoResult(action: String, image: UIImage, requestedOutputType: String, backgroundRemoved: Bool, backgroundStyle: BackgroundRemoval.BackgroundStyle, cropped: Bool) {
         let outputTypeLower = requestedOutputType.lowercased()
         let imageFormat: ImageConverter.ImageFormat
 
@@ -282,6 +290,7 @@ struct ContentView: View {
             if backgroundRemoved {
                 response["backgroundRemoved"] = true
                 response["background"] = backgroundStyle.responseMode
+                response["cropped"] = cropped
                 if let colorHex = backgroundStyle.responseColorHex {
                     response["backgroundColor"] = colorHex
                 }

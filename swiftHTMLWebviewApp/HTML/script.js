@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const removeBackgroundCheckbox = document.getElementById('removeBackgroundCheckbox');
     const photoBackgroundMode = document.getElementById('photoBackgroundMode');
     const photoBackgroundColor = document.getElementById('photoBackgroundColor');
+    const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
     const clearResultBtn = document.getElementById('clearResultBtn');
 
@@ -55,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearResultBtn.addEventListener('click', clearResultArea);
     removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
     photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
+    cropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
     updatePhotoOptionControls();
 
     // --- Funktionen ---
@@ -63,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const shouldRemoveBackground = Boolean(removeBackgroundCheckbox?.checked);
         const background = photoBackgroundMode?.value || "transparent";
         const backgroundColor = normalizeHexColor(photoBackgroundColor?.value || "#ffffff");
+        const cropTransparent = Boolean(cropTransparentCheckbox?.checked);
         const outputType = (shouldRemoveBackground && background === "transparent") ? "png" : "jpeg";
 
         return {
@@ -71,7 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
             outputType,
             removeBackground: shouldRemoveBackground,
             background,
-            backgroundColor
+            backgroundColor,
+            cropTransparent
         };
     }
 
@@ -82,15 +86,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePhotoOptionControls() {
-        if (!photoBackgroundMode || !photoBackgroundColor) {
+        if (!photoBackgroundMode || !photoBackgroundColor || !cropTransparentCheckbox) {
             return;
         }
 
         const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
         const backgroundMode = photoBackgroundMode.value || "transparent";
+        const cropEnabled = removeChecked && backgroundMode === "transparent";
 
         photoBackgroundMode.disabled = !removeChecked;
         photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+        cropTransparentCheckbox.disabled = !cropEnabled;
+        if (!cropEnabled) {
+            cropTransparentCheckbox.checked = false;
+        }
     }
 
     // Sendet eine Nachricht an die Swift Bridge
@@ -187,7 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.background === "color") {
                     backgroundInfo.textContent = `Hintergrund entfernt (${result.backgroundColor || "#FFFFFF"})`;
                 } else {
-                    backgroundInfo.textContent = "Hintergrund entfernt (transparent)";
+                    const croppedSuffix = result.cropped ? ", zugeschnitten" : "";
+                    backgroundInfo.textContent = `Hintergrund entfernt (transparent${croppedSuffix})`;
                 }
                 resultArea.appendChild(backgroundInfo);
             }
@@ -291,11 +301,16 @@ document.addEventListener('DOMContentLoaded', () => {
              removeBackgroundCheckbox.disabled = disabled;
          }
 
-         if (photoBackgroundMode && photoBackgroundColor) {
+         if (photoBackgroundMode && photoBackgroundColor && cropTransparentCheckbox) {
              const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
              const isColorMode = (photoBackgroundMode.value || "transparent") === "color";
+             const cropEnabled = removeChecked && !isColorMode;
              photoBackgroundMode.disabled = disabled || !removeChecked;
              photoBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
+             cropTransparentCheckbox.disabled = disabled || !cropEnabled;
+             if (!cropEnabled || disabled) {
+                 cropTransparentCheckbox.checked = false;
+             }
          }
      }
 

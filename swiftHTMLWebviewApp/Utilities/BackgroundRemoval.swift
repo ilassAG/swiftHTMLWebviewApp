@@ -116,7 +116,7 @@ enum BackgroundRemoval {
         return false
     }
 
-    static func removeBackground(from image: UIImage, style: BackgroundStyle) throws -> UIImage {
+    static func removeBackground(from image: UIImage, style: BackgroundStyle, cropTransparent: Bool = false) throws -> UIImage {
         guard #available(iOS 17.0, *) else {
             throw AppError.featureNotAvailable("Background Removal")
         }
@@ -127,10 +127,10 @@ enum BackgroundRemoval {
 
         do {
             let personMask = try generatePersonMask(cgImage: cgImage, orientation: image.cgImagePropertyOrientation)
-            return try renderImage(from: personMask, style: style, scale: image.scale)
+            return try renderImage(from: personMask, style: style, scale: image.scale, cropTransparent: cropTransparent)
         } catch {
             let foregroundMask = try generateForegroundMask(cgImage: cgImage, orientation: image.cgImagePropertyOrientation)
-            return try renderImage(from: foregroundMask, style: style, scale: image.scale)
+            return try renderImage(from: foregroundMask, style: style, scale: image.scale, cropTransparent: cropTransparent)
         }
     }
 
@@ -169,13 +169,14 @@ enum BackgroundRemoval {
     }
 
     @available(iOS 17.0, *)
-    private static func renderImage(from maskResult: MaskResult, style: BackgroundStyle, scale: CGFloat) throws -> UIImage {
+    private static func renderImage(from maskResult: MaskResult, style: BackgroundStyle, scale: CGFloat, cropTransparent: Bool) throws -> UIImage {
         let maskedPixelBuffer: CVPixelBuffer
+        let shouldCropToSubject = cropTransparent && style.isTransparent
         do {
             maskedPixelBuffer = try maskResult.observation.generateMaskedImage(
                 ofInstances: maskResult.observation.allInstances,
                 from: maskResult.requestHandler,
-                croppedToInstancesExtent: false
+                croppedToInstancesExtent: shouldCropToSubject
             )
         } catch {
             throw AppError.internalError("Failed to build masked image: \(error.localizedDescription)")
