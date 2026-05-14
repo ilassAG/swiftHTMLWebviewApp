@@ -12,17 +12,74 @@ import VisionKit
 import PDFKit
 import Vision // <--- Hinzugefügt für BarcodeUtils/TextRecognizer
 
+private struct TapToPayTransitionState {
+    var isVisible = false
+    var isBlackout = false
+    var title = ""
+    var subtitle = ""
+}
+
+private struct TapToPayTransitionOverlay: View {
+    let state: TapToPayTransitionState
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .opacity(state.isBlackout ? 1 : 0.78)
+                .ignoresSafeArea()
+
+            if !state.isBlackout {
+                VStack(spacing: 18) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .scaleEffect(1.15)
+
+                    VStack(spacing: 8) {
+                        Text(state.title)
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+
+                        Text(state.subtitle)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white.opacity(0.76))
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 30)
+                .frame(maxWidth: 340)
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(.black.opacity(0.52))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .stroke(.white.opacity(0.16), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.35), radius: 24, x: 0, y: 18)
+                )
+                .padding(24)
+            }
+        }
+        .allowsHitTesting(true)
+    }
+}
+
 // Korrektur: ContentView als @MainActor markieren
 @MainActor
 struct ContentView: View {
     // Korrektur: Stelle sicher, dass Store @MainActor ist
     @StateObject var webViewStore = WebViewStore()
+    @StateObject private var tapToPayBridge = TapToPayBridge()
     @Environment(\.scenePhase) private var scenePhase // Für App Lifecycle Events
 
     @State private var showDocumentScanner = false
     @State private var showImagePicker = false
     @State private var showBarcodeScanner = false
     @State private var currentRequest: [String: Any]? = nil
+    @State private var tapToPayTransition = TapToPayTransitionState()
 
     var body: some View {
         ZStack {
@@ -51,6 +108,12 @@ struct ContentView: View {
                 // Korrektur: Stelle sicher, dass webViewStore an WebView übergeben wird
                 WebView(webViewStore: webViewStore, onScriptMessage: handleScriptMessage)
                     .ignoresSafeArea()
+            }
+
+            if tapToPayTransition.isVisible {
+                TapToPayTransitionOverlay(state: tapToPayTransition)
+                    .transition(.opacity)
+                    .zIndex(100)
             }
         }
         .onChange(of: scenePhase) { newPhase, oldPhase in // scenePhase direkt verwenden
@@ -144,11 +207,63 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: response)
             currentRequest = nil
 
+        case "tapToPayAvailability":
+            webViewStore.sendResultToWebView(result: tapToPayBridge.availabilityPayload(request: message))
+            currentRequest = nil
+
+        case "tapToPayCollect":
+            currentRequest = nil
+            tapToPayBridge.collect(
+                request: message,
+                onPhase: { phase in
+                    Task { @MainActor in
+                        showTapToPayTransition(phase)
+                    }
+                }
+            ) { result in
+                Task { @MainActor in
+                    hideTapToPayTransition()
+                    webViewStore.sendResultToWebView(result: result)
+                }
+            }
+
         default:
             print("Error: Received unknown action from JS: \(action)")
             // Korrektur: AppError Instanz übergeben
             webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)))
             currentRequest = nil
+        }
+    }
+
+    private func showTapToPayTransition(_ phase: TapToPayBridge.Phase) {
+        var next = TapToPayTransitionState(isVisible: true)
+
+        switch phase {
+        case .preparing:
+            next.title = "Tap to Pay is preparing"
+            next.subtitle = "The payment is being activated on this iPhone."
+        case .connecting:
+            next.title = "Activating iPhone reader"
+            next.subtitle = "This can take a moment the first time."
+        case .ready:
+            next.title = "Loading payment"
+            next.subtitle = "The secure Stripe flow will open shortly."
+        case .presenting:
+            next.isBlackout = true
+        case .processing:
+            next.title = "Processing payment"
+            next.subtitle = "Please wait a moment."
+        }
+
+        let duration = phase == .presenting ? 0.26 : 0.18
+        withAnimation(.easeInOut(duration: duration)) {
+            tapToPayTransition = next
+        }
+    }
+
+    private func hideTapToPayTransition() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            tapToPayTransition = TapToPayTransitionState()
         }
     }
 
