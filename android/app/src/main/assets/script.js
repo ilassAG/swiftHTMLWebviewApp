@@ -1,0 +1,359 @@
+// Filename: HTML/script.js
+
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Elemente holen ---
+    const scanDocPdfBtn = document.getElementById('scanDocPdfBtn');
+    const scanDocPngBtn = document.getElementById('scanDocPngBtn');
+    const takePhotoFrontBtn = document.getElementById('takePhotoFrontBtn');
+    const takePhotoBackBtn = document.getElementById('takePhotoBackBtn');
+    const removeBackgroundCheckbox = document.getElementById('removeBackgroundCheckbox');
+    const photoBackgroundMode = document.getElementById('photoBackgroundMode');
+    const photoBackgroundColor = document.getElementById('photoBackgroundColor');
+    const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
+    const confettiBtn = document.getElementById('confettiBtn');
+    const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
+    const clearResultBtn = document.getElementById('clearResultBtn');
+
+    const statusArea = document.getElementById('statusArea');
+    const resultArea = document.getElementById('resultArea');
+    const placeholderText = document.getElementById('placeholderText');
+    const confettiInitialLabel = "Konfetti!";
+    const confettiMoreLabel = "mehr Konfetti";
+
+    // --- Event Listeners ---
+    scanDocPdfBtn.addEventListener('click', () => {
+        const request = {
+            action: "scanDocument",
+            ocr: true, // Keine OCR für reines PDF
+            outputType: "pdf"
+        };
+        sendMessageToNative(request);
+    });
+
+    scanDocPngBtn.addEventListener('click', () => {
+        const request = {
+            action: "scanDocument",
+            ocr: true, // OCR anfordern
+            outputType: "png" // Bilder als PNG
+        };
+        sendMessageToNative(request);
+    });
+
+    takePhotoFrontBtn.addEventListener('click', () => {
+        sendMessageToNative(createPhotoRequest("front"));
+    });
+
+    takePhotoBackBtn.addEventListener('click', () => {
+        sendMessageToNative(createPhotoRequest("back"));
+    });
+
+    confettiBtn?.addEventListener('click', () => {
+        sendMessageToNative({ action: "launchConfetti" });
+    });
+
+    scanBarcodeBtn.addEventListener('click', () => {
+        const request = {
+            action: "scanBarcode",
+            // Kamera wird von Swift entschieden (meist Rückkamera für Barcodes)
+            types: ["qr", "ean13", "ean8", "code128", "datamatrix"] // Zu suchende Typen
+        };
+        sendMessageToNative(request);
+    });
+
+    clearResultBtn.addEventListener('click', clearResultArea);
+    removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
+    cropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    updatePhotoOptionControls();
+
+    // --- Funktionen ---
+
+    function createPhotoRequest(camera) {
+        const shouldRemoveBackground = Boolean(removeBackgroundCheckbox?.checked);
+        const background = photoBackgroundMode?.value || "transparent";
+        const backgroundColor = normalizeHexColor(photoBackgroundColor?.value || "#ffffff");
+        const cropTransparent = Boolean(cropTransparentCheckbox?.checked);
+        const outputType = (shouldRemoveBackground && background === "transparent") ? "png" : "jpeg";
+
+        return {
+            action: "takePhoto",
+            camera,
+            outputType,
+            removeBackground: shouldRemoveBackground,
+            background,
+            backgroundColor,
+            cropTransparent
+        };
+    }
+
+    function normalizeHexColor(hexColor) {
+        const raw = String(hexColor || "").trim();
+        const normalized = raw.startsWith("#") ? raw : `#${raw}`;
+        return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : "#FFFFFF";
+    }
+
+    function updatePhotoOptionControls() {
+        if (!photoBackgroundMode || !photoBackgroundColor || !cropTransparentCheckbox) {
+            return;
+        }
+
+        const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+        const backgroundMode = photoBackgroundMode.value || "transparent";
+        const cropEnabled = removeChecked && backgroundMode === "transparent";
+
+        photoBackgroundMode.disabled = !removeChecked;
+        photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+        cropTransparentCheckbox.disabled = !cropEnabled;
+        if (!cropEnabled && !removeChecked) {
+            cropTransparentCheckbox.checked = false;
+        }
+    }
+
+    // Sendet eine Nachricht an die Swift Bridge
+    function sendMessageToNative(message) {
+        if (window.webkit?.messageHandlers?.swiftBridge) {
+            console.log("Sending message to Native:", message);
+            const isConfettiAction = message.action === "launchConfetti";
+            if (!isConfettiAction) {
+                showLoadingStatus(`Aktion '${message.action}' wird ausgeführt...`);
+                clearResultArea(false); // Ergebnisbereich leeren, aber Placeholder nicht zeigen
+            }
+            window.webkit.messageHandlers.swiftBridge.postMessage(message);
+        } else {
+            console.error("Native Bridge (window.webkit.messageHandlers.swiftBridge) ist nicht verfügbar.");
+            displayError("Fehler: Die Verbindung zur nativen App ist nicht verfügbar.");
+        }
+    }
+
+    // Globale Funktion, die von Swift aufgerufen wird
+    window.handleNativeResult = function(result) {
+        console.log("Received result from Native:", result);
+        if (result.action !== "launchConfetti") {
+            hideLoadingStatus(); // Ladeanzeige ausblenden
+        }
+
+        if (result.action !== "launchConfetti") {
+            clearResultArea(false); // Ergebnisbereich leeren
+        }
+
+        if (result.error) {
+            displayError(result.error);
+            return;
+        }
+
+        // Erfolgreiches Ergebnis verarbeiten
+        switch (result.action) {
+            case "scanDocument":
+                displayDocumentResult(result);
+                break;
+            case "takePhoto":
+                displayPhotoResult(result);
+                break;
+            case "launchConfetti":
+                handleConfettiResult(result);
+                break;
+            case "scanBarcode":
+                displayBarcodeResult(result);
+                break;
+            default:
+                console.warn("Received result for unknown action:", result.action);
+                displayFallbackResult(result);
+        }
+    };
+
+    // --- Anzeige-Funktionen ---
+
+    function displayDocumentResult(result) {
+        if (result.format === 'pdf' && result.pdfData) {
+            // Speichere die PDF-Daten im Session Storage
+            sessionStorage.setItem("pdfData", result.pdfData);
+            
+            // Erzeuge einen Link, der die pdf.html (den PDF-Viewer) öffnet
+            const link = document.createElement("a");
+            link.href = "./pdf.html"; // Stelle sicher, dass der Pfad stimmt!
+            link.textContent = "PDF ansehen";
+            //link.target = "_blank"; // Öffnet in einem neuen Tab/Fenster
+            
+            // Füge eine Überschrift und den Link in den Ergebnisbereich ein
+            resultArea.appendChild(createResultHeader(`Dokument (${result.pages} Seiten) als PDF:`));
+            resultArea.appendChild(link);
+        } else if (result.images && result.images.length > 0) {
+            // Bestehende Logik für Bilddarstellung
+            resultArea.appendChild(createResultHeader(`Dokument (${result.pages} Seiten) als ${result.format?.toUpperCase()}:`));
+            result.images.forEach((imgDataUrl, index) => {
+                const img = document.createElement('img');
+                img.src = imgDataUrl;
+                img.alt = `Gescannte Seite ${index + 1}`;
+                resultArea.appendChild(img);
+            });
+        } else {
+            displayError("Keine gültigen PDF- oder Bilddaten empfangen.");
+        }
+    
+        // OCR-Text anzeigen, falls vorhanden
+        if (result.text) {
+            resultArea.appendChild(createResultHeader("Erkannter Text (OCR):"));
+            const pre = document.createElement('pre');
+            pre.textContent = result.text;
+            resultArea.appendChild(pre);
+        } else if (result.ocr === true) {
+            resultArea.appendChild(createResultHeader("Erkannter Text (OCR):"));
+            const p = document.createElement('p');
+            p.textContent = "(Kein Text erkannt)";
+            resultArea.appendChild(p);
+        }
+    }
+
+    function displayPhotoResult(result) {
+        if (result.imageData) {
+             resultArea.appendChild(createResultHeader(`Foto (${result.format?.toUpperCase()}):`));
+
+            if (result.backgroundRemoved) {
+                const backgroundInfo = document.createElement('p');
+                if (result.background === "color") {
+                    backgroundInfo.textContent = `Hintergrund entfernt (${result.backgroundColor || "#FFFFFF"})`;
+                } else {
+                    const croppedSuffix = result.cropped ? ", zugeschnitten" : "";
+                    backgroundInfo.textContent = `Hintergrund entfernt (transparent${croppedSuffix})`;
+                }
+                resultArea.appendChild(backgroundInfo);
+            }
+
+            const img = document.createElement('img');
+            img.src = result.imageData;
+            img.alt = 'Aufgenommenes Foto';
+            resultArea.appendChild(img);
+        } else {
+             displayError("Keine gültigen Bilddaten für das Foto empfangen.");
+        }
+    }
+
+    function handleConfettiResult(result) {
+        if (confettiBtn) {
+            confettiBtn.textContent = confettiMoreLabel;
+        }
+
+        if (placeholderText && placeholderText.parentElement === resultArea) {
+            placeholderText.remove();
+        }
+
+        const info = document.createElement('p');
+        if (typeof result?.burstCount === 'number') {
+            info.textContent = `Konfetti gestartet (Salve ${result.burstCount}).`;
+        } else {
+            info.textContent = "Konfetti gestartet.";
+        }
+        resultArea.appendChild(info);
+    }
+
+    function displayBarcodeResult(result) {
+        if (result.code) {
+            resultArea.appendChild(createResultHeader("Barcode erkannt:"));
+            const pre = document.createElement('pre');
+            pre.textContent = `Format: ${result.format || 'Unbekannt'}\nWert:   ${result.code}`;
+            resultArea.appendChild(pre);
+             // Optional: Wenn es eine URL ist, einen Link anbieten
+             try {
+                 const url = new URL(result.code);
+                 if (url.protocol === "http:" || url.protocol === "https:") {
+                     const link = document.createElement('a');
+                     link.href = result.code;
+                     link.textContent = "Link öffnen";
+                     link.target = "_blank"; // In neuem Tab öffnen (funktioniert in WKWebView ggf. nicht wie erwartet)
+                     link.style.display = 'block';
+                     link.style.marginTop = '10px';
+                     resultArea.appendChild(link);
+                 }
+             } catch (_) {
+                 // Ist keine gültige URL, ignoriere es
+             }
+
+        } else {
+             displayError("Kein Barcode erkannt oder Scan abgebrochen.");
+        }
+    }
+
+     function displayFallbackResult(result) {
+         resultArea.appendChild(createResultHeader("Unbekanntes Ergebnis:"));
+         const pre = document.createElement('pre');
+         // Zeige das rohe JSON-Ergebnis formatiert an
+         pre.textContent = JSON.stringify(result, null, 2); // 2 Leerzeichen für Einrückung
+         resultArea.appendChild(pre);
+     }
+
+    function displayError(errorMessage) {
+        clearResultArea(false); // Vorherigen Inhalt löschen
+        const p = document.createElement('p');
+        p.className = 'error'; // CSS-Klasse für Fehlermarkierung
+        p.textContent = `Fehler: ${errorMessage}`;
+        resultArea.appendChild(p);
+        hideLoadingStatus(); // Sicherstellen, dass Ladeanzeige weg ist
+    }
+
+     function createResultHeader(text) {
+         const h3 = document.createElement('h3');
+         h3.textContent = text;
+         h3.style.marginTop = '15px';
+         h3.style.marginBottom = '5px';
+         h3.style.fontSize = '1.1em';
+         h3.style.borderBottom = '1px solid #ddd';
+         h3.style.paddingBottom = '5px';
+         return h3;
+     }
+
+    function clearResultArea(showPlaceholder = true) {
+        resultArea.innerHTML = ''; // Leert den Inhaltsbereich
+        if (showPlaceholder && placeholderText) {
+            resultArea.appendChild(placeholderText); // Fügt den Platzhalter wieder hinzu
+            placeholderText.style.display = 'block';
+        } else if (placeholderText) {
+             placeholderText.style.display = 'none'; // Versteckt den Platzhalter
+        }
+    }
+
+    function showLoadingStatus(message) {
+        if (statusArea) {
+            statusArea.querySelector('p').textContent = message || 'Aktion wird ausgeführt...';
+            statusArea.style.display = 'flex'; // Zeige den Statusbereich
+        }
+        // Deaktiviere Buttons während der Aktion
+        disableButtons(true);
+    }
+
+    function hideLoadingStatus() {
+        if (statusArea) {
+            statusArea.style.display = 'none'; // Verstecke den Statusbereich
+        }
+         // Aktiviere Buttons wieder
+         disableButtons(false);
+    }
+
+     function disableButtons(disabled) {
+         const buttons = document.querySelectorAll('.controls button');
+         buttons.forEach(button => button.disabled = disabled);
+
+         if (removeBackgroundCheckbox) {
+             removeBackgroundCheckbox.disabled = disabled;
+         }
+
+         if (photoBackgroundMode && photoBackgroundColor && cropTransparentCheckbox) {
+             const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+             const isColorMode = (photoBackgroundMode.value || "transparent") === "color";
+             const cropEnabled = removeChecked && !isColorMode;
+             photoBackgroundMode.disabled = disabled || !removeChecked;
+             photoBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
+             cropTransparentCheckbox.disabled = disabled || !cropEnabled;
+             if (!cropEnabled && !removeChecked) {
+                 cropTransparentCheckbox.checked = false;
+             }
+         }
+     }
+
+    if (confettiBtn) {
+        confettiBtn.textContent = confettiInitialLabel;
+    }
+
+    // Initiales Leeren beim Laden (optional, falls HTML schon leer ist)
+    clearResultArea();
+
+}); // Ende DOMContentLoaded

@@ -8,18 +8,20 @@ Implemented:
 
 - Android Gradle project under `android/`.
 - Native `WebView` container.
-- Local smoke-test page in `app/src/main/assets/index.html`.
+- Local iOS-parity demo page in `app/src/main/assets/index.html`.
 - iOS-compatible JavaScript shim:
   `window.webkit.messageHandlers.swiftBridge.postMessage(...)`.
 - Structured native responses through `window.handleNativeResult(...)`.
-- Stub bridge actions for features that still need native Android implementations.
+- Native Android confetti overlay.
+- Photo capture through Android camera intent.
+- Barcode/QR scanning through Google Code Scanner.
+- Document scanning through Google ML Kit Document Scanner with JPEG/PDF result handling.
 
 Not implemented yet:
 
-- Camera/photo capture.
-- Barcode scanning.
-- Document scanning.
 - Android Tap to Pay / Stripe Terminal.
+- Background removal for captured photos.
+- OCR text extraction for scanned documents.
 
 ## Build
 
