@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>swiftHTMLWebviewApp Android</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top left, #fff8d8, #f4f7fb 38%, #e9eef7); color: #111827; }
+    main { padding: 28px; display: grid; gap: 18px; }
+    .card { border: 1px solid rgba(17,24,39,.12); border-radius: 26px; padding: 24px; background: rgba(255,255,255,.78); box-shadow: 0 24px 80px rgba(15,23,42,.14); }
+    h1 { margin: 0; font-size: clamp(32px, 11vw, 56px); line-height: .9; letter-spacing: -.06em; }
+    p { color: #4b5563; font-size: 17px; line-height: 1.45; }
+    button { width: 100%; border: 0; border-radius: 18px; padding: 16px 18px; font-weight: 800; font-size: 16px; color: #111827; background: linear-gradient(120deg, #f7d45a, #62ddb0); box-shadow: 0 12px 28px rgba(17,24,39,.18); }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border-radius: 18px; background: #111827; color: #e5e7eb; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Android WebView Wrapper</h1>
+      <p>Local smoke-test page for the Android port. The JavaScript bridge uses the same web-facing message shape as iOS.</p>
+      <button id="availability">Check Tap to Pay Availability</button>
+    </section>
+    <section class="card">
+      <strong>Native result</strong>
+      <pre id="result">No bridge response yet.</pre>
+    </section>
+  </main>
+  <script>
+    window.handleNativeResult = function(raw) {
+      const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      document.getElementById('result').textContent = JSON.stringify(value, null, 2);
+    };
+    document.getElementById('availability').addEventListener('click', () => {
+      window.webkit.messageHandlers.swiftBridge.postMessage({
+        action: 'tapToPayAvailability',
+        requestId: crypto.randomUUID()
+      });
+    });
+  </script>
+</body>
+</html>

@@ -35,7 +35,7 @@ swiftHTMLWebviewApp/
 
 ### Android
 
-Android support is scaffolded in `android/` but not implemented yet. The target is feature parity through the same JavaScript bridge API shape.
+Android support lives in `android/` as a native WebView wrapper with the same web-facing bridge shape. The first implementation includes the WebView container, local smoke-test page, and structured bridge responses. Native camera, scanner, and payment implementations are intentionally stubbed until they are implemented per platform. The target is feature parity through the same JavaScript bridge API shape.
 
 ## Getting Started: iOS
 
