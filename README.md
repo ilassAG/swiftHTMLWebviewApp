@@ -3,6 +3,7 @@
 `swiftHTMLWebviewApp` is a native WebView app wrapper for HTML/JavaScript applications that need access to device features such as camera, barcode scanning, document scanning, PDF generation, confetti, and optional payment capabilities.
 
 The project started as an iOS wrapper. The repository is now structured to support iOS and Android with a shared web-facing bridge contract.
+Printer smoke tests share a small Go core that can be bound into both mobile platforms.
 
 ![App Screenshot](media/v8screenshot.png)
 
@@ -17,6 +18,7 @@ swiftHTMLWebviewApp/
   docs/                        # Platform and bridge documentation
   examples/                    # Web examples for wrapper features
   media/                       # Screenshots and documentation assets
+  printercore/                 # Shared Go printer core and CLI smoke test
 ```
 
 ## Features
@@ -32,10 +34,11 @@ swiftHTMLWebviewApp/
 - QR-code based configuration for server URL and security token.
 - Settings bundle for runtime configuration.
 - Optional Stripe Terminal / Tap to Pay bridge.
+- Optional Epson network-printer smoke test through the Go printer core.
 
 ### Android
 
-Android support lives in `android/` as a native WebView wrapper with the same web-facing bridge shape. The first implementation includes the WebView container, local smoke-test page, and structured bridge responses. Native camera, scanner, and payment implementations are intentionally stubbed until they are implemented per platform. The target is feature parity through the same JavaScript bridge API shape.
+Android support lives in `android/` as a native WebView wrapper with the same web-facing bridge shape. The implementation includes the WebView container, local smoke-test page, camera/scanner bridge features, and structured bridge responses. The Go printer core is linked as a generated AAR for Epson network-printer smoke tests.
 
 ## Getting Started: iOS
 
@@ -82,6 +85,23 @@ See `docs/native-bridge.md` for the bridge contract.
 - `launchConfetti`
 - `tapToPayAvailability` (optional Stripe module)
 - `tapToPayCollect` (optional Stripe module)
+- `printerEpsonHelloWorld` (optional Go printer core)
+
+## Printer Core Smoke Test
+
+The shared Go printer core can be tested before rebuilding the mobile apps:
+
+```sh
+cd printercore
+go test ./...
+go run ./cmd/pmprint -host 10.10.10.131
+```
+
+Regenerate the Android AAR and iOS XCFramework after changing the Go code:
+
+```sh
+printercore/scripts/build_mobile.sh
+```
 
 ## Optional Stripe Tap to Pay
 

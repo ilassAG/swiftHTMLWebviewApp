@@ -73,6 +73,7 @@ struct ContentView: View {
     // Korrektur: Stelle sicher, dass Store @MainActor ist
     @StateObject var webViewStore = WebViewStore()
     @StateObject private var tapToPayBridge = TapToPayBridge()
+    @StateObject private var printerBridge = PrinterBridge()
     @Environment(\.scenePhase) private var scenePhase // Für App Lifecycle Events
 
     @State private var showDocumentScanner = false
@@ -225,6 +226,12 @@ struct ContentView: View {
                     hideTapToPayTransition()
                     webViewStore.sendResultToWebView(result: result)
                 }
+            }
+
+        case "printerEpsonHelloWorld":
+            currentRequest = nil
+            printerBridge.printEpsonHelloWorld(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
             }
 
         default:

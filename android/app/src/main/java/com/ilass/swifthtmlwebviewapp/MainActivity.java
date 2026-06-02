@@ -34,6 +34,7 @@ import com.google.mlkit.vision.segmentation.Segmentation;
 import com.google.mlkit.vision.segmentation.SegmentationMask;
 import com.google.mlkit.vision.segmentation.Segmenter;
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions;
+import com.ilass.printercore.Printercore;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -158,6 +159,9 @@ public class MainActivity extends Activity implements ConfettiView.ActivityHost 
                     case "tapToPayCollect":
                         sendError(message, action, "Android Tap to Pay bridge is not implemented in this wrapper build yet.");
                         break;
+                    case "printerEpsonHelloWorld":
+                        printEpsonHelloWorld(message);
+                        break;
                     default:
                         sendError(message, action, "Unknown native action: " + action);
                 }
@@ -190,6 +194,41 @@ public class MainActivity extends Activity implements ConfettiView.ActivityHost 
         response.put("readerType", "android");
         response.put("reason", "Android Tap to Pay bridge is not implemented in this wrapper build yet.");
         sendResult(response);
+    }
+
+    private void printEpsonHelloWorld(JSONObject message) {
+        JSONObject request = new JSONObject();
+        try {
+            request = new JSONObject(message != null ? message.toString() : "{}");
+        } catch (JSONException ignored) {
+            // Fall back to an empty request below.
+        }
+
+        final JSONObject printRequest = request;
+        new Thread(() -> {
+            try {
+                String host = nonEmpty(printRequest.optString("host", "10.10.10.131"), "10.10.10.131");
+                String devid = nonEmpty(printRequest.optString("devid", "local_printer"), "local_printer");
+                long timeoutMs = printRequest.optLong("timeoutMs", 20000L);
+                String title = nonEmpty(printRequest.optString("title", "Hallo Welt"), "Hallo Welt");
+                String subtitle = nonEmpty(printRequest.optString("subtitle", "swiftHTMLWebviewApp"), "swiftHTMLWebviewApp");
+                String body = nonEmpty(printRequest.optString("body", "Android bridge test"), "Android bridge test");
+
+                String coreJson = Printercore.printEpsonHelloWorld(host, devid, timeoutMs, title, subtitle, body);
+                JSONObject coreResponse = new JSONObject(coreJson);
+                JSONObject response = baseResponse(printRequest, "printerEpsonHelloWorld");
+                copyFields(coreResponse, response);
+                response.put("host", host);
+                response.put("devid", devid);
+                response.put("goCoreVersion", Printercore.coreVersion());
+                if (!coreResponse.optBoolean("success", false) && !response.has("error")) {
+                    response.put("error", nonEmpty(coreResponse.optString("message", ""), "Printer returned an unsuccessful response."));
+                }
+                sendResult(response);
+            } catch (Exception error) {
+                sendErrorSafe(printRequest, "printerEpsonHelloWorld", "Printer request failed: " + error.getMessage());
+            }
+        }, "PrintercoreEpsonPrint").start();
     }
 
     private void startPhotoCapture(JSONObject message) throws JSONException {
@@ -583,6 +622,25 @@ public class MainActivity extends Activity implements ConfettiView.ActivityHost 
         JSONObject response = baseResponse(source != null ? source : new JSONObject(), action != null ? action : "unknown");
         response.put("error", error != null ? error : "Unknown error");
         sendResult(response);
+    }
+
+    private void copyFields(JSONObject source, JSONObject target) throws JSONException {
+        JSONArray names = source.names();
+        if (names == null) {
+            return;
+        }
+        for (int i = 0; i < names.length(); i += 1) {
+            String key = names.getString(i);
+            target.put(key, source.get(key));
+        }
+    }
+
+    private String nonEmpty(String value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? fallback : trimmed;
     }
 
     private JSONObject baseResponse(JSONObject message, String action) throws JSONException {

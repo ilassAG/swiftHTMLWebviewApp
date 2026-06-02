@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
     const confettiBtn = document.getElementById('confettiBtn');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
+    const printEpsonHelloBtn = document.getElementById('printEpsonHelloBtn');
+    const epsonPrinterHost = document.getElementById('epsonPrinterHost');
     const clearResultBtn = document.getElementById('clearResultBtn');
 
     const statusArea = document.getElementById('statusArea');
@@ -60,6 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
         sendMessageToSwift(request);
     });
 
+    printEpsonHelloBtn?.addEventListener('click', () => {
+        sendMessageToSwift(createPrinterHelloRequest());
+    });
+
     clearResultBtn.addEventListener('click', clearResultArea);
     removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
     photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
@@ -90,6 +96,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const raw = String(hexColor || "").trim();
         const normalized = raw.startsWith("#") ? raw : `#${raw}`;
         return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized.toUpperCase() : "#FFFFFF";
+    }
+
+    function createPrinterHelloRequest() {
+        const host = String(epsonPrinterHost?.value || "10.10.10.131").trim() || "10.10.10.131";
+        return {
+            action: "printerEpsonHelloWorld",
+            host,
+            devid: "local_printer",
+            timeoutMs: 20000,
+            title: "Hallo Welt",
+            subtitle: "swiftHTMLWebviewApp",
+            body: `JS Bridge Test ${new Date().toLocaleString()}`
+        };
     }
 
     function updatePhotoOptionControls() {
@@ -136,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clearResultArea(false); // Ergebnisbereich leeren
         }
 
-        if (result.error) {
+        if (result.error && result.action !== "printerEpsonHelloWorld") {
             displayError(result.error);
             return;
         }
@@ -154,6 +173,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case "scanBarcode":
                 displayBarcodeResult(result);
+                break;
+            case "printerEpsonHelloWorld":
+                displayPrinterResult(result);
                 break;
             default:
                 console.warn("Received result for unknown action:", result.action);
@@ -271,6 +293,23 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
              displayError("Kein Barcode erkannt oder Scan abgebrochen.");
         }
+    }
+
+    function displayPrinterResult(result) {
+        resultArea.appendChild(createResultHeader("Druckauftrag:"));
+
+        const message = document.createElement('p');
+        message.className = result.success ? 'success' : 'error';
+        if (result.success) {
+            message.textContent = `Gedruckt auf ${result.host || 'Drucker'} (${result.devid || 'local_printer'}).`;
+        } else {
+            message.textContent = result.error || result.message || "Druckauftrag fehlgeschlagen.";
+        }
+        resultArea.appendChild(message);
+
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(result, null, 2);
+        resultArea.appendChild(pre);
     }
 
      function displayFallbackResult(result) {

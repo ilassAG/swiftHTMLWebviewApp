@@ -17,6 +17,7 @@ Implemented:
 - Android camera photo capture for `takePhoto`.
 - Google Code Scanner UI for `scanBarcode`.
 - Google ML Kit Document Scanner UI for `scanDocument`, returning JPEG image data URLs or PDF data URLs.
+- Go `printercore` AAR bridge for `printerEpsonHelloWorld`.
 
 Not implemented yet:
 
@@ -25,6 +26,13 @@ Not implemented yet:
 - OCR text extraction for document scans.
 
 ## Build
+
+Regenerate the Go mobile binding if `printercore` changed or if
+`android/app/libs/printercore.aar` is missing:
+
+```sh
+printercore/scripts/build_mobile.sh
+```
 
 ```sh
 cd android
@@ -46,6 +54,10 @@ adb shell am start -n com.ilass.swifthtmlwebviewapp/.MainActivity
 ```
 
 If the device shows as `unauthorized`, unlock it and approve the USB debugging prompt.
+
+The local demo page contains an Epson printer smoke-test button. It defaults to
+`10.10.10.131` and calls `printerEpsonHelloWorld` through the same JavaScript
+bridge as the other native features.
 
 ## Bridge behavior
 

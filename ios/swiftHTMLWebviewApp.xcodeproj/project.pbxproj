@@ -6,7 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A3D4C8E72E19000100E05001 /* Printercore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3D4C8E72E19000100E05002 /* Printercore.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		A3D4C8E72E19000100E05002 /* Printercore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Printercore.xcframework; sourceTree = "<group>"; };
 		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = swiftHTMLWebviewApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -23,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A3D4C8E72E19000100E05001 /* Printercore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,8 +39,17 @@
 			isa = PBXGroup;
 			children = (
 				7569F3E82DDCD25E0029F4BC /* swiftHTMLWebviewApp */,
+				A3D4C8E72E19000100E05003 /* Frameworks */,
 				75C511522D9D49FF003A8EBB /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A3D4C8E72E19000100E05003 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A3D4C8E72E19000100E05002 /* Printercore.xcframework */,
+			);
+			path = Frameworks;
 			sourceTree = "<group>";
 		};
 		75C511522D9D49FF003A8EBB /* Products */ = {
@@ -261,9 +276,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"swiftHTMLWebviewApp/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
@@ -294,9 +314,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"swiftHTMLWebviewApp/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
