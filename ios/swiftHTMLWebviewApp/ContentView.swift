@@ -78,6 +78,7 @@ struct ContentView: View {
     @StateObject private var locationBridge = LocationBridge()
     @StateObject private var screenStreamBridge = ScreenStreamBridge()
     @StateObject private var sensorBridge = SensorBridge()
+    @StateObject private var configPairingBridge = ConfigPairingBridge()
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showDocumentScanner = false
@@ -95,6 +96,12 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             continuousScannerOverlay
+            TwoFingerConfigGestureInstaller(webView: webViewStore.webView) {
+                showConfigPairingFromGesture()
+            }
+            .frame(width: 0, height: 0)
+
+            configPairingOverlay
 
             if webViewStore.isLoading {
                 VStack(spacing: 20) {
@@ -125,6 +132,9 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
+        .onAppear {
+            configureConfigPairingBridge()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 print("App became active. Checking for URL updates.")
@@ -136,6 +146,7 @@ struct ContentView: View {
             locationBridge.shutdown()
             screenStreamBridge.shutdown()
             sensorBridge.shutdown()
+            _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
         }
         .sheet(isPresented: $showDocumentScanner, onDismiss: handleSheetDismiss) {
             DocumentScannerView(isPresented: $showDocumentScanner) { result in
@@ -337,6 +348,28 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: sensorBridge.stop(request: message))
             currentRequest = nil
 
+        case "configPairingShow":
+            configureConfigPairingBridge()
+            webViewStore.sendResultToWebView(result: configPairingBridge.startTargetSession(request: message))
+            currentRequest = nil
+
+        case "configPairingStop":
+            webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: message))
+            currentRequest = nil
+
+        case "configPairingConnect":
+            configureConfigPairingBridge()
+            webViewStore.sendResultToWebView(result: configPairingBridge.connect(request: message))
+            currentRequest = nil
+
+        case "configPairingDisconnect":
+            webViewStore.sendResultToWebView(result: configPairingBridge.disconnect(request: message))
+            currentRequest = nil
+
+        case "configPairingSend":
+            webViewStore.sendResultToWebView(result: configPairingBridge.send(request: message))
+            currentRequest = nil
+
         case "continuousScanStart", "dataScanStart", "loginScanStart":
             startContinuousScanner(action: action, request: message)
 
@@ -381,6 +414,100 @@ struct ContentView: View {
             webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)))
             currentRequest = nil
         }
+    }
+
+    private var configPairingOverlay: some View {
+        Group {
+            if let payload = configPairingBridge.targetPayload,
+               let qrImage = configPairingBridge.targetQRCode {
+                ZStack {
+                    Color.black.opacity(0.68)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        Text("Config Pairing")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Image(uiImage: qrImage)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 260, height: 260)
+                            .padding(14)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        Text(configPairingBridge.targetAdvertising ? "BLE aktiv" : "BLE startet")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+
+                        Text(payload)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(4)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 10)
+
+                        Button {
+                            webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"]))
+                        } label: {
+                            Text("Schliessen")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(22)
+                    .frame(maxWidth: 360)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.black.opacity(0.78))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                            )
+                    )
+                    .padding(24)
+                }
+                .zIndex(90)
+            }
+        }
+    }
+
+    private func configureConfigPairingBridge() {
+        let webViewStore = webViewStore
+        let deviceBridge = deviceBridge
+        configPairingBridge.configure(
+            eventHandler: { result in
+                webViewStore.sendResultToWebView(result: result)
+            },
+            settingsProvider: {
+                AppSettings.shared.configurationSnapshot()
+            },
+            settingsApplier: { values in
+                AppSettings.shared.applyConfiguration(values)
+            },
+            wifiConfigurator: { request, completion in
+                deviceBridge.configureWifi(request: request, completion: completion)
+            },
+            reloadHandler: {
+                webViewStore.reloadCurrentOrNewURL()
+            },
+            deviceInfoProvider: {
+                deviceBridge.deviceInfo(request: ["action": "deviceInfoGet"])
+            }
+        )
+    }
+
+    private func showConfigPairingFromGesture() {
+        configureConfigPairingBridge()
+        let response = configPairingBridge.startTargetSession(request: [
+            "action": "configPairingShow",
+            "source": "twoFingerHold"
+        ])
+        webViewStore.sendResultToWebView(result: response)
     }
 
     private var continuousScannerOverlay: some View {
@@ -818,6 +945,61 @@ struct ContentView: View {
 
              webViewStore.sendErrorToWebView(action: action, error: AppError.userCancelled)
              currentRequest = nil
+        }
+    }
+}
+
+private struct TwoFingerConfigGestureInstaller: UIViewRepresentable {
+    let webView: WKWebView
+    let onTrigger: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTrigger: onTrigger)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        context.coordinator.install(on: webView)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onTrigger = onTrigger
+        context.coordinator.install(on: webView)
+    }
+
+    final class Coordinator: NSObject {
+        var onTrigger: () -> Void
+        private weak var installedWebView: WKWebView?
+        private var recognizer: UILongPressGestureRecognizer?
+
+        init(onTrigger: @escaping () -> Void) {
+            self.onTrigger = onTrigger
+        }
+
+        func install(on webView: WKWebView) {
+            guard installedWebView !== webView else { return }
+            if let recognizer, let installedWebView {
+                installedWebView.removeGestureRecognizer(recognizer)
+            }
+
+            let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleGesture(_:)))
+            recognizer.minimumPressDuration = 1.5
+            recognizer.numberOfTouchesRequired = 2
+            recognizer.cancelsTouchesInView = false
+            webView.addGestureRecognizer(recognizer)
+
+            self.recognizer = recognizer
+            installedWebView = webView
+        }
+
+        @objc private func handleGesture(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began, let view = recognizer.view else { return }
+            let location = recognizer.location(in: view)
+            let centerRect = view.bounds.insetBy(dx: view.bounds.width * 0.25, dy: view.bounds.height * 0.25)
+            guard centerRect.contains(location) else { return }
+            onTrigger()
         }
     }
 }

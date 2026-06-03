@@ -207,20 +207,84 @@ button:disabled {
     text-align: right;
 }
 
+.config-panel {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #d1d1d6;
+    border-radius: var(--border-radius);
+    background-color: #f6f7fb;
+}
+
+.config-panel h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 1.15em;
+    text-align: left;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+}
+
+.config-grid label {
+    font-size: 14px;
+    color: #3a3a3c;
+}
+
+.config-grid input,
+.config-grid textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #c7c7cc;
+    border-radius: 6px;
+    background-color: #fff;
+    color: var(--text-color);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.config-grid textarea {
+    resize: vertical;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+}
+
+.inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.config-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
 @media (min-width: 600px) {
     .photo-options,
     .printer-options,
-    .bridge-options {
+    .bridge-options,
+    .config-panel {
         grid-column: 1 / -1;
     }
 }
 
 @media (max-width: 420px) {
-    .bridge-options {
+    .bridge-options,
+    .config-grid,
+    .config-actions {
         grid-template-columns: 1fr 1fr;
     }
 
-    .bridge-options label {
+    .bridge-options label,
+    .config-grid label {
         grid-column: 1 / -1;
     }
 }

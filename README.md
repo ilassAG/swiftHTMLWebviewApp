@@ -36,6 +36,7 @@ swiftHTMLWebviewApp/
 - QR-code based configuration for server URL and security token.
 - Settings bundle for runtime configuration, including local/remote startup URL,
   optional high-availability fallback URLs, and the iBeacon Proximity UUID.
+- BLE config pairing for nearby device setup through QR code or two-finger hold.
 - Optional Stripe Terminal / Tap to Pay bridge.
 - Optional Epson network-printer smoke test through the Go printer core.
 
@@ -102,6 +103,9 @@ See `docs/native-bridge.md` for the bridge contract.
 - `launchConfetti`
 - `tapToPayAvailability` (optional Stripe module)
 - `tapToPayCollect` (optional Stripe module)
+- `configPairingShow` / `configPairingStop`
+- `configPairingConnect` / `configPairingDisconnect`
+- `configPairingSend`
 - `printerDiscover` (optional Go printer core)
 - `printerHelloWorld` (routes to the selected discovered printer)
 - `printerEpsonHelloWorld` (optional Go printer core)
@@ -197,6 +201,13 @@ Optional token rotation:
   "newSecurityToken": "NEW_TOKEN"
 }
 ```
+
+For external setup, `configPairingShow` displays a short-lived QR code and
+starts a BLE GATT config session. Another device running the wrapper can scan
+that QR, call `configPairingConnect`, then send `configPairingSend` commands
+for status, URL/HA/beacon settings, WLAN setup, and reload. The same target UI
+opens with a two-finger long press in the center of the WebView for about
+1.5 seconds. See `docs/native-bridge.md`.
 
 ## Design Principle
 

@@ -30,6 +30,11 @@ Implemented:
 - Device diagnostics through `deviceInfoGet`, app screenshot capture,
   orientation lock, sound output, idle timer, location, sensor streaming,
   Wi-Fi status/setup, and app-screen JPEG streaming over WebSocket.
+- Native SharedPreferences-backed startup URL settings with Kassa-compatible
+  failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
+  `ha_url2`, `ha_url3`, `ha_url4`) and `beacon_uuid`.
+- BLE config pairing as target and config device through `configPairingShow`,
+  `configPairingConnect`, and `configPairingSend`.
 - `wifiStatusGet` mirrors the iOS response shape for `ssidAvailable`, `ssid`,
   `bssid`, `securityType`, `securityTypeRawValue`, `ipAddresses`, and
   `wifiIpAddresses`. Android requires location permission before SSID/BSSID
@@ -39,7 +44,6 @@ Implemented:
 Not implemented yet:
 
 - Android Stripe Terminal / Tap to Pay.
-- Kassa-compatible high-availability startup URL settings.
 - iOS-style background removal options for `takePhoto`.
 - OCR text extraction for document scans.
 - Full system-screen streaming through MediaProjection/foreground service. The
@@ -82,6 +86,14 @@ The local demo page contains a printer-search button plus a Hello World print
 button. Search calls `printerDiscover`; the print button calls
 `printerHelloWorld` and routes by the selected printer kind. Epson targets use
 the Go ePOS path, while Sunmi internal targets use the Sunmi AIDL service.
+
+The demo page also contains a `Config Pairing` panel. On Android 12+ the app
+requests `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, and
+`BLUETOOTH_ADVERTISE` as needed. The target pairing UI can also be opened with
+a two-finger long press in the center of the WebView for about 1.5 seconds.
+Writable config commands require the current stored security token. WLAN setup
+uses Android's user-approved add-network/suggestion APIs, so it cannot silently
+change the system Wi-Fi on modern Android.
 
 ## Bridge behavior
 

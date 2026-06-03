@@ -88,6 +88,21 @@ class AppSettings {
         UUID(uuidString: beaconUUIDString) ?? UUID(uuidString: defaultBeaconUUID)!
     }
 
+    var highAvailabilityURL2: String {
+        get { normalizedOptionalValue(userDefaults.string(forKey: highAvailabilityUrl2Key)) ?? "" }
+        set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: highAvailabilityUrl2Key) }
+    }
+
+    var highAvailabilityURL3: String {
+        get { normalizedOptionalValue(userDefaults.string(forKey: highAvailabilityUrl3Key)) ?? "" }
+        set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: highAvailabilityUrl3Key) }
+    }
+
+    var highAvailabilityURL4: String {
+        get { normalizedOptionalValue(userDefaults.string(forKey: highAvailabilityUrl4Key)) ?? "" }
+        set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: highAvailabilityUrl4Key) }
+    }
+
     var activeServerURL: String? {
         normalizedOptionalValue(userDefaults.string(forKey: activeServerUrlKey))
     }
@@ -147,6 +162,59 @@ class AppSettings {
         userDefaults.set(normalizedValue, forKey: lastServerUrlKey)
     }
 
+    func configurationSnapshot(includeSensitive: Bool = false) -> [String: Any] {
+        var snapshot: [String: Any] = [
+            "serverURL": serverURL,
+            "highAvailabilityEnabled": highAvailabilityEnabled,
+            "highAvailabilityTimeoutSeconds": highAvailabilityTimeoutSeconds,
+            "highAvailabilityURL2": highAvailabilityURL2,
+            "highAvailabilityURL3": highAvailabilityURL3,
+            "highAvailabilityURL4": highAvailabilityURL4,
+            "activeServerURL": activeServerURL ?? "",
+            "lastServerURL": lastServerURL ?? "",
+            "beaconUUID": beaconUUIDString
+        ]
+
+        if includeSensitive {
+            snapshot["securityToken"] = securityToken
+        } else {
+            snapshot["securityTokenSet"] = !securityToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        return snapshot
+    }
+
+    @discardableResult
+    func applyConfiguration(_ values: [String: Any]) -> [String: Any] {
+        if let value = settingString(values["serverURL"] ?? values["serverUrl"] ?? values["url"]) {
+            serverURL = value
+        }
+        if let value = settingBool(values["highAvailabilityEnabled"] ?? values["haEnabled"] ?? values["ha_enabled"]) {
+            highAvailabilityEnabled = value
+        }
+        if let value = settingInt(values["highAvailabilityTimeoutSeconds"] ?? values["haTimeout"] ?? values["ha_timeout"]) {
+            highAvailabilityTimeoutSeconds = value
+        }
+        if let value = settingString(values["highAvailabilityURL2"] ?? values["haURL2"] ?? values["ha_url2"]) {
+            highAvailabilityURL2 = value
+        }
+        if let value = settingString(values["highAvailabilityURL3"] ?? values["haURL3"] ?? values["ha_url3"]) {
+            highAvailabilityURL3 = value
+        }
+        if let value = settingString(values["highAvailabilityURL4"] ?? values["haURL4"] ?? values["ha_url4"]) {
+            highAvailabilityURL4 = value
+        }
+        if let value = settingString(values["beaconUUID"] ?? values["beaconUuid"] ?? values["beacon_uuid"]) {
+            beaconUUIDString = value
+        }
+        if let value = settingString(values["newSecurityToken"] ?? values["securityToken"]) {
+            securityToken = value
+        }
+
+        userDefaults.synchronize()
+        return configurationSnapshot()
+    }
+
     private func normalizedSettingValue(_ value: String?, fallback: String) -> String {
         normalizedOptionalValue(value) ?? fallback
     }
@@ -162,5 +230,54 @@ class AppSettings {
             return Configuration.localHTMLPathValue
         }
         return trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+    }
+
+    private func settingString(_ value: Any?) -> String? {
+        guard let value else { return nil }
+        if value is NSNull {
+            return ""
+        }
+        if let stringValue = value as? String {
+            return stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.stringValue
+        }
+        return nil
+    }
+
+    private func settingBool(_ value: Any?) -> Bool? {
+        guard let value else { return nil }
+        if let boolValue = value as? Bool {
+            return boolValue
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.boolValue
+        }
+        if let stringValue = value as? String {
+            switch stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes", "ja", "on":
+                return true
+            case "0", "false", "no", "nein", "off":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private func settingInt(_ value: Any?) -> Int? {
+        guard let value else { return nil }
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.intValue
+        }
+        if let stringValue = value as? String {
+            return Int(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
     }
 }

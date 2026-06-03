@@ -6,7 +6,7 @@
     <!-- Wichtig für korrekte Skalierung und Verhinderung von Zoom auf iOS -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Native Bridge Demo</title>
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
     <!-- Verhindert das "Springen" beim Antippen von Elementen -->
     <style>
         * { -webkit-tap-highlight-color: transparent; }
@@ -95,6 +95,48 @@
                 <input type="password" id="wifiPasswordInput" placeholder="Passwort (leer für offenes WLAN)">
             </div>
             <button id="wifiConfigureBtn">Mit WLAN verbinden</button>
+            <div class="config-panel">
+                <h2>Config Pairing</h2>
+                <div class="config-grid">
+                    <label for="configPairingPayloadInput">Pairing</label>
+                    <textarea id="configPairingPayloadInput" rows="4" placeholder="QR Payload oder Scan-Ergebnis"></textarea>
+                    <label for="configSecurityTokenInput">Token</label>
+                    <input type="password" id="configSecurityTokenInput" value="change-me-before-production" autocomplete="off">
+                    <label for="configServerUrlInput">URL 1</label>
+                    <input type="text" id="configServerUrlInput" placeholder="local oder https://...">
+                    <label for="configHaEnabledInput">Failover</label>
+                    <label class="inline-check">
+                        <input type="checkbox" id="configHaEnabledInput">
+                        aktiv
+                    </label>
+                    <label for="configHaTimeoutInput">Timeout</label>
+                    <input type="number" id="configHaTimeoutInput" value="5" min="1" max="120" step="1">
+                    <label for="configUrl2Input">URL 2</label>
+                    <input type="text" id="configUrl2Input" placeholder="optional">
+                    <label for="configUrl3Input">URL 3</label>
+                    <input type="text" id="configUrl3Input" placeholder="optional">
+                    <label for="configUrl4Input">URL 4</label>
+                    <input type="text" id="configUrl4Input" placeholder="optional">
+                    <label for="configBeaconUuidInput">Beacon UUID</label>
+                    <input type="text" id="configBeaconUuidInput" placeholder="7763A937-B779-4D31-A20C-49E83047048F">
+                    <label for="configWifiSsidInput">Ziel-WLAN</label>
+                    <input type="text" id="configWifiSsidInput" placeholder="SSID">
+                    <label for="configWifiPasswordInput">Ziel-PW</label>
+                    <input type="password" id="configWifiPasswordInput" placeholder="Passwort">
+                </div>
+                <div class="config-actions">
+                    <button id="configPairingShowBtn" type="button">Pairing QR anzeigen</button>
+                    <button id="configPairingStopBtn" type="button">Pairing QR schliessen</button>
+                    <button id="configPairingScanBtn" type="button">Pairing QR scannen</button>
+                    <button id="configPairingConnectBtn" type="button">Config verbinden</button>
+                    <button id="configPairingDisconnectBtn" type="button">Config trennen</button>
+                    <button id="configStatusBtn" type="button">Config Status</button>
+                    <button id="configSettingsGetBtn" type="button">Settings holen</button>
+                    <button id="configSettingsSetBtn" type="button">Settings setzen</button>
+                    <button id="configWifiConfigureBtn" type="button">Ziel-WLAN setzen</button>
+                    <button id="configReloadBtn" type="button">Ziel neu laden</button>
+                </div>
+            </div>
             <button id="deviceInfoBtn">Geräteinfos abrufen</button>
             <button id="wifiStatusBtn">WLAN Status</button>
             <button id="screenshotBtn">Screenshot holen</button>
@@ -141,6 +183,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=11"></script>
+    <script src="script.js?v=12"></script>
 </body>
 </html>

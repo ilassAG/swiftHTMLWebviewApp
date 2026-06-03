@@ -88,6 +88,7 @@ Epson printer support should be active in that build.
 The app includes `NSLocalNetworkUsageDescription` for LAN printer access.
 It also includes `NSLocationWhenInUseUsageDescription` so the iBeacon ranging
 bridge can request the permission that iOS requires for beacon ranging.
+It includes Bluetooth usage descriptions for the BLE config-pairing bridge.
 
 ## Runtime Diagnostics
 
@@ -102,6 +103,9 @@ iOS implements the shared runtime bridge actions:
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
+- `configPairingShow` / `configPairingStop`
+- `configPairingConnect` / `configPairingDisconnect`
+- `configPairingSend`
 
 `wifiConfigure` uses `NEHotspotConfigurationManager` and needs Apple's Hotspot
 Configuration capability for production use. `wifiStatusGet` uses
@@ -116,3 +120,17 @@ error domain/code and reports the missing capability hint.
 `screenStreamStart` currently captures the app/WebView surface with
 `WKWebView.takeSnapshot` and streams JPEG frames to a WebSocket target. It does
 not start a system-wide ReplayKit broadcast.
+
+## Config Pairing
+
+iOS can act as both config target and config device. As target, it starts a
+short-lived BLE GATT session and displays a QR code with
+`configPairingShow`. The same UI opens through a two-finger long press in the
+center of the WebView for about 1.5 seconds. As config device, it scans or
+receives the QR payload, calls `configPairingConnect`, then sends
+`configPairingSend` commands.
+
+Writable target commands require the current
+`security_token_preference`. `wifiConfigure` still uses
+`NEHotspotConfigurationManager`, so the target device shows Apple's system join
+confirmation and needs the Hotspot Configuration capability.

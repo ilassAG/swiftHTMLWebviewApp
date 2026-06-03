@@ -60,6 +60,9 @@ Error:
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
+- `configPairingShow` / `configPairingStop`
+- `configPairingConnect` / `configPairingDisconnect`
+- `configPairingSend`
 - `launchConfetti`
 - `tapToPayAvailability` (optional Stripe module)
 - `tapToPayCollect` (optional Stripe module)
@@ -81,6 +84,68 @@ actions. On iOS they live in Settings.bundle:
 
 Web apps should not hard-code these values. They should treat the native wrapper
 as the owner of startup URL selection and beacon-region selection.
+
+## External config pairing
+
+iOS and Android expose a small BLE-based configuration transport so one
+installed wrapper can configure another nearby wrapper without changing the
+hosted web app. The target device can start pairing either through the bridge or
+by a two-finger long press in the center of the WebView for about 1.5 seconds:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configPairingShow'
+});
+```
+
+The native app displays a QR code containing an ephemeral
+`swifthtml-config://pair?...` payload and advertises a BLE GATT service. The QR
+payload contains only a short-lived session id, BLE service UUID, and random
+session secret. It does not contain the persistent `security_token_preference`.
+Close the target pairing UI with `configPairingStop`.
+
+The configuring device scans or receives the QR payload, connects, and sends
+commands:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configPairingConnect',
+  payload: 'swifthtml-config://pair?...'
+});
+
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configPairingSend',
+  command: 'settingsSet',
+  token: 'current-security-token',
+  settings: {
+    serverURL: 'https://example.invalid/app/',
+    highAvailabilityEnabled: true,
+    highAvailabilityTimeoutSeconds: 5,
+    highAvailabilityURL2: 'https://backup-1.example.invalid/app/',
+    highAvailabilityURL3: '',
+    highAvailabilityURL4: '',
+    beaconUUID: '7763A937-B779-4D31-A20C-49E83047048F'
+  }
+});
+```
+
+Supported `configPairingSend.command` values:
+
+- `statusGet`: returns settings plus a compact device summary.
+- `settingsGet`: returns non-sensitive native settings.
+- `settingsSet`: updates URL/HA/beacon settings and optionally rotates the
+  security token through `settings.newSecurityToken`.
+- `wifiConfigure`: asks the target OS to add/join a WLAN with `ssid` and
+  `passphrase`.
+- `reload`: reloads the target wrapper from its configured startup URL.
+
+`settingsSet`, `wifiConfigure`, and `reload` require the current security token
+in `token` or `securityToken`. Platform WLAN rules still apply: iOS and modern
+Android show system confirmation UI, so WLAN changes are not silent.
+
+The local demo page includes a `Config Pairing` panel for both roles: show the
+target QR, scan a pairing QR, connect, fetch status/settings, set URL/HA/beacon
+settings, configure target WLAN, and reload the target.
 
 ## Continuous scanner
 

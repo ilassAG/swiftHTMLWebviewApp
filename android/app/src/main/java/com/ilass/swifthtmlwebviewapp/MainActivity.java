@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -17,6 +18,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraCharacteristics;
@@ -47,13 +50,22 @@ import android.provider.Settings;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.view.View;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
 import androidx.activity.ComponentActivity;
 
@@ -110,7 +122,20 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final int REQUEST_LOCATION_PERMISSION = 2006;
     private static final int REQUEST_WIFI_ADD_NETWORK = 2007;
     private static final int REQUEST_WIFI_STATUS_PERMISSION = 2008;
+    private static final int REQUEST_CONFIG_PAIRING_PERMISSION = 2009;
     private static final String PRINTERCORE_CLASS_NAME = "com.ilass.printercore.Printercore";
+    private static final String PREFS_NAME = "swift_html_webview_app_settings";
+    private static final String SERVER_URL_KEY = "server_url_preference";
+    private static final String SECURITY_TOKEN_KEY = "security_token_preference";
+    private static final String HA_ENABLED_KEY = "ha_enabled";
+    private static final String HA_TIMEOUT_KEY = "ha_timeout";
+    private static final String HA_URL2_KEY = "ha_url2";
+    private static final String HA_URL3_KEY = "ha_url3";
+    private static final String HA_URL4_KEY = "ha_url4";
+    private static final String BEACON_UUID_KEY = "beacon_uuid";
+    private static final String DEFAULT_SERVER_URL = "local";
+    private static final String DEFAULT_SECURITY_TOKEN = "change-me-before-production";
+    private static final String DEFAULT_BEACON_UUID = "7763A937-B779-4D31-A20C-49E83047048F";
 
     private WebView webView;
     private JSONObject pendingRequest;
@@ -120,11 +145,16 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject pendingLocationRequest;
     private JSONObject pendingWifiRequest;
     private JSONObject pendingWifiStatusRequest;
+    private JSONObject pendingConfigPairingRequest;
+    private String pendingConfigPairingAction;
+    private AndroidConfigPairingBridge.ResultCallback pendingWifiConfigCallback;
     private ContinuousBarcodeScannerController continuousScannerController;
     private AndroidBeaconBridge beaconBridge;
     private AndroidScreenStreamBridge screenStreamBridge;
     private AndroidSensorBridge sensorBridge;
+    private AndroidConfigPairingBridge configPairingBridge;
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
+    private final Handler loadHandler = new Handler(Looper.getMainLooper());
     private boolean idleTimerRunning = false;
     private boolean idleTimedOut = false;
     private long idleLastActivityMs = System.currentTimeMillis();
@@ -133,6 +163,13 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private LocationManager locationManager;
     private LocationListener locationListener;
     private int confettiBursts = 0;
+    private View configPairingOverlay;
+    private TextView configPairingStateText;
+    private long configPairingHoldStartMs = 0L;
+    private boolean configPairingHoldTriggered = false;
+    private final ArrayList<String> loadCandidates = new ArrayList<>();
+    private int loadCandidateIndex = 0;
+    private Runnable loadTimeoutRunnable;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -155,12 +192,24 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
+                cancelLoadTimeout();
                 injectBridgeShim();
                 injectIdleActivityShim();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request != null && request.isForMainFrame()) {
+                    String reason = error != null && error.getDescription() != null
+                            ? error.getDescription().toString()
+                            : "WebView load failed.";
+                    loadNextConfiguredCandidate(reason);
+                }
             }
         });
         webView.setOnTouchListener((view, event) -> {
             recordIdleActivity();
+            handleConfigPairingGesture(event);
             return false;
         });
         webView.addJavascriptInterface(new NativeBridge(), "AndroidNativeBridge");
@@ -183,10 +232,78 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         beaconBridge = new AndroidBeaconBridge(this, this::sendResult);
         screenStreamBridge = new AndroidScreenStreamBridge(this, this::sendResult);
         sensorBridge = new AndroidSensorBridge(this, this::sendResult);
+        configPairingBridge = new AndroidConfigPairingBridge(new AndroidConfigPairingBridge.Host() {
+            @Override
+            public Context context() {
+                return MainActivity.this;
+            }
+
+            @Override
+            public void sendResult(JSONObject payload) {
+                MainActivity.this.sendResult(payload);
+            }
+
+            @Override
+            public JSONObject settingsSnapshot() throws JSONException {
+                return configSettingsSnapshot();
+            }
+
+            @Override
+            public JSONObject applySettings(JSONObject values) throws JSONException {
+                return applyConfigSettings(values);
+            }
+
+            @Override
+            public boolean hasValidSecurityToken(String token) {
+                return configSecurityToken().equals(token != null ? token.trim() : "");
+            }
+
+            @Override
+            public void configureWifi(JSONObject request, AndroidConfigPairingBridge.ResultCallback callback) {
+                try {
+                    MainActivity.this.configureWifi(request, callback);
+                } catch (JSONException error) {
+                    try {
+                        callback.complete(errorResponse(request, "wifiConfigure", error.getMessage()));
+                    } catch (JSONException ignored) {
+                        // Ignore secondary JSON failure.
+                    }
+                }
+            }
+
+            @Override
+            public void reloadConfiguredUrl() {
+                reloadConfiguredUrlFromSettings();
+            }
+
+            @Override
+            public JSONObject deviceSummary() throws JSONException {
+                return configDeviceSummary();
+            }
+
+            @Override
+            public void showPairingOverlay(String payload, Bitmap qrBitmap, boolean advertising) {
+                showConfigPairingOverlay(payload, qrBitmap, advertising);
+            }
+
+            @Override
+            public void setPairingOverlayAdvertising(boolean advertising) {
+                setConfigPairingOverlayAdvertising(advertising);
+            }
+
+            @Override
+            public void hidePairingOverlay() {
+                hideConfigPairingOverlay();
+            }
+        });
         String startUrl = getIntent() != null && getIntent().getDataString() != null
                 ? getIntent().getDataString()
-                : DEFAULT_URL;
-        webView.loadUrl(startUrl);
+                : null;
+        if (startUrl != null) {
+            webView.loadUrl(startUrl);
+        } else {
+            loadConfiguredUrlFromSettings();
+        }
     }
 
     @Override
@@ -212,8 +329,12 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         if (sensorBridge != null) {
             sensorBridge.shutdown();
         }
+        if (configPairingBridge != null) {
+            configPairingBridge.shutdown();
+        }
         stopLocationUpdates();
         stopIdleTimer();
+        cancelLoadTimeout();
         super.onDestroy();
     }
 
@@ -347,6 +468,13 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     case "sensorStreamStop":
                         sendResult(sensorBridge.stop(message));
                         break;
+                    case "configPairingShow":
+                    case "configPairingStop":
+                    case "configPairingConnect":
+                    case "configPairingDisconnect":
+                    case "configPairingSend":
+                        handleConfigPairingAction(message);
+                        break;
                     case "continuousScanStart":
                     case "dataScanStart":
                     case "loginScanStart":
@@ -447,6 +575,8 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         capabilities.put("soundPlay", true);
         capabilities.put("idleTimerStart", true);
         capabilities.put("sensorStreamStart", true);
+        capabilities.put("configPairingShow", true);
+        capabilities.put("configPairingConnect", true);
         return capabilities;
     }
 
@@ -505,11 +635,15 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     }
 
     private void configureWifi(JSONObject message) throws JSONException {
+        configureWifi(message, this::sendResult);
+    }
+
+    private void configureWifi(JSONObject message, AndroidConfigPairingBridge.ResultCallback callback) throws JSONException {
         JSONObject request = copyRequest(message);
         String ssid = request.optString("ssid", "").trim();
         String passphrase = request.optString("passphrase", request.optString("password", "")).trim();
         if (ssid.isEmpty()) {
-            sendError(request, "wifiConfigure", "ssid is required.");
+            callback.complete(errorResponse(request, "wifiConfigure", "ssid is required."));
             return;
         }
 
@@ -523,13 +657,14 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             Intent intent = new Intent(Settings.ACTION_WIFI_ADD_NETWORKS);
             intent.putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, suggestions);
             pendingWifiRequest = request;
+            pendingWifiConfigCallback = callback;
             startActivityForResult(intent, REQUEST_WIFI_ADD_NETWORK);
             return;
         }
 
         WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (wifiManager == null) {
-            sendError(request, "wifiConfigure", "Wi-Fi service is not available.");
+            callback.complete(errorResponse(request, "wifiConfigure", "Wi-Fi service is not available."));
             return;
         }
 
@@ -546,7 +681,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             if (status != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
                 response.put("error", "Android rejected the Wi-Fi suggestion with status " + status + ".");
             }
-            sendResult(response);
+            callback.complete(response);
             return;
         }
 
@@ -566,7 +701,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         if (!enabled) {
             response.put("error", "Could not add or enable the requested Wi-Fi network.");
         }
-        sendResult(response);
+        callback.complete(response);
     }
 
     private JSONObject screenshotGet(JSONObject message) throws JSONException {
@@ -1185,6 +1320,408 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
         }
         return permissions.toArray(new String[0]);
+    }
+
+    private void handleConfigPairingAction(JSONObject message) throws JSONException {
+        JSONObject request = copyRequest(message);
+        String action = request.optString("action", "");
+        if (!"configPairingStop".equals(action) && !"configPairingDisconnect".equals(action) && !hasConfigPairingPermissions(action)) {
+            pendingConfigPairingRequest = request;
+            pendingConfigPairingAction = action;
+            requestPermissions(configPairingPermissions(action), REQUEST_CONFIG_PAIRING_PERMISSION);
+            return;
+        }
+
+        sendResult(dispatchConfigPairingAction(request));
+    }
+
+    private JSONObject dispatchConfigPairingAction(JSONObject request) throws JSONException {
+        String action = request.optString("action", "");
+        switch (action) {
+            case "configPairingShow":
+                return configPairingBridge.startTargetSession(request);
+            case "configPairingStop":
+                return configPairingBridge.stopTargetSession(request);
+            case "configPairingConnect":
+                return configPairingBridge.connect(request);
+            case "configPairingDisconnect":
+                return configPairingBridge.disconnect(request);
+            case "configPairingSend":
+                return configPairingBridge.send(request);
+            default:
+                return errorResponse(request, action, "Unknown config pairing action: " + action);
+        }
+    }
+
+    private boolean hasConfigPairingPermissions(String action) {
+        for (String permission : configPairingPermissions(action)) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String[] configPairingPermissions(String action) {
+        ArrayList<String> permissions = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
+            if (!"configPairingSend".equals(action)) {
+                permissions.add(Manifest.permission.BLUETOOTH_SCAN);
+            }
+            if ("configPairingShow".equals(action)) {
+                permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
+            }
+        } else if ("configPairingConnect".equals(action)) {
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        return permissions.toArray(new String[0]);
+    }
+
+    private SharedPreferences configPrefs() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+    }
+
+    private String configuredStartUrl() {
+        String value = nonEmpty(configPrefs().getString(SERVER_URL_KEY, DEFAULT_SERVER_URL), DEFAULT_SERVER_URL);
+        return isLocalConfiguredUrl(value) ? DEFAULT_URL : value;
+    }
+
+    private ArrayList<String> configuredStartUrlCandidates() {
+        SharedPreferences prefs = configPrefs();
+        ArrayList<String> candidates = new ArrayList<>();
+        addUniqueUrlCandidate(candidates, configuredStartUrl());
+        if (prefs.getBoolean(HA_ENABLED_KEY, false)) {
+            addUniqueUrlCandidate(candidates, prefs.getString(HA_URL2_KEY, ""));
+            addUniqueUrlCandidate(candidates, prefs.getString(HA_URL3_KEY, ""));
+            addUniqueUrlCandidate(candidates, prefs.getString(HA_URL4_KEY, ""));
+        }
+        if (candidates.isEmpty()) {
+            candidates.add(DEFAULT_URL);
+        }
+        return candidates;
+    }
+
+    private void addUniqueUrlCandidate(ArrayList<String> candidates, String rawValue) {
+        String value = nonEmpty(rawValue, "");
+        if (value.isEmpty()) {
+            return;
+        }
+        String normalized = isLocalConfiguredUrl(value) ? DEFAULT_URL : value;
+        for (String existing : candidates) {
+            if (urlIdentity(existing).equals(urlIdentity(normalized))) {
+                return;
+            }
+        }
+        candidates.add(normalized);
+    }
+
+    private String urlIdentity(String value) {
+        String trimmed = value != null ? value.trim() : "";
+        if (isLocalConfiguredUrl(trimmed)) {
+            return DEFAULT_URL;
+        }
+        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+    }
+
+    private boolean isLocalConfiguredUrl(String value) {
+        String normalized = value != null ? value.trim().toLowerCase(Locale.US) : "";
+        return normalized.isEmpty()
+                || "local".equals(normalized)
+                || DEFAULT_URL.equals(normalized)
+                || normalized.startsWith("file:///android_asset/");
+    }
+
+    private void reloadConfiguredUrlFromSettings() {
+        runOnUiThread(this::loadConfiguredUrlFromSettings);
+    }
+
+    private void loadConfiguredUrlFromSettings() {
+        cancelLoadTimeout();
+        loadCandidates.clear();
+        loadCandidates.addAll(configuredStartUrlCandidates());
+        loadCandidateIndex = 0;
+        loadConfiguredCandidateAt(loadCandidateIndex);
+    }
+
+    private void loadConfiguredCandidateAt(int index) {
+        if (index < 0 || index >= loadCandidates.size()) {
+            webView.loadUrl(DEFAULT_URL);
+            return;
+        }
+        String url = loadCandidates.get(index);
+        webView.loadUrl(url);
+        scheduleLoadTimeout(url);
+    }
+
+    private void scheduleLoadTimeout(String url) {
+        cancelLoadTimeout();
+        if (!hasRemainingLoadCandidates() || isLocalConfiguredUrl(url)) {
+            return;
+        }
+        long timeoutMs = Math.max(1, configPrefs().getInt(HA_TIMEOUT_KEY, 5)) * 1000L;
+        loadTimeoutRunnable = () -> loadNextConfiguredCandidate("High availability timeout reached.");
+        loadHandler.postDelayed(loadTimeoutRunnable, timeoutMs);
+    }
+
+    private void cancelLoadTimeout() {
+        if (loadTimeoutRunnable != null) {
+            loadHandler.removeCallbacks(loadTimeoutRunnable);
+            loadTimeoutRunnable = null;
+        }
+    }
+
+    private boolean hasRemainingLoadCandidates() {
+        return configPrefs().getBoolean(HA_ENABLED_KEY, false)
+                && loadCandidateIndex + 1 < loadCandidates.size();
+    }
+
+    private void loadNextConfiguredCandidate(String reason) {
+        if (!hasRemainingLoadCandidates()) {
+            cancelLoadTimeout();
+            return;
+        }
+        loadCandidateIndex += 1;
+        loadConfiguredCandidateAt(loadCandidateIndex);
+    }
+
+    private String configSecurityToken() {
+        return nonEmpty(configPrefs().getString(SECURITY_TOKEN_KEY, DEFAULT_SECURITY_TOKEN), DEFAULT_SECURITY_TOKEN);
+    }
+
+    private JSONObject configSettingsSnapshot() throws JSONException {
+        SharedPreferences prefs = configPrefs();
+        JSONObject settings = new JSONObject();
+        settings.put("serverURL", nonEmpty(prefs.getString(SERVER_URL_KEY, DEFAULT_SERVER_URL), DEFAULT_SERVER_URL));
+        settings.put("securityTokenSet", !configSecurityToken().isEmpty());
+        settings.put("highAvailabilityEnabled", prefs.getBoolean(HA_ENABLED_KEY, false));
+        settings.put("highAvailabilityTimeoutSeconds", Math.max(1, prefs.getInt(HA_TIMEOUT_KEY, 5)));
+        settings.put("highAvailabilityURL2", nonEmpty(prefs.getString(HA_URL2_KEY, ""), ""));
+        settings.put("highAvailabilityURL3", nonEmpty(prefs.getString(HA_URL3_KEY, ""), ""));
+        settings.put("highAvailabilityURL4", nonEmpty(prefs.getString(HA_URL4_KEY, ""), ""));
+        settings.put("beaconUUID", nonEmpty(prefs.getString(BEACON_UUID_KEY, DEFAULT_BEACON_UUID), DEFAULT_BEACON_UUID));
+        return settings;
+    }
+
+    private JSONObject applyConfigSettings(JSONObject values) throws JSONException {
+        SharedPreferences.Editor editor = configPrefs().edit();
+        putStringSetting(editor, values, SERVER_URL_KEY, "serverURL", "serverUrl", "url");
+        putStringSetting(editor, values, HA_URL2_KEY, "highAvailabilityURL2", "haURL2", "ha_url2");
+        putStringSetting(editor, values, HA_URL3_KEY, "highAvailabilityURL3", "haURL3", "ha_url3");
+        putStringSetting(editor, values, HA_URL4_KEY, "highAvailabilityURL4", "haURL4", "ha_url4");
+        putStringSetting(editor, values, BEACON_UUID_KEY, "beaconUUID", "beaconUuid", "beacon_uuid");
+        putStringSetting(editor, values, SECURITY_TOKEN_KEY, "newSecurityToken", "securityToken");
+        putBooleanSetting(editor, values, HA_ENABLED_KEY, "highAvailabilityEnabled", "haEnabled", "ha_enabled");
+        putIntSetting(editor, values, HA_TIMEOUT_KEY, "highAvailabilityTimeoutSeconds", "haTimeout", "ha_timeout");
+        editor.apply();
+        return configSettingsSnapshot();
+    }
+
+    private void putStringSetting(SharedPreferences.Editor editor, JSONObject values, String prefKey, String... aliases) {
+        String value = stringFromAliases(values, aliases);
+        if (value != null) {
+            editor.putString(prefKey, value.trim());
+        }
+    }
+
+    private void putBooleanSetting(SharedPreferences.Editor editor, JSONObject values, String prefKey, String... aliases) {
+        for (String alias : aliases) {
+            if (!values.has(alias)) {
+                continue;
+            }
+            Object value = values.opt(alias);
+            if (value instanceof Boolean) {
+                editor.putBoolean(prefKey, (Boolean) value);
+                return;
+            }
+            String raw = String.valueOf(value).trim().toLowerCase(Locale.US);
+            editor.putBoolean(prefKey, "1".equals(raw) || "true".equals(raw) || "yes".equals(raw) || "ja".equals(raw) || "on".equals(raw));
+            return;
+        }
+    }
+
+    private void putIntSetting(SharedPreferences.Editor editor, JSONObject values, String prefKey, String... aliases) {
+        String value = stringFromAliases(values, aliases);
+        if (value == null) {
+            return;
+        }
+        try {
+            editor.putInt(prefKey, Math.max(1, Integer.parseInt(value.trim())));
+        } catch (NumberFormatException ignored) {
+            // Ignore invalid integer settings.
+        }
+    }
+
+    private String stringFromAliases(JSONObject values, String... aliases) {
+        for (String alias : aliases) {
+            if (!values.has(alias)) {
+                continue;
+            }
+            Object value = values.opt(alias);
+            if (value == null || value == JSONObject.NULL) {
+                return "";
+            }
+            return String.valueOf(value);
+        }
+        return null;
+    }
+
+    private JSONObject configDeviceSummary() throws JSONException {
+        JSONObject info = new JSONObject();
+        info.put("manufacturer", Build.MANUFACTURER != null ? Build.MANUFACTURER : "");
+        info.put("model", Build.MODEL != null ? Build.MODEL : "");
+        info.put("device", Build.DEVICE != null ? Build.DEVICE : "");
+        info.put("os", "Android");
+        info.put("osVersion", Build.VERSION.RELEASE != null ? Build.VERSION.RELEASE : "");
+        info.put("sdkInt", Build.VERSION.SDK_INT);
+        info.put("appVersion", appVersionName());
+        info.put("wifi", wifiStatusPayload(hasLocationPermission()));
+        return info;
+    }
+
+    private void showConfigPairingOverlay(String payload, Bitmap qrBitmap, boolean advertising) {
+        runOnUiThread(() -> {
+            hideConfigPairingOverlay();
+
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER_HORIZONTAL);
+            int cardPadding = dp(22);
+            card.setPadding(cardPadding, cardPadding, cardPadding, cardPadding);
+            GradientDrawable cardBackground = new GradientDrawable();
+            cardBackground.setColor(Color.rgb(23, 23, 27));
+            cardBackground.setCornerRadius(dp(24));
+            cardBackground.setStroke(dp(1), Color.argb(50, 255, 255, 255));
+            card.setBackground(cardBackground);
+
+            TextView title = new TextView(this);
+            title.setText("Config Pairing");
+            title.setTextColor(Color.WHITE);
+            title.setTextSize(24);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setGravity(Gravity.CENTER);
+            card.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            ImageView qrView = new ImageView(this);
+            qrView.setImageBitmap(qrBitmap);
+            qrView.setBackgroundColor(Color.WHITE);
+            qrView.setPadding(dp(12), dp(12), dp(12), dp(12));
+            LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(dp(270), dp(270));
+            qrParams.setMargins(0, dp(18), 0, dp(12));
+            card.addView(qrView, qrParams);
+
+            configPairingStateText = new TextView(this);
+            configPairingStateText.setText(advertising ? "BLE aktiv" : "BLE startet");
+            configPairingStateText.setTextColor(Color.argb(220, 255, 255, 255));
+            configPairingStateText.setTextSize(15);
+            configPairingStateText.setTypeface(Typeface.DEFAULT_BOLD);
+            configPairingStateText.setGravity(Gravity.CENTER);
+            card.addView(configPairingStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            TextView payloadView = new TextView(this);
+            payloadView.setText(payload);
+            payloadView.setTextColor(Color.argb(185, 255, 255, 255));
+            payloadView.setTextSize(10);
+            payloadView.setGravity(Gravity.CENTER);
+            payloadView.setTypeface(Typeface.MONOSPACE);
+            payloadView.setMaxLines(5);
+            payloadView.setPadding(0, dp(12), 0, dp(12));
+            card.addView(payloadView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            Button closeButton = new Button(this);
+            closeButton.setText("Schliessen");
+            closeButton.setOnClickListener(view -> {
+                try {
+                    sendResult(configPairingBridge.stopTargetSession(new JSONObject().put("action", "configPairingStop")));
+                } catch (JSONException ignored) {
+                    // Ignore secondary JSON failure.
+                }
+            });
+            card.addView(closeButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            ScrollView scrollView = new ScrollView(this);
+            scrollView.setFillViewport(true);
+            LinearLayout container = new LinearLayout(this);
+            container.setGravity(Gravity.CENTER);
+            container.setPadding(dp(24), dp(24), dp(24), dp(24));
+            container.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            scrollView.addView(container, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            scrollView.setBackgroundColor(Color.argb(180, 0, 0, 0));
+            configPairingOverlay = scrollView;
+            addContentView(scrollView, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        });
+    }
+
+    private void setConfigPairingOverlayAdvertising(boolean advertising) {
+        runOnUiThread(() -> {
+            if (configPairingStateText != null) {
+                configPairingStateText.setText(advertising ? "BLE aktiv" : "BLE startet");
+            }
+        });
+    }
+
+    private void hideConfigPairingOverlay() {
+        runOnUiThread(() -> {
+            if (configPairingOverlay != null) {
+                ViewGroup parent = (ViewGroup) configPairingOverlay.getParent();
+                if (parent != null) {
+                    parent.removeView(configPairingOverlay);
+                }
+            }
+            configPairingOverlay = null;
+            configPairingStateText = null;
+        });
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void handleConfigPairingGesture(MotionEvent event) {
+        if (configPairingOverlay != null) {
+            return;
+        }
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_UP) {
+            configPairingHoldStartMs = 0L;
+            configPairingHoldTriggered = false;
+            return;
+        }
+
+        if (event.getPointerCount() < 2 || !isTwoFingerHoldInCenter(event)) {
+            configPairingHoldStartMs = 0L;
+            configPairingHoldTriggered = false;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (configPairingHoldStartMs == 0L) {
+            configPairingHoldStartMs = now;
+        }
+        if (!configPairingHoldTriggered && now - configPairingHoldStartMs >= 1500L) {
+            configPairingHoldTriggered = true;
+            try {
+                JSONObject request = new JSONObject();
+                request.put("action", "configPairingShow");
+                request.put("source", "twoFingerHold");
+                handleConfigPairingAction(request);
+            } catch (JSONException error) {
+                sendErrorSafe(null, "configPairingShow", error.getMessage());
+            }
+        }
+    }
+
+    private boolean isTwoFingerHoldInCenter(MotionEvent event) {
+        if (event.getPointerCount() < 2) {
+            return false;
+        }
+        float centerX = (event.getX(0) + event.getX(1)) / 2f;
+        float centerY = (event.getY(0) + event.getY(1)) / 2f;
+        float left = webView.getWidth() * 0.25f;
+        float right = webView.getWidth() * 0.75f;
+        float top = webView.getHeight() * 0.25f;
+        float bottom = webView.getHeight() * 0.75f;
+        return centerX >= left && centerX <= right && centerY >= top && centerY <= bottom;
     }
 
     private void printHelloWorld(JSONObject message) {
@@ -1903,6 +2440,22 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     sendErrorSafe(request, "wifiStatusGet", error.getMessage());
                 }
             }
+            return;
+        }
+        if (requestCode == REQUEST_CONFIG_PAIRING_PERMISSION) {
+            JSONObject request = pendingConfigPairingRequest;
+            String action = pendingConfigPairingAction;
+            pendingConfigPairingRequest = null;
+            pendingConfigPairingAction = null;
+            if (allPermissionsGranted(grantResults) && request != null) {
+                try {
+                    sendResult(dispatchConfigPairingAction(request));
+                } catch (JSONException error) {
+                    sendErrorSafe(request, action, error.getMessage());
+                }
+            } else {
+                sendErrorSafe(request, action, "Bluetooth permissions are required for config pairing.");
+            }
         }
     }
 
@@ -1936,7 +2489,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
 
     private void handleWifiAddNetworkResult(int resultCode) {
         JSONObject request = pendingWifiRequest != null ? pendingWifiRequest : new JSONObject();
+        AndroidConfigPairingBridge.ResultCallback callback = pendingWifiConfigCallback;
         pendingWifiRequest = null;
+        pendingWifiConfigCallback = null;
         try {
             JSONObject response = baseResponse(request, "wifiConfigure");
             response.put("success", resultCode == RESULT_OK);
@@ -1945,7 +2500,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             if (resultCode != RESULT_OK) {
                 response.put("error", "The Wi-Fi add-network request was cancelled or denied.");
             }
-            sendResult(response);
+            if (callback != null) {
+                callback.complete(response);
+            } else {
+                sendResult(response);
+            }
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }

@@ -277,6 +277,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Diese App benötigt Standortzugriff, um konfigurierte iBeacon-Sender in der Nähe zu erkennen.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -317,6 +319,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Diese App benötigt Standortzugriff, um konfigurierte iBeacon-Sender in der Nähe zu erkennen.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

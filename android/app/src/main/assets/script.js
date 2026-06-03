@@ -28,6 +28,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const orientationSetBtn = document.getElementById('orientationSetBtn');
     const wifiSsidInput = document.getElementById('wifiSsidInput');
     const wifiPasswordInput = document.getElementById('wifiPasswordInput');
+    const configPairingPayloadInput = document.getElementById('configPairingPayloadInput');
+    const configSecurityTokenInput = document.getElementById('configSecurityTokenInput');
+    const configServerUrlInput = document.getElementById('configServerUrlInput');
+    const configHaEnabledInput = document.getElementById('configHaEnabledInput');
+    const configHaTimeoutInput = document.getElementById('configHaTimeoutInput');
+    const configUrl2Input = document.getElementById('configUrl2Input');
+    const configUrl3Input = document.getElementById('configUrl3Input');
+    const configUrl4Input = document.getElementById('configUrl4Input');
+    const configBeaconUuidInput = document.getElementById('configBeaconUuidInput');
+    const configWifiSsidInput = document.getElementById('configWifiSsidInput');
+    const configWifiPasswordInput = document.getElementById('configWifiPasswordInput');
+    const configPairingShowBtn = document.getElementById('configPairingShowBtn');
+    const configPairingStopBtn = document.getElementById('configPairingStopBtn');
+    const configPairingScanBtn = document.getElementById('configPairingScanBtn');
+    const configPairingConnectBtn = document.getElementById('configPairingConnectBtn');
+    const configPairingDisconnectBtn = document.getElementById('configPairingDisconnectBtn');
+    const configStatusBtn = document.getElementById('configStatusBtn');
+    const configSettingsGetBtn = document.getElementById('configSettingsGetBtn');
+    const configSettingsSetBtn = document.getElementById('configSettingsSetBtn');
+    const configWifiConfigureBtn = document.getElementById('configWifiConfigureBtn');
+    const configReloadBtn = document.getElementById('configReloadBtn');
     const deviceInfoBtn = document.getElementById('deviceInfoBtn');
     const wifiStatusBtn = document.getElementById('wifiStatusBtn');
     const wifiConfigureBtn = document.getElementById('wifiConfigureBtn');
@@ -74,7 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         "screenStreamOpen",
         "screenStreamStats",
         "screenStreamError",
-        "screenStreamClosed"
+        "screenStreamClosed",
+        "configPairingEvent"
     ]);
     const commandActions = new Set([
         "screenOrientationSet",
@@ -97,7 +119,13 @@ document.addEventListener('DOMContentLoaded', () => {
         "sensorStreamStart",
         "sensorStreamStop",
         "screenStreamStart",
-        "screenStreamStop"
+        "screenStreamStop",
+        "configPairingShow",
+        "configPairingStop",
+        "configPairingConnect",
+        "configPairingDisconnect",
+        "configPairingSend",
+        "configPairingResponse"
     ]);
 
     // --- Event Listeners ---
@@ -197,6 +225,69 @@ document.addEventListener('DOMContentLoaded', () => {
             passphrase: String(wifiPasswordInput?.value || ""),
             joinOnce: false
         });
+    });
+
+    configPairingShowBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "configPairingShow" });
+    });
+
+    configPairingStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "configPairingStop" });
+    });
+
+    configPairingScanBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "scanBarcode",
+            purpose: "configPairing",
+            types: ["qr"]
+        });
+    });
+
+    configPairingConnectBtn?.addEventListener('click', () => {
+        const payload = pairingPayloadFromInput();
+        if (!payload) {
+            displayError("Bitte zuerst einen Pairing-QR scannen oder das Payload einfügen.");
+            return;
+        }
+        sendBridgeMessage({
+            action: "configPairingConnect",
+            payload
+        });
+    });
+
+    configPairingDisconnectBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "configPairingDisconnect" });
+    });
+
+    configStatusBtn?.addEventListener('click', () => {
+        sendConfigPairingCommand("statusGet");
+    });
+
+    configSettingsGetBtn?.addEventListener('click', () => {
+        sendConfigPairingCommand("settingsGet");
+    });
+
+    configSettingsSetBtn?.addEventListener('click', () => {
+        sendConfigPairingCommand("settingsSet", {
+            settings: configSettingsFromForm()
+        });
+    });
+
+    configWifiConfigureBtn?.addEventListener('click', () => {
+        const ssid = String(configWifiSsidInput?.value || "").trim();
+        if (!ssid) {
+            displayError("Bitte Ziel-WLAN-SSID eingeben.");
+            return;
+        }
+        sendConfigPairingCommand("wifiConfigure", {
+            ssid,
+            passphrase: String(configWifiPasswordInput?.value || ""),
+            joinOnce: false
+        });
+    });
+
+    configReloadBtn?.addEventListener('click', () => {
+        sendConfigPairingCommand("reload");
     });
 
     screenshotBtn?.addEventListener('click', () => {
@@ -406,6 +497,68 @@ document.addEventListener('DOMContentLoaded', () => {
         return Number.isFinite(raw) ? raw : fallback;
     }
 
+    function pairingPayloadFromInput() {
+        return String(configPairingPayloadInput?.value || "").trim();
+    }
+
+    function configSecurityToken() {
+        return String(configSecurityTokenInput?.value || "").trim();
+    }
+
+    function configSettingsFromForm() {
+        return {
+            serverURL: String(configServerUrlInput?.value || "").trim() || "local",
+            highAvailabilityEnabled: Boolean(configHaEnabledInput?.checked),
+            highAvailabilityTimeoutSeconds: Math.max(1, numericInputValue(configHaTimeoutInput, 5)),
+            highAvailabilityURL2: String(configUrl2Input?.value || "").trim(),
+            highAvailabilityURL3: String(configUrl3Input?.value || "").trim(),
+            highAvailabilityURL4: String(configUrl4Input?.value || "").trim(),
+            beaconUUID: String(configBeaconUuidInput?.value || "").trim()
+        };
+    }
+
+    function sendConfigPairingCommand(command, extra = {}) {
+        const token = configSecurityToken();
+        if ((command === "settingsSet" || command === "wifiConfigure" || command === "reload") && !token) {
+            displayError("Bitte den Security Token für schreibende Config-Kommandos eingeben.");
+            return;
+        }
+
+        sendBridgeMessage({
+            action: "configPairingSend",
+            command,
+            token,
+            ...extra
+        });
+    }
+
+    function updateConfigFormFromSettings(settings) {
+        if (!settings || typeof settings !== "object") {
+            return;
+        }
+        if (configServerUrlInput && typeof settings.serverURL === "string") {
+            configServerUrlInput.value = settings.serverURL;
+        }
+        if (configHaEnabledInput && typeof settings.highAvailabilityEnabled === "boolean") {
+            configHaEnabledInput.checked = settings.highAvailabilityEnabled;
+        }
+        if (configHaTimeoutInput && settings.highAvailabilityTimeoutSeconds != null) {
+            configHaTimeoutInput.value = String(settings.highAvailabilityTimeoutSeconds);
+        }
+        if (configUrl2Input && typeof settings.highAvailabilityURL2 === "string") {
+            configUrl2Input.value = settings.highAvailabilityURL2;
+        }
+        if (configUrl3Input && typeof settings.highAvailabilityURL3 === "string") {
+            configUrl3Input.value = settings.highAvailabilityURL3;
+        }
+        if (configUrl4Input && typeof settings.highAvailabilityURL4 === "string") {
+            configUrl4Input.value = settings.highAvailabilityURL4;
+        }
+        if (configBeaconUuidInput && typeof settings.beaconUUID === "string") {
+            configBeaconUuidInput.value = settings.beaconUUID;
+        }
+    }
+
     function selectDiscoveredPrinter() {
         const selected = currentSelectedPrinter();
         if (selected?.host && epsonPrinterHost) {
@@ -504,6 +657,12 @@ document.addEventListener('DOMContentLoaded', () => {
             case "printerDiscover":
                 displayPrinterDiscoveryResult(result);
                 break;
+            case "configPairingResponse":
+                if (result.settings) {
+                    updateConfigFormFromSettings(result.settings);
+                }
+                displayCommandResult(result);
+                break;
             case "continuousScanStart":
             case "continuousScanStop":
             case "dataScanStart":
@@ -525,6 +684,11 @@ document.addEventListener('DOMContentLoaded', () => {
             case "sensorStreamStop":
             case "screenStreamStart":
             case "screenStreamStop":
+            case "configPairingShow":
+            case "configPairingStop":
+            case "configPairingConnect":
+            case "configPairingDisconnect":
+            case "configPairingSend":
                 displayCommandResult(result);
                 break;
             default:
@@ -638,6 +802,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function displayBarcodeResult(result) {
         if (result.code) {
+            if (String(result.code).startsWith("swifthtml-config://pair") && configPairingPayloadInput) {
+                configPairingPayloadInput.value = result.code;
+            }
             resultArea.appendChild(createResultHeader("Barcode erkannt:"));
             const pre = document.createElement('pre');
             pre.textContent = `Format: ${result.format || 'Unbekannt'}\nWert:   ${result.code}`;
