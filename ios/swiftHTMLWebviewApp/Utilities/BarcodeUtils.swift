@@ -21,11 +21,11 @@ enum BarcodeUtils {
              return Set([allBarcodeType])
         }
 
-        // Korrektur: Verwende ein Array statt Set, da .barcode(symbologies:) ein Array erwartet
+
         var requestedSymbologies: [VNBarcodeSymbology] = []
 
         for typeString in typeStrings {
-            // Korrektur: Füge zum Array hinzu
+
             // Füge nur hinzu, wenn es nicht bereits enthalten ist (optional, um Duplikate zu vermeiden)
             let symbologyToAdd: VNBarcodeSymbology?
             switch typeString.lowercased() {
@@ -55,7 +55,7 @@ enum BarcodeUtils {
              let allBarcodeType = DataScannerViewController.RecognizedDataType.barcode()
              return Set([allBarcodeType])
         } else {
-            // Korrektur: Übergib das Array an den Initializer
+
             let specificBarcodeType = DataScannerViewController.RecognizedDataType.barcode(symbologies: requestedSymbologies)
             return Set([specificBarcodeType])
         }

@@ -28,7 +28,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
     }
 
     // MARK: - Coordinator
-    // Korrektur: @MainActor entfernt, Dispatch manuell durchführen
+
     class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
         var parent: DocumentScannerView
 
@@ -41,7 +41,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
             print("Document scan finished successfully with \(scan.pageCount) pages.")
-            // Korrektur: Dispatch auf Main Actor
+
             Task { @MainActor in
                 parent.completion(.success(scan))
                 parent.isPresented = false
@@ -50,7 +50,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
             print("Document scan cancelled by user.")
-            // Korrektur: Dispatch auf Main Actor
+
             Task { @MainActor in
                 parent.completion(.failure(.userCancelled))
                 parent.isPresented = false
@@ -59,7 +59,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
             print(String(format: NSLocalizedString("error.documentScan.failed", comment: "Document scan failed error format"), error.localizedDescription))
-            // Korrektur: Dispatch auf Main Actor
+
             Task { @MainActor in
                 parent.completion(.failure(.internalError(String(format: NSLocalizedString("error.internalError.documentScanFailed", comment: "Document scan failed internal error format"), error.localizedDescription))))
                 parent.isPresented = false

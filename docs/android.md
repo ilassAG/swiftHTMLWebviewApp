@@ -16,19 +16,42 @@ Implemented:
 - Native Android confetti overlay for `launchConfetti`.
 - Android camera photo capture for `takePhoto`.
 - Google Code Scanner UI for `scanBarcode`.
+- CameraX + ML Kit embedded continuous scanner for `continuousScanStart`,
+  `dataScanStart`, `loginScanStart`, and preview updates.
+- AltBeacon iBeacon ranging for `beaconsStart` / `beaconsStop`.
 - Google ML Kit Document Scanner UI for `scanDocument`, returning JPEG image data URLs or PDF data URLs.
-- Go `printercore` AAR bridge for `printerEpsonHelloWorld`.
+- Go `printercore` AAR bridge for `printerDiscover`, `printerHelloWorld`, and
+  `printerEpsonHelloWorld`.
+- Sunmi internal-printer discovery and Hello World printing when
+  `woyou.aidlservice.jiuiv5` is visible.
+- Android supplies the active IPv4 `/24` network as a discovery hint before
+  calling the Go core, because Go's interface enumeration can be blocked by
+  Android netlink restrictions in app sandboxes.
+- Device diagnostics through `deviceInfoGet`, app screenshot capture,
+  orientation lock, sound output, idle timer, location, sensor streaming,
+  Wi-Fi status/setup, and app-screen JPEG streaming over WebSocket.
+- `wifiStatusGet` mirrors the iOS response shape for `ssidAvailable`, `ssid`,
+  `bssid`, `securityType`, `securityTypeRawValue`, `ipAddresses`, and
+  `wifiIpAddresses`. Android requires location permission before SSID/BSSID
+  details are exposed, so the bridge requests it when the web app asks for Wi-Fi
+  status.
 
 Not implemented yet:
 
 - Android Stripe Terminal / Tap to Pay.
+- Kassa-compatible high-availability startup URL settings.
 - iOS-style background removal options for `takePhoto`.
 - OCR text extraction for document scans.
+- Full system-screen streaming through MediaProjection/foreground service. The
+  current `screenStreamStart` bridge streams the app surface only.
 
 ## Build
 
-Regenerate the Go mobile binding if `printercore` changed or if
-`android/app/libs/printercore.aar` is missing:
+The Go mobile binding is optional. A clean checkout builds without
+`android/app/libs/printercore.aar`; Epson printer discovery/printing then
+returns a structured unavailable response while Sunmi internal printing can
+still work on Sunmi devices. Generate the binding when enabling the shared Go
+printer core:
 
 ```sh
 printercore/scripts/build_mobile.sh
@@ -55,9 +78,10 @@ adb shell am start -n com.ilass.swifthtmlwebviewapp/.MainActivity
 
 If the device shows as `unauthorized`, unlock it and approve the USB debugging prompt.
 
-The local demo page contains an Epson printer smoke-test button. It defaults to
-`10.10.10.131` and calls `printerEpsonHelloWorld` through the same JavaScript
-bridge as the other native features.
+The local demo page contains a printer-search button plus a Hello World print
+button. Search calls `printerDiscover`; the print button calls
+`printerHelloWorld` and routes by the selected printer kind. Epson targets use
+the Go ePOS path, while Sunmi internal targets use the Sunmi AIDL service.
 
 ## Bridge behavior
 

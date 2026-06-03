@@ -12,15 +12,93 @@ document.addEventListener('DOMContentLoaded', () => {
     const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
     const confettiBtn = document.getElementById('confettiBtn');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
+    const scannerModeSelect = document.getElementById('scannerModeSelect');
+    const scannerCameraSelect = document.getElementById('scannerCameraSelect');
+    const scannerTopInput = document.getElementById('scannerTopInput');
+    const scannerLeftInput = document.getElementById('scannerLeftInput');
+    const scannerWidthInput = document.getElementById('scannerWidthInput');
+    const scannerHeightInput = document.getElementById('scannerHeightInput');
+    const permanentScanStartBtn = document.getElementById('permanentScanStartBtn');
+    const permanentScanUpdateBtn = document.getElementById('permanentScanUpdateBtn');
+    const permanentScanStopBtn = document.getElementById('permanentScanStopBtn');
+    const beaconUuidInput = document.getElementById('beaconUuidInput');
+    const beaconsStartBtn = document.getElementById('beaconsStartBtn');
+    const beaconsStopBtn = document.getElementById('beaconsStopBtn');
+    const orientationSelect = document.getElementById('orientationSelect');
+    const orientationSetBtn = document.getElementById('orientationSetBtn');
+    const wifiSsidInput = document.getElementById('wifiSsidInput');
+    const wifiPasswordInput = document.getElementById('wifiPasswordInput');
+    const deviceInfoBtn = document.getElementById('deviceInfoBtn');
+    const wifiStatusBtn = document.getElementById('wifiStatusBtn');
+    const wifiConfigureBtn = document.getElementById('wifiConfigureBtn');
+    const screenshotBtn = document.getElementById('screenshotBtn');
+    const geoGetBtn = document.getElementById('geoGetBtn');
+    const geoStartBtn = document.getElementById('geoStartBtn');
+    const geoStopBtn = document.getElementById('geoStopBtn');
+    const soundPlayBtn = document.getElementById('soundPlayBtn');
+    const idleTimeoutInput = document.getElementById('idleTimeoutInput');
+    const idleIntervalInput = document.getElementById('idleIntervalInput');
+    const idleStartBtn = document.getElementById('idleStartBtn');
+    const idleResetBtn = document.getElementById('idleResetBtn');
+    const idleStopBtn = document.getElementById('idleStopBtn');
+    const sensorCapabilitiesBtn = document.getElementById('sensorCapabilitiesBtn');
+    const sensorStartBtn = document.getElementById('sensorStartBtn');
+    const sensorStopBtn = document.getElementById('sensorStopBtn');
+    const screenStreamTargetInput = document.getElementById('screenStreamTargetInput');
+    const screenStreamFpsInput = document.getElementById('screenStreamFpsInput');
+    const screenStreamWidthInput = document.getElementById('screenStreamWidthInput');
+    const screenStreamStartBtn = document.getElementById('screenStreamStartBtn');
+    const screenStreamStopBtn = document.getElementById('screenStreamStopBtn');
     const printEpsonHelloBtn = document.getElementById('printEpsonHelloBtn');
+    const discoverPrintersBtn = document.getElementById('discoverPrintersBtn');
     const epsonPrinterHost = document.getElementById('epsonPrinterHost');
+    const printerSelect = document.getElementById('printerSelect');
     const clearResultBtn = document.getElementById('clearResultBtn');
 
     const statusArea = document.getElementById('statusArea');
     const resultArea = document.getElementById('resultArea');
+    const eventLog = document.getElementById('eventLog');
     const placeholderText = document.getElementById('placeholderText');
     const confettiInitialLabel = "Konfetti!";
     const confettiMoreLabel = "mehr Konfetti";
+    const debugBridgeMessages = false;
+    let discoveredPrinters = [];
+    const liveEventActions = new Set([
+        "barcodeData",
+        "barcodeLogin",
+        "beacons",
+        "geoLocation",
+        "idleTick",
+        "idleTimeout",
+        "sensorData",
+        "screenStreamOpen",
+        "screenStreamStats",
+        "screenStreamError",
+        "screenStreamClosed"
+    ]);
+    const commandActions = new Set([
+        "screenOrientationSet",
+        "wifiConfigure",
+        "continuousScanStart",
+        "continuousScanStop",
+        "dataScanStart",
+        "dataScanEnd",
+        "loginScanStart",
+        "loginScanEnd",
+        "previewBoxLocationUpdate",
+        "beaconsStart",
+        "beaconsStop",
+        "geoLocationStart",
+        "geoLocationStop",
+        "soundPlay",
+        "idleTimerStart",
+        "idleTimerStop",
+        "idleTimerReset",
+        "sensorStreamStart",
+        "sensorStreamStop",
+        "screenStreamStart",
+        "screenStreamStop"
+    ]);
 
     // --- Event Listeners ---
     scanDocPdfBtn.addEventListener('click', () => {
@@ -29,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ocr: true, // Keine OCR für reines PDF
             outputType: "pdf"
         };
-        sendMessageToNative(request);
+        sendBridgeMessage(request);
     });
 
     scanDocPngBtn.addEventListener('click', () => {
@@ -38,35 +116,193 @@ document.addEventListener('DOMContentLoaded', () => {
             ocr: true, // OCR anfordern
             outputType: "png" // Bilder als PNG
         };
-        sendMessageToNative(request);
+        sendBridgeMessage(request);
     });
 
     takePhotoFrontBtn.addEventListener('click', () => {
-        sendMessageToNative(createPhotoRequest("front"));
+        sendBridgeMessage(createPhotoRequest("front"));
     });
 
     takePhotoBackBtn.addEventListener('click', () => {
-        sendMessageToNative(createPhotoRequest("back"));
+        sendBridgeMessage(createPhotoRequest("back"));
     });
 
     confettiBtn?.addEventListener('click', () => {
-        sendMessageToNative({ action: "launchConfetti" });
+        sendBridgeMessage({ action: "launchConfetti" });
     });
 
     scanBarcodeBtn.addEventListener('click', () => {
         const request = {
             action: "scanBarcode",
-            // Kamera wird von Swift entschieden (meist Rückkamera für Barcodes)
-            types: ["qr", "ean13", "ean8", "code128", "datamatrix"] // Zu suchende Typen
+            types: ["qr", "ean13", "ean8", "code128", "datamatrix"]
         };
-        sendMessageToNative(request);
+        sendBridgeMessage(request);
+    });
+
+    permanentScanStartBtn?.addEventListener('click', () => {
+        sendBridgeMessage(createPermanentScanStartRequest());
+    });
+
+    permanentScanUpdateBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "previewBoxLocationUpdate",
+            previewRect: createScannerPreviewRect()
+        });
+    });
+
+    permanentScanStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: scannerModeSelect?.value === "login" ? "loginScanEnd" : "dataScanEnd"
+        });
+    });
+
+    beaconsStartBtn?.addEventListener('click', () => {
+        const uuid = String(beaconUuidInput?.value || "").trim();
+        const request = { action: "beaconsStart" };
+        if (uuid) {
+            request.uuid = uuid;
+        }
+        sendBridgeMessage(request);
+    });
+
+    beaconsStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "beaconsStop" });
+    });
+
+    orientationSetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "screenOrientationSet",
+            mode: orientationSelect?.value || "unlocked"
+        });
+    });
+
+    deviceInfoBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "deviceInfoGet" });
+    });
+
+    wifiStatusBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "wifiStatusGet" });
+    });
+
+    wifiConfigureBtn?.addEventListener('click', () => {
+        const ssid = String(wifiSsidInput?.value || "").trim();
+        if (!ssid) {
+            displayError("Bitte eine WLAN-SSID eingeben.");
+            return;
+        }
+
+        sendBridgeMessage({
+            action: "wifiConfigure",
+            ssid,
+            passphrase: String(wifiPasswordInput?.value || ""),
+            joinOnce: false
+        });
+    });
+
+    screenshotBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "screenshotGet",
+            maxWidth: 720,
+            quality: 75
+        });
+    });
+
+    geoGetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "geoLocationGet" });
+    });
+
+    geoStartBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "geoLocationStart",
+            intervalMs: 3000,
+            minDistanceMeters: 0
+        });
+    });
+
+    geoStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "geoLocationStop" });
+    });
+
+    soundPlayBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "soundPlay",
+            frequencyHz: 880,
+            durationMs: 260,
+            volume: 0.85
+        });
+    });
+
+    idleStartBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "idleTimerStart",
+            timeoutSeconds: numericInputValue(idleTimeoutInput, 30),
+            intervalSeconds: numericInputValue(idleIntervalInput, 1)
+        });
+    });
+
+    idleResetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "idleTimerReset" });
+    });
+
+    idleStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "idleTimerStop" });
+    });
+
+    sensorCapabilitiesBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "sensorCapabilitiesGet" });
+    });
+
+    sensorStartBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "sensorStreamStart",
+            intervalMs: 500,
+            types: ["accelerometer", "gyroscope", "magnetometer", "light", "pressure", "proximity"]
+        });
+    });
+
+    sensorStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "sensorStreamStop" });
+    });
+
+    screenStreamStartBtn?.addEventListener('click', () => {
+        const targetUrl = String(screenStreamTargetInput?.value || "").trim();
+        if (!targetUrl) {
+            displayError("Bitte eine WebSocket-Zieladresse für den Screenstream eingeben.");
+            return;
+        }
+
+        sendBridgeMessage({
+            action: "screenStreamStart",
+            transport: "websocket",
+            targetUrl,
+            format: "jpeg",
+            fps: numericInputValue(screenStreamFpsInput, 2),
+            maxWidth: numericInputValue(screenStreamWidthInput, 720),
+            quality: 65
+        });
+    });
+
+    screenStreamStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "screenStreamStop" });
     });
 
     printEpsonHelloBtn?.addEventListener('click', () => {
-        sendMessageToNative(createPrinterHelloRequest());
+        const request = createPrinterHelloRequest();
+        if (request) {
+            sendBridgeMessage(request);
+        }
     });
 
-    clearResultBtn.addEventListener('click', clearResultArea);
+    discoverPrintersBtn?.addEventListener('click', () => {
+        sendBridgeMessage(createPrinterDiscoverRequest());
+    });
+
+    printerSelect?.addEventListener('change', selectDiscoveredPrinter);
+
+    clearResultBtn.addEventListener('click', () => {
+        clearResultArea();
+        clearEventLog();
+    });
     removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
     photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
     cropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
@@ -99,16 +335,90 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createPrinterHelloRequest() {
-        const host = String(epsonPrinterHost?.value || "10.10.10.131").trim() || "10.10.10.131";
-        return {
-            action: "printerEpsonHelloWorld",
+        const selectedPrinter = currentSelectedPrinter();
+        const host = String(epsonPrinterHost?.value || "").trim();
+        if (!selectedPrinter && !host) {
+            displayError("Bitte zuerst Drucker suchen oder einen Epson-Druckerhost eingeben.");
+            return null;
+        }
+
+        const printer = selectedPrinter || {
+            id: `epson_epos_xml-${host}-80`,
+            kind: "epson_epos_xml",
+            label: "Epson ePOS-Print",
             host,
+            port: 80
+        };
+        return {
+            action: "printerHelloWorld",
+            printer,
+            kind: printer.kind || "epson_epos_xml",
+            host: printer.host || host,
+            port: printer.port || 80,
             devid: "local_printer",
             timeoutMs: 20000,
             title: "Hallo Welt",
             subtitle: "swiftHTMLWebviewApp",
             body: `JS Bridge Test ${new Date().toLocaleString()}`
         };
+    }
+
+    function createPrinterDiscoverRequest() {
+        return {
+            action: "printerDiscover",
+            timeoutMs: 700,
+            httpTimeoutMs: 1000,
+            concurrency: 96,
+            scanEpson: true,
+            scanEscpos: true
+        };
+    }
+
+    function createPermanentScanStartRequest() {
+        const mode = scannerModeSelect?.value === "login" ? "login" : "data";
+        return {
+            action: mode === "login" ? "loginScanStart" : "dataScanStart",
+            mode,
+            camera: scannerCameraSelect?.value === "front" ? "front" : "back",
+            repeatDelaySeconds: 1.2,
+            types: ["qr", "ean13", "ean8", "code128", "datamatrix"],
+            previewRect: createScannerPreviewRect()
+        };
+    }
+
+    function createScannerPreviewRect() {
+        return {
+            top: numericInputPercent(scannerTopInput, 18),
+            left: numericInputPercent(scannerLeftInput, 10),
+            width: numericInputPercent(scannerWidthInput, 80),
+            height: numericInputPercent(scannerHeightInput, 36)
+        };
+    }
+
+    function numericInputPercent(input, fallback) {
+        const raw = Number(input?.value);
+        const value = Number.isFinite(raw) ? raw : fallback;
+        return Math.max(0, Math.min(100, value)) / 100;
+    }
+
+    function numericInputValue(input, fallback) {
+        const raw = Number(input?.value);
+        return Number.isFinite(raw) ? raw : fallback;
+    }
+
+    function selectDiscoveredPrinter() {
+        const selected = currentSelectedPrinter();
+        if (selected?.host && epsonPrinterHost) {
+            epsonPrinterHost.value = selected.host;
+        }
+    }
+
+    function currentSelectedPrinter() {
+        const index = Number(printerSelect?.value);
+        if (!Number.isInteger(index) || index < 0) {
+            return null;
+        }
+        return discoveredPrinters[index] || null;
     }
 
     function updatePhotoOptionControls() {
@@ -128,34 +438,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Sendet eine Nachricht an die Swift Bridge
-    function sendMessageToNative(message) {
+    // Sendet eine Nachricht an die Native Bridge
+    function sendBridgeMessage(message) {
         if (window.webkit?.messageHandlers?.swiftBridge) {
-            console.log("Sending message to Native:", message);
+            logDebug("Sending native bridge message:", message);
             const isConfettiAction = message.action === "launchConfetti";
-            if (!isConfettiAction) {
+            const isCommandAction = commandActions.has(message.action);
+            if (!isConfettiAction && !isCommandAction) {
                 showLoadingStatus(`Aktion '${message.action}' wird ausgeführt...`);
                 clearResultArea(false); // Ergebnisbereich leeren, aber Placeholder nicht zeigen
             }
             window.webkit.messageHandlers.swiftBridge.postMessage(message);
         } else {
-            console.error("Native Bridge (window.webkit.messageHandlers.swiftBridge) ist nicht verfügbar.");
+            console.error("Native bridge (window.webkit.messageHandlers.swiftBridge) ist nicht verfügbar.");
             displayError("Fehler: Die Verbindung zur nativen App ist nicht verfügbar.");
         }
     }
 
-    // Globale Funktion, die von Swift aufgerufen wird
+    // Globale Funktion, die von Native aufgerufen wird
     window.handleNativeResult = function(result) {
-        console.log("Received result from Native:", result);
+        logDebug("Received native bridge result:", result);
+        if (liveEventActions.has(result.action)) {
+            appendLiveEvent(result);
+            return;
+        }
+
         if (result.action !== "launchConfetti") {
             hideLoadingStatus(); // Ladeanzeige ausblenden
         }
 
-        if (result.action !== "launchConfetti") {
+        if (result.action !== "launchConfetti" && !commandActions.has(result.action)) {
             clearResultArea(false); // Ergebnisbereich leeren
         }
 
-        if (result.error && result.action !== "printerEpsonHelloWorld") {
+        if (result.error
+            && result.action !== "printerEpsonHelloWorld"
+            && result.action !== "printerHelloWorld"
+            && result.action !== "printerDiscover"
+            && !commandActions.has(result.action)) {
             displayError(result.error);
             return;
         }
@@ -174,11 +494,41 @@ document.addEventListener('DOMContentLoaded', () => {
             case "scanBarcode":
                 displayBarcodeResult(result);
                 break;
+            case "screenshotGet":
+                displayScreenshotResult(result);
+                break;
             case "printerEpsonHelloWorld":
+            case "printerHelloWorld":
                 displayPrinterResult(result);
                 break;
+            case "printerDiscover":
+                displayPrinterDiscoveryResult(result);
+                break;
+            case "continuousScanStart":
+            case "continuousScanStop":
+            case "dataScanStart":
+            case "dataScanEnd":
+            case "loginScanStart":
+            case "loginScanEnd":
+            case "previewBoxLocationUpdate":
+            case "beaconsStart":
+            case "beaconsStop":
+            case "screenOrientationSet":
+            case "wifiConfigure":
+            case "geoLocationStart":
+            case "geoLocationStop":
+            case "soundPlay":
+            case "idleTimerStart":
+            case "idleTimerStop":
+            case "idleTimerReset":
+            case "sensorStreamStart":
+            case "sensorStreamStop":
+            case "screenStreamStart":
+            case "screenStreamStop":
+                displayCommandResult(result);
+                break;
             default:
-                console.warn("Received result for unknown action:", result.action);
+                logDebug("Received result for unknown action:", result.action);
                 displayFallbackResult(result);
         }
     };
@@ -250,6 +600,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function displayScreenshotResult(result) {
+        if (!result.imageData) {
+            displayFallbackResult(result);
+            return;
+        }
+
+        resultArea.appendChild(createResultHeader(`Screenshot (${result.width || "?"} × ${result.height || "?"})`));
+        const img = document.createElement('img');
+        img.src = result.imageData;
+        img.alt = 'Nativer Screenshot';
+        resultArea.appendChild(img);
+
+        const pre = document.createElement('pre');
+        const copy = { ...result, imageData: `<${String(result.imageData).length} Zeichen>` };
+        pre.textContent = JSON.stringify(copy, null, 2);
+        resultArea.appendChild(pre);
+    }
+
     function handleConfettiResult(result) {
         if (confettiBtn) {
             confettiBtn.textContent = confettiMoreLabel;
@@ -295,13 +663,81 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function displayCommandResult(result) {
+        resultArea.appendChild(createResultHeader("Bridge Kommando:"));
+
+        const message = document.createElement('p');
+        message.className = result.success ? 'success' : 'error';
+        message.textContent = result.success
+            ? `${result.action} OK`
+            : (result.error || `${result.action} fehlgeschlagen.`);
+        resultArea.appendChild(message);
+
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(result, null, 2);
+        resultArea.appendChild(pre);
+    }
+
+    function appendLiveEvent(result) {
+        if (!eventLog) {
+            return;
+        }
+        const muted = eventLog.querySelector('.muted');
+        if (muted) {
+            muted.remove();
+        }
+
+        const entry = document.createElement('div');
+        entry.className = 'event-entry';
+
+        const title = document.createElement('strong');
+        if (result.action === "beacons") {
+            title.textContent = `beacons: ${result.count ?? 0}`;
+        } else if (result.action === "idleTick" || result.action === "idleTimeout") {
+            title.textContent = `${result.action}: ${Number(result.idleSeconds || 0).toFixed(1)}s`;
+        } else if (result.action === "screenStreamStats") {
+            title.textContent = `screenStream: ${formatBytes(result.bytes || 0)} / ${result.frames || 0} Frames`;
+        } else if (result.action === "sensorData") {
+            const count = Array.isArray(result.sensors) ? result.sensors.length : 1;
+            title.textContent = `sensorData: ${count}`;
+        } else if (result.action === "geoLocation") {
+            const location = result.location || {};
+            title.textContent = `geoLocation: ${location.latitude ?? "?"}, ${location.longitude ?? "?"}`;
+        } else {
+            title.textContent = `${result.action}: ${result.format || ''} ${result.code || ''}`.trim();
+        }
+        entry.appendChild(title);
+
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(result, null, 2);
+        entry.appendChild(pre);
+
+        eventLog.prepend(entry);
+        while (eventLog.children.length > 20) {
+            eventLog.removeChild(eventLog.lastElementChild);
+        }
+    }
+
+    function formatBytes(bytes) {
+        const value = Number(bytes || 0);
+        if (value >= 1024 * 1024) {
+            return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(1)} KB`;
+        }
+        return `${value} B`;
+    }
+
     function displayPrinterResult(result) {
         resultArea.appendChild(createResultHeader("Druckauftrag:"));
 
         const message = document.createElement('p');
         message.className = result.success ? 'success' : 'error';
         if (result.success) {
-            message.textContent = `Gedruckt auf ${result.host || 'Drucker'} (${result.devid || 'local_printer'}).`;
+            const label = result.printerLabel || result.host || 'Drucker';
+            const mode = result.printerKind || result.kind || result.devid || 'local_printer';
+            message.textContent = `Gedruckt auf ${label} (${mode}).`;
         } else {
             message.textContent = result.error || result.message || "Druckauftrag fehlgeschlagen.";
         }
@@ -310,6 +746,82 @@ document.addEventListener('DOMContentLoaded', () => {
         const pre = document.createElement('pre');
         pre.textContent = JSON.stringify(result, null, 2);
         resultArea.appendChild(pre);
+    }
+
+    function displayPrinterDiscoveryResult(result) {
+        const printers = Array.isArray(result.printers) ? result.printers : [];
+        discoveredPrinters = printers;
+        populatePrinterSelect(printers);
+
+        resultArea.appendChild(createResultHeader("Druckersuche:"));
+
+        const message = document.createElement('p');
+        message.className = printers.length > 0 ? 'success' : 'error';
+        message.textContent = printers.length > 0
+            ? `${printers.length} Druckerziel(e) gefunden.`
+            : (result.message || result.error || "Keine Drucker gefunden.");
+        resultArea.appendChild(message);
+
+        if (printers.length > 0) {
+            const list = document.createElement('ul');
+            list.className = 'printer-list';
+            printers.forEach((printer) => {
+                const item = document.createElement('li');
+                item.textContent = printerDisplayName(printer);
+                list.appendChild(item);
+            });
+            resultArea.appendChild(list);
+        }
+
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(result, null, 2);
+        resultArea.appendChild(pre);
+    }
+
+    function populatePrinterSelect(printers) {
+        if (!printerSelect) {
+            return;
+        }
+
+        printerSelect.innerHTML = "";
+        if (printers.length === 0) {
+            const option = document.createElement('option');
+            option.value = "";
+            option.textContent = "Keine Drucker gefunden";
+            printerSelect.appendChild(option);
+            printerSelect.disabled = true;
+            return;
+        }
+
+        printers.forEach((printer, index) => {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = printerDisplayName(printer);
+            printerSelect.appendChild(option);
+        });
+        printerSelect.disabled = false;
+        printerSelect.selectedIndex = 0;
+        selectDiscoveredPrinter();
+    }
+
+    function printerDisplayName(printer) {
+        const kind = printerKindLabel(printer?.kind);
+        const target = printer?.local ? "lokal" : [printer?.host, printer?.port].filter(Boolean).join(":");
+        const confidence = printer?.confidence ? `, ${printer.confidence}` : "";
+        return `${printer?.label || kind} (${kind}${target ? `, ${target}` : ""}${confidence})`;
+    }
+
+    function printerKindLabel(kind) {
+        switch (kind) {
+            case "epson_epos_xml":
+                return "Epson XML";
+            case "escpos_raw":
+                return "ESC/POS";
+            case "sunmi_internal":
+                return "Sunmi intern";
+            default:
+                return kind || "Drucker";
+        }
     }
 
      function displayFallbackResult(result) {
@@ -327,6 +839,12 @@ document.addEventListener('DOMContentLoaded', () => {
         p.textContent = `Fehler: ${errorMessage}`;
         resultArea.appendChild(p);
         hideLoadingStatus(); // Sicherstellen, dass Ladeanzeige weg ist
+    }
+
+    function logDebug(...args) {
+        if (debugBridgeMessages) {
+            console.debug(...args);
+        }
     }
 
      function createResultHeader(text) {
@@ -348,6 +866,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (placeholderText) {
              placeholderText.style.display = 'none'; // Versteckt den Platzhalter
         }
+    }
+
+    function clearEventLog() {
+        if (!eventLog) {
+            return;
+        }
+        eventLog.innerHTML = '<p class="muted">Noch keine Scanner- oder Beacon-Events.</p>';
     }
 
     function showLoadingStatus(message) {
@@ -386,6 +911,10 @@ document.addEventListener('DOMContentLoaded', () => {
                  cropTransparentCheckbox.checked = false;
              }
          }
+
+         if (printerSelect) {
+             printerSelect.disabled = disabled || discoveredPrinters.length === 0;
+         }
      }
 
     if (confettiBtn) {
@@ -395,4 +924,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initiales Leeren beim Laden (optional, falls HTML schon leer ist)
     clearResultArea();
 
-}); // Ende DOMContentLoaded
+});

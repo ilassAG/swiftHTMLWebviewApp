@@ -14,26 +14,35 @@ import WebKit
 import Combine
 
 @MainActor
-class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate { // NSObject und WKNavigationDelegate hinzugefügt
+class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
     var webView: WKWebView
     @Published var isLoading: Bool = false
-    @Published var currentURLString: String? // @Published für UI-Updates, falls benötigt
+    @Published var currentURLString: String?
 
     private var internalLoadAttempts = 0
     private let maxLoadAttempts = 5
-    private var lastAttemptedURLString: String? // Um zu wissen, für welche URL wir Versuche zählen
-// Neue Eigenschaften für URL-Switch-Handling
-private var isSwitchingURL: Bool = false
-private var hasReloadedFromOrigin: Bool = false
+    private var lastAttemptedURLString: String?
+    private var isSwitchingURL: Bool = false
+    private var hasReloadedFromOrigin: Bool = false
+    private var loadCandidates: [String] = []
+    private var candidateIndex = 0
+    private var currentCandidateSignature = ""
+    private var failoverTimeoutWorkItem: DispatchWorkItem?
+    private var hasStartedInitialLoad = false
 
     override init() {
-        self.webView = WKWebView() // Temporäre Initialisierung, wird in setupWebView überschrieben
+        self.webView = WKWebView()
         super.init()
-        self.webView = createAndConfigureWebView() // Eigentliche Erstellung und Konfiguration
-        
-        // Initiales Laden der URL aus den AppSettings
-        self.currentURLString = AppSettings.shared.serverURL
-        attemptToLoad(urlToLoad: self.currentURLString)
+        self.webView = createAndConfigureWebView()
+    }
+
+    func loadConfiguredURLIfNeeded() {
+        guard !hasStartedInitialLoad else {
+            return
+        }
+
+        hasStartedInitialLoad = true
+        beginLoading(candidates: AppSettings.shared.serverURLCandidates())
     }
 
     private func createAndConfigureWebView() -> WKWebView {
@@ -48,97 +57,184 @@ private var hasReloadedFromOrigin: Bool = false
         return newWebView
     }
 
-    private func attemptToLoad(urlToLoad: String?, isRetry: Bool = false) {
-        guard let urlString = urlToLoad, let url = URL(string: urlString) else {
-            print(String(format: NSLocalizedString("error.url.invalid", comment: "Invalid URL string error format"), String(describing: urlToLoad)))
-            // Wenn die konfigurierte URL ungültig ist, sofort zur Default-URL wechseln
-            switchToDefaultURLAndLoad(reason: NSLocalizedString("error.url.invalid", comment: "Invalid configured URL reason for switching to default"))
+    private func beginLoading(candidates: [String]) {
+        cancelFailoverTimeout()
+        let normalizedCandidates = candidates.isEmpty ? [Configuration.localHTMLPathValue] : candidates
+        loadCandidates = normalizedCandidates
+        candidateIndex = 0
+        currentCandidateSignature = candidateSignature(normalizedCandidates)
+        internalLoadAttempts = 0
+        lastAttemptedURLString = nil
+        loadCandidate(at: candidateIndex)
+    }
+
+    private func loadCandidate(at index: Int) {
+        guard loadCandidates.indices.contains(index) else {
+            switchToDefaultURLAndLoad(reason: "No load candidate is available.")
             return
         }
 
-        // Wenn es kein Wiederholungsversuch für *dieselbe* URL ist, oder die URL sich geändert hat
-        if lastAttemptedURLString != urlString {
-            internalLoadAttempts = 0
-            lastAttemptedURLString = urlString
-            isSwitchingURL = true
-            hasReloadedFromOrigin = false
-        }
-        
-        if internalLoadAttempts >= maxLoadAttempts {
-            print(String(format: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max load attempts reached error format"), maxLoadAttempts, urlString))
-            switchToDefaultURLAndLoad(reason: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max load attempts reached reason for switching to default"))
+        let candidate = loadCandidates[index]
+        currentURLString = displayName(for: candidate)
+        internalLoadAttempts = 0
+        isSwitchingURL = true
+        hasReloadedFromOrigin = false
+
+        if Configuration.isLocalHTMLPath(candidate) {
+            loadLocalHTML()
             return
         }
 
+        guard let url = URL(string: candidate), url.scheme != nil else {
+            print(String(format: NSLocalizedString("error.url.invalid", comment: "Invalid URL string error format"), candidate))
+            loadNextCandidateOrDefault(reason: NSLocalizedString("error.url.invalid", comment: "Invalid configured URL reason for switching to default"))
+            return
+        }
+
+        lastAttemptedURLString = candidate
         print(String(format: NSLocalizedString("status.url.loadingAttempt", comment: "Attempting to load URL status format"), url.absoluteString, internalLoadAttempts + 1))
         isLoading = true
-        self.webView.stopLoading() // Vorheriges Laden stoppen
-        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
-        self.webView.load(request)
+        webView.stopLoading()
+        scheduleFailoverTimeout(for: candidate)
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: requestTimeoutInterval)
+        webView.load(request)
+    }
+
+    private func retryCurrentCandidate() {
+        guard let currentAttemptUrl = lastAttemptedURLString else {
+            loadNextCandidateOrDefault(reason: "No current URL is available for retry.")
+            return
+        }
+
+        guard let url = URL(string: currentAttemptUrl) else {
+            loadNextCandidateOrDefault(reason: NSLocalizedString("error.url.invalid", comment: "Invalid configured URL reason for switching to default"))
+            return
+        }
+
+        print("Retrying to load \(currentAttemptUrl)...")
+        isLoading = true
+        scheduleFailoverTimeout(for: currentAttemptUrl)
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: requestTimeoutInterval)
+        webView.load(request)
     }
 
     private func switchToDefaultURLAndLoad(reason: String) {
         print(String(format: NSLocalizedString("error.url.switchToDefault.reason", comment: "Switching to default URL reason format"), reason))
         AppSettings.shared.resetToDefaultURL()
-        let defaultUrlString = AppSettings.shared.serverURL
-        self.currentURLString = defaultUrlString // UI informieren
-        self.lastAttemptedURLString = defaultUrlString // Für nächste Versuche
-        self.internalLoadAttempts = 0 // Versuche für Default URL zurücksetzen
-        
-        if let defaultUrl = URL(string: defaultUrlString) {
-            print("Loading default URL: \(defaultUrl)")
-            let request = URLRequest(url: defaultUrl)
-            self.webView.load(request)
-        } else {
-            print(String(format: NSLocalizedString("error.url.defaultInvalid", comment: "Critical error: Default URL invalid format"), defaultUrlString))
-            isLoading = false
-            // Hier könnte man eine lokale Fehlerseite laden oder einen Alert anzeigen
-        }
+        beginLoading(candidates: [AppSettings.shared.serverURL])
     }
-    
 
     func reloadCurrentOrNewURL() {
-        let newUrlString = AppSettings.shared.serverURL
-
-        func normalizeUrl(_ url: String?) -> String? {
-            guard let url = url else { return nil }
-            return url.hasSuffix("/") ? String(url.dropLast()) : url
+        guard hasStartedInitialLoad else {
+            loadConfiguredURLIfNeeded()
+            return
         }
 
-        let normalizedNew = normalizeUrl(newUrlString)
-        let normalizedCurrentWebViewURL = normalizeUrl(webView.url?.absoluteString)
-        let normalizedCurrentStoreURL = normalizeUrl(self.currentURLString)
+        let newCandidates = AppSettings.shared.serverURLCandidates()
+        let newSignature = candidateSignature(newCandidates)
+        let newUrlString = newCandidates.first ?? AppSettings.shared.serverURL
 
-        // Prüfen, ob die URL in den Settings sich von der aktuell im Store hinterlegten URL unterscheidet
-        // ODER ob die aktuell in der WebView geladene URL nicht der in den Settings entspricht.
-        // Dies deckt den Fall ab, dass die App startet und die WebView noch keine URL hat,
-        // oder wenn ein Fehler aufgetreten ist und die WebView eine andere URL anzeigt.
-        if normalizedNew != normalizedCurrentStoreURL || normalizedNew != normalizedCurrentWebViewURL {
-            print("URL change detected or mismatch. New settings URL: \(String(describing: normalizedNew)), Current stored URL: \(String(describing: normalizedCurrentStoreURL)), Current WebView URL: \(String(describing: normalizedCurrentWebViewURL))")
-            
-            isLoading = true // Ladezustand sofort setzen
-            // WebView-Instanz neu erstellen und konfigurieren
-            self.webView = createAndConfigureWebView()
-            
-            self.currentURLString = newUrlString // UI und internen Zustand informieren
-            self.lastAttemptedURLString = newUrlString
-            self.internalLoadAttempts = 0
-            
-            // Kurze Verzögerung, um der UI Zeit zum Aktualisieren zu geben (insbesondere für die Ladeanimation)
-            // und um sicherzustellen, dass die neue webView-Instanz im View-System angekommen ist.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.attemptToLoad(urlToLoad: newUrlString)
+        if Configuration.isLocalHTMLPath(newUrlString) && newSignature == currentCandidateSignature {
+            let isCurrentLocal = Configuration.isLocalHTMLPath(webView.url?.absoluteString) || webView.url?.isFileURL == true
+            currentURLString = Configuration.localHTMLPathValue
+            if isCurrentLocal {
+                return
             }
+            loadLocalHTML()
+            return
+        }
+
+        if newSignature != currentCandidateSignature || webView.url == nil {
+            print("URL settings changed or no page is loaded. New candidates: \(newCandidates)")
+
+            isLoading = true
+            beginLoading(candidates: newCandidates)
         } else {
-            print("URL is the same and seems to be loaded: \(String(describing: normalizedNew))")
-            // Wenn die URL gleich ist und isLoading false ist, muss nichts getan werden.
-            // Wenn isLoading true ist, läuft bereits ein Ladevorgang.
-            if !isLoading {
-                 // Optional: Hier könnte man prüfen, ob die Seite wirklich geladen ist,
-                 // falls es Fälle gibt, wo isLoading fälschlicherweise false ist.
-                 // Fürs Erste belassen wir es dabei, um unnötige Ladevorgänge zu vermeiden.
-            }
+            print("URL settings are unchanged and a page is already loaded.")
         }
+    }
+
+    private func loadLocalHTML() {
+        guard let url = Configuration.localHTMLURL() else {
+            print(String(format: NSLocalizedString("error.webView.localHTMLNotFound", comment: "Local HTML file not found error format"), Configuration.localHTMLFileName))
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        currentURLString = Configuration.localHTMLPathValue
+        lastAttemptedURLString = url.absoluteString
+        webView.stopLoading()
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        print(String(format: NSLocalizedString("status.webView.loadingLocalHTML", comment: "Loading local HTML fallback status format"), url.absoluteString))
+    }
+
+    private func scheduleFailoverTimeout(for urlString: String) {
+        cancelFailoverTimeout()
+
+        guard AppSettings.shared.highAvailabilityEnabled, hasRemainingCandidates else {
+            return
+        }
+
+        let timeout = DispatchTimeInterval.seconds(max(AppSettings.shared.highAvailabilityTimeoutSeconds, 1))
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard self.isLoading, self.lastAttemptedURLString == urlString else { return }
+
+            print("High availability timeout reached for \(urlString). Trying next configured URL.")
+            self.loadNextCandidateOrDefault(reason: "High availability timeout reached.")
+        }
+
+        failoverTimeoutWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: workItem)
+    }
+
+    private func cancelFailoverTimeout() {
+        failoverTimeoutWorkItem?.cancel()
+        failoverTimeoutWorkItem = nil
+    }
+
+    private var hasRemainingCandidates: Bool {
+        AppSettings.shared.highAvailabilityEnabled && candidateIndex + 1 < loadCandidates.count
+    }
+
+    private func loadNextCandidateOrDefault(reason: String) {
+        cancelFailoverTimeout()
+
+        if hasRemainingCandidates {
+            candidateIndex += 1
+            loadCandidate(at: candidateIndex)
+            return
+        }
+
+        switchToDefaultURLAndLoad(reason: reason)
+    }
+
+    private func candidateSignature(_ candidates: [String]) -> String {
+        candidates.map { displayName(for: $0) }.joined(separator: "\u{1F}")
+    }
+
+    private func displayName(for urlString: String) -> String {
+        Configuration.isLocalHTMLPath(urlString) ? Configuration.localHTMLPathValue : urlString
+    }
+
+    private var requestTimeoutInterval: TimeInterval {
+        AppSettings.shared.highAvailabilityEnabled
+            ? TimeInterval(max(AppSettings.shared.highAvailabilityTimeoutSeconds, 1))
+            : 60
+    }
+
+    private func markFinishedLoad(for webView: WKWebView) {
+        isSwitchingURL = false
+        isLoading = false
+        internalLoadAttempts = 0
+
+        let activeURL = webView.url?.isFileURL == true
+            ? Configuration.localHTMLPathValue
+            : (webView.url?.absoluteString ?? currentURLString ?? AppSettings.shared.serverURL)
+
+        currentURLString = displayName(for: activeURL)
+        AppSettings.shared.markActiveServerURL(currentURLString ?? activeURL)
     }
 
     // MARK: - WKNavigationDelegate Methods
@@ -150,6 +246,7 @@ private var hasReloadedFromOrigin: Bool = false
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("WebView didFinish navigation for: \(String(describing: webView.url))")
+        cancelFailoverTimeout()
         if isSwitchingURL {
             webView.evaluateJavaScript("document.body.innerHTML") { [weak self] result, error in
                 guard let self = self else { return }
@@ -161,28 +258,20 @@ private var hasReloadedFromOrigin: Bool = false
                         self.webView.reloadFromOrigin()
                     } else {
                         print("Still blank after reloadFromOrigin, stopping loading animation.")
-                        self.isSwitchingURL = false
-                        self.isLoading = false
+                        self.markFinishedLoad(for: webView)
                     }
                 } else {
-                    self.isSwitchingURL = false
-                    self.isLoading = false
+                    self.markFinishedLoad(for: webView)
                 }
             }
-            // Fallback: Falls nach 3 Sekunden immer noch URL-Wechsel besteht, erzwinge einen Reload.
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
                 guard let self = self, self.isSwitchingURL else { return }
                 print("Fallback: still switching URL after 3 seconds, forcing reload")
                 self.webView.reload()
-                self.isSwitchingURL = false
-                self.isLoading = false
+                self.markFinishedLoad(for: webView)
             }
         } else {
-            self.isLoading = false
-            if webView.url?.absoluteString == self.lastAttemptedURLString {
-                self.internalLoadAttempts = 0
-                self.currentURLString = webView.url?.absoluteString
-            }
+            markFinishedLoad(for: webView)
         }
     }
 
@@ -198,24 +287,32 @@ private var hasReloadedFromOrigin: Bool = false
     }
 
     private func handleLoadError(error: Error, failedURL: String?) {
+        cancelFailoverTimeout()
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            print("Ignoring cancelled navigation for \(String(describing: failedURL)).")
+            return
+        }
+
         isLoading = false
-        
-        // Nur Wiederholungsversuche für die 'lastAttemptedURLString'
+
         guard let currentAttemptUrl = lastAttemptedURLString, failedURL == currentAttemptUrl else {
             print("Load error for a URL (\(String(describing: failedURL))) that is not the last one attempted (\(String(describing: lastAttemptedURLString))). Ignoring retry logic for this specific error.")
-            // Wenn die URL in den Settings geändert wurde, während ein Ladeversuch lief,
-            // könnte dieser Fall eintreten. `reloadCurrentOrNewURL` sollte das dann handhaben.
             return
         }
 
         internalLoadAttempts += 1
         print("Load attempt \(internalLoadAttempts) failed for \(currentAttemptUrl). Error: \(error.localizedDescription)")
 
+        if hasRemainingCandidates {
+            loadNextCandidateOrDefault(reason: error.localizedDescription)
+            return
+        }
+
         if internalLoadAttempts < maxLoadAttempts {
-            // Warte eine Sekunde und versuche es erneut
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                print("Retrying to load \(currentAttemptUrl)...")
-                self?.attemptToLoad(urlToLoad: currentAttemptUrl, isRetry: true)
+                self?.retryCurrentCandidate()
             }
         } else {
             print(String(format: NSLocalizedString("error.url.maxLoadAttemptsReached", comment: "Max retries reached for URL format"), currentAttemptUrl)) // Note: Using the same key as above but context is slightly different
@@ -236,7 +333,7 @@ private var hasReloadedFromOrigin: Bool = false
             appError = .internalError(error.localizedDescription)
         }
 
-        // Korrektur: ?? entfernt, da localizedDescription nicht optional ist.
+
         var errorDict: [String: Any] = ["error": appError.localizedDescription]
         if let action = action {
             errorDict["action"] = action
@@ -249,7 +346,7 @@ private var hasReloadedFromOrigin: Bool = false
               let jsonString = String(data: jsonData, encoding: .utf8) else {
             print(String(format: NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to serialize to JSON string error"), String(describing: data)))
 
-            // Korrektur: ?? entfernt, da localizedDescription nicht optional ist.
+
             let fallbackErrorMessage = AppError.internalError(NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to create JSON response fallback message")).localizedDescription
             let fallbackError: [String: Any] = ["error": fallbackErrorMessage]
 

@@ -20,8 +20,8 @@ func TestHelloWorldEposXmlEscapesText(t *testing.T) {
 }
 
 func TestEpsonServiceURLDefaults(t *testing.T) {
-	got := EpsonServiceURL("10.10.10.131", "", 0)
-	want := "http://10.10.10.131/cgi-bin/epos/service.cgi?devid=local_printer&timeout=20000"
+	got := EpsonServiceURL("192.0.2.10", "", 0)
+	want := "http://192.0.2.10/cgi-bin/epos/service.cgi?devid=local_printer&timeout=20000"
 	if got != want {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
@@ -45,5 +45,79 @@ func TestPrintResponseJSON(t *testing.T) {
 	}
 	if decoded["success"] != true {
 		t.Fatalf("expected success true, got %v", decoded["success"])
+	}
+}
+
+func TestPrintEpsonEposXmlRequiresHost(t *testing.T) {
+	raw := PrintEpsonEposXml("", "local_printer", 20000, HelloWorldEposXml("", "", ""))
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if decoded["success"] != false {
+		t.Fatalf("expected success false, got %v", decoded["success"])
+	}
+	if decoded["message"] != "printer host is required" {
+		t.Fatalf("unexpected message: %v", decoded["message"])
+	}
+}
+
+func TestLooksLikeEpsonService(t *testing.T) {
+	cases := []struct {
+		name string
+		code int
+		body string
+		want bool
+	}{
+		{name: "empty ok body", code: 200, body: "", want: true},
+		{name: "epson body", code: 200, body: "EPSON ePOS service.cgi", want: true},
+		{name: "non epson body", code: 200, body: "plain web server", want: false},
+		{name: "wrong status", code: 404, body: "EPSON", want: false},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got := looksLikeEpsonService(test.code, test.body)
+			if got != test.want {
+				t.Fatalf("expected %v, got %v", test.want, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeHosts(t *testing.T) {
+	got := normalizeHosts([]string{
+		"192.0.2.10, http://192.0.2.11/cgi-bin/epos/service.cgi",
+		"192.0.2.10:9100",
+		"[2001:db8::10]:9100",
+	})
+	want := []string{"192.0.2.10", "192.0.2.11", "2001:db8::10"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
+func TestBuildTargetsFromCIDR(t *testing.T) {
+	got, err := buildTargetsFromCIDR("192.0.2.0/30")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"192.0.2.1", "192.0.2.2"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
+func TestDiscoverPrintersWithoutEnabledScans(t *testing.T) {
+	raw := DiscoverPrinters(`{"hosts":["192.0.2.10"],"scanEpson":false,"scanEscpos":false}`)
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if decoded["success"] != true {
+		t.Fatalf("expected success true, got %v", decoded["success"])
+	}
+	if decoded["message"] != "No printer scan types were enabled." {
+		t.Fatalf("unexpected message: %v", decoded["message"])
 	}
 }

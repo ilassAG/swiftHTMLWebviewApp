@@ -6,6 +6,10 @@ android {
     namespace 'com.ilass.swifthtmlwebviewapp'
     compileSdk 35
 
+    buildFeatures {
+        aidl true
+    }
+
     defaultConfig {
         applicationId 'com.ilass.swifthtmlwebviewapp'
         minSdk 23
@@ -16,8 +20,20 @@ android {
 }
 
 dependencies {
-    implementation files('libs/printercore.aar')
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.camera:camera-core:1.4.1'
+    implementation 'androidx.camera:camera-camera2:1.4.1'
+    implementation 'androidx.camera:camera-lifecycle:1.4.1'
+    implementation 'androidx.camera:camera-view:1.4.1'
+    implementation 'com.google.mlkit:barcode-scanning:17.3.0'
     implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'
     implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+    implementation 'org.altbeacon:android-beacon-library:2.20.7'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    def printercoreAar = file('libs/printercore.aar')
+    if (printercoreAar.exists()) {
+        implementation files(printercoreAar)
+    }
 }

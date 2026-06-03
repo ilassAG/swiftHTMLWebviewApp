@@ -11,6 +11,8 @@ import SwiftUI
 
 @main
 struct swiftHTMLWebviewAppApp: App { // Adjusted struct name
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         AppSettings.shared.registerDefaults()
     }

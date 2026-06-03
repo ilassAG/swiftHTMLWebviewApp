@@ -6,7 +6,7 @@
     <!-- Wichtig für korrekte Skalierung und Verhinderung von Zoom auf iOS -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Native Bridge Demo</title>
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=11">
     <!-- Verhindert das "Springen" beim Antippen von Elementen -->
     <style>
         * { -webkit-tap-highlight-color: transparent; }
@@ -43,16 +43,89 @@
             </div>
             <div class="printer-options">
                 <label for="epsonPrinterHost">Epson Drucker</label>
-                <input type="text" id="epsonPrinterHost" value="10.10.10.131" inputmode="decimal">
+                <input type="text" id="epsonPrinterHost" placeholder="192.0.2.10" inputmode="decimal">
             </div>
-            <button id="printEpsonHelloBtn">Epson Hallo Welt drucken</button>
+            <div class="printer-options">
+                <label for="printerSelect">Gefunden</label>
+                <select id="printerSelect" disabled>
+                    <option value="">Noch nicht gesucht</option>
+                </select>
+            </div>
+            <button id="discoverPrintersBtn">Drucker suchen</button>
+            <button id="printEpsonHelloBtn">Hallo Welt drucken</button>
             <button id="confettiBtn">Konfetti!</button>
             <button id="scanBarcodeBtn">QR/EAN Scannen</button>
+            <div class="bridge-options">
+                <label for="scannerModeSelect">Permanent Scan</label>
+                <select id="scannerModeSelect">
+                    <option value="data">Daten</option>
+                    <option value="login">Login</option>
+                </select>
+                <select id="scannerCameraSelect">
+                    <option value="back">Rückkamera</option>
+                    <option value="front">Frontkamera</option>
+                </select>
+                <input type="number" id="scannerTopInput" value="18" min="0" max="90" step="1" aria-label="Scanner top percent">
+                <input type="number" id="scannerLeftInput" value="10" min="0" max="90" step="1" aria-label="Scanner left percent">
+                <input type="number" id="scannerWidthInput" value="80" min="10" max="100" step="1" aria-label="Scanner width percent">
+                <input type="number" id="scannerHeightInput" value="36" min="10" max="100" step="1" aria-label="Scanner height percent">
+            </div>
+            <button id="permanentScanStartBtn">Permanent Scan starten</button>
+            <button id="permanentScanUpdateBtn">Scan-Fenster setzen</button>
+            <button id="permanentScanStopBtn">Permanent Scan stoppen</button>
+            <div class="bridge-options">
+                <label for="beaconUuidInput">iBeacon UUID</label>
+                <input type="text" id="beaconUuidInput" placeholder="leer = Native Settings">
+            </div>
+            <button id="beaconsStartBtn">Beacons starten</button>
+            <button id="beaconsStopBtn">Beacons stoppen</button>
+            <div class="bridge-options">
+                <label for="orientationSelect">Rotation</label>
+                <select id="orientationSelect">
+                    <option value="unlocked">Auto</option>
+                    <option value="portrait">Portrait</option>
+                    <option value="landscape">Landscape</option>
+                    <option value="locked">Aktuell sperren</option>
+                </select>
+                <button id="orientationSetBtn" type="button">Rotation setzen</button>
+            </div>
+            <div class="bridge-options">
+                <label for="wifiSsidInput">WLAN</label>
+                <input type="text" id="wifiSsidInput" placeholder="SSID">
+                <input type="password" id="wifiPasswordInput" placeholder="Passwort (leer für offenes WLAN)">
+            </div>
+            <button id="wifiConfigureBtn">Mit WLAN verbinden</button>
+            <button id="deviceInfoBtn">Geräteinfos abrufen</button>
+            <button id="wifiStatusBtn">WLAN Status</button>
+            <button id="screenshotBtn">Screenshot holen</button>
+            <button id="geoGetBtn">Standort holen</button>
+            <button id="geoStartBtn">Standort live starten</button>
+            <button id="geoStopBtn">Standort live stoppen</button>
+            <button id="soundPlayBtn">Ton ausgeben</button>
+            <div class="bridge-options">
+                <label for="idleTimeoutInput">Idle</label>
+                <input type="number" id="idleTimeoutInput" value="30" min="1" max="3600" step="1" aria-label="Idle timeout seconds">
+                <input type="number" id="idleIntervalInput" value="1" min="0.25" max="60" step="0.25" aria-label="Idle interval seconds">
+            </div>
+            <button id="idleStartBtn">Idle Timer starten</button>
+            <button id="idleResetBtn">Idle Timer reset</button>
+            <button id="idleStopBtn">Idle Timer stoppen</button>
+            <button id="sensorCapabilitiesBtn">Sensoren anzeigen</button>
+            <button id="sensorStartBtn">Sensoren live starten</button>
+            <button id="sensorStopBtn">Sensoren live stoppen</button>
+            <div class="bridge-options">
+                <label for="screenStreamTargetInput">Screenstream</label>
+                <input type="text" id="screenStreamTargetInput" placeholder="ws://192.0.2.10:18090/screen">
+                <input type="number" id="screenStreamFpsInput" value="2" min="1" max="10" step="1" aria-label="Screenstream fps">
+                <input type="number" id="screenStreamWidthInput" value="720" min="240" max="1920" step="10" aria-label="Screenstream max width">
+            </div>
+            <button id="screenStreamStartBtn">Screenstream starten</button>
+            <button id="screenStreamStopBtn">Screenstream stoppen</button>
             <button id="clearResultBtn">Ergebnis löschen</button>
         </div>
 
         <div class="results">
-            <h2>V8 Ergebnis:</h2>
+            <h2>Ergebnis:</h2>
             <div id="statusArea" class="status loading" style="display: none;">
                 <p>Aktion wird ausgeführt...</p>
                 <div class="spinner"></div>
@@ -61,9 +134,13 @@
                 <p id="placeholderText">Noch keine Aktion ausgeführt.</p>
                 <!-- Hier werden Ergebnisse dynamisch eingefügt -->
             </div>
+            <h2>Live Events:</h2>
+            <div id="eventLog" class="event-log">
+                <p class="muted">Noch keine Scanner- oder Beacon-Events.</p>
+            </div>
         </div>
     </div>
 
-    <script src="script.js?v=8"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ import SwiftUI
 import UIKit
 
 struct ImagePickerView: UIViewControllerRepresentable {
-    // Korrektur: isPresented Binding wird beim Aufruf übergeben
+
     @Binding var isPresented: Bool
     var cameraDevice: UIImagePickerController.CameraDevice
     var completion: (Result<UIImage, AppError>) -> Void
@@ -52,7 +52,7 @@ struct ImagePickerView: UIViewControllerRepresentable {
     }
 
     // MARK: - Coordinator
-    // Korrektur: Markierung als @MainActor
+
     @MainActor
     class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         var parent: ImagePickerView

@@ -18,6 +18,7 @@ import (
 const Version = "0.1.0"
 
 const eposNamespace = "http://www.epson-pos.com/schemas/2011/03/epos-print"
+const examplePrinterHost = "192.0.2.10"
 
 type printResponse struct {
 	Success      bool   `json:"success"`
@@ -98,7 +99,7 @@ func EpsonSoapEnvelope(eposXml string) string {
 func EpsonServiceURL(host string, devid string, timeoutMs int) string {
 	host = strings.TrimSpace(host)
 	if host == "" {
-		host = "10.10.10.131"
+		host = examplePrinterHost
 	}
 	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
 		host = "http://" + host
@@ -128,6 +129,10 @@ func PrintEpsonHelloWorld(host string, devid string, timeoutMs int, title string
 // PrintEpsonEposXml sends an ePOS XML document or fragment to an Epson printer
 // and returns a JSON response string.
 func PrintEpsonEposXml(host string, devid string, timeoutMs int, eposXml string) string {
+	if strings.TrimSpace(host) == "" {
+		return responseJSON(printResponse{Success: false, Message: "printer host is required"})
+	}
+
 	endpoint := EpsonServiceURL(host, devid, timeoutMs)
 	soap := EpsonSoapEnvelope(eposXml)
 	client := http.Client{Timeout: timeoutFromMillis(timeoutMs)}

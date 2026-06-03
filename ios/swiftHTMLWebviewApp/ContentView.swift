@@ -7,10 +7,10 @@
 //
 
 import SwiftUI
-@preconcurrency import WebKit // Korrektur: @preconcurrency
+@preconcurrency import WebKit
 import VisionKit
 import PDFKit
-import Vision // <--- Hinzugefügt für BarcodeUtils/TextRecognizer
+import Vision
 
 private struct TapToPayTransitionState {
     var isVisible = false
@@ -67,23 +67,35 @@ private struct TapToPayTransitionOverlay: View {
     }
 }
 
-// Korrektur: ContentView als @MainActor markieren
 @MainActor
 struct ContentView: View {
-    // Korrektur: Stelle sicher, dass Store @MainActor ist
     @StateObject var webViewStore = WebViewStore()
     @StateObject private var tapToPayBridge = TapToPayBridge()
     @StateObject private var printerBridge = PrinterBridge()
-    @Environment(\.scenePhase) private var scenePhase // Für App Lifecycle Events
+    @StateObject private var beaconBridge = BeaconBridge()
+    @StateObject private var deviceBridge = DeviceBridge()
+    @StateObject private var idleTimerBridge = IdleTimerBridge()
+    @StateObject private var locationBridge = LocationBridge()
+    @StateObject private var screenStreamBridge = ScreenStreamBridge()
+    @StateObject private var sensorBridge = SensorBridge()
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showDocumentScanner = false
     @State private var showImagePicker = false
     @State private var showBarcodeScanner = false
     @State private var currentRequest: [String: Any]? = nil
     @State private var tapToPayTransition = TapToPayTransitionState()
+    @State private var continuousScannerConfig: ContinuousBarcodeScannerConfig?
 
     var body: some View {
         ZStack {
+            // Keep the WKWebView in the hierarchy while loading. If the loader
+            // replaces it, local file loads can never finish and clear isLoading.
+            WebView(webViewStore: webViewStore, onScriptMessage: handleScriptMessage)
+                .ignoresSafeArea()
+
+            continuousScannerOverlay
+
             if webViewStore.isLoading {
                 VStack(spacing: 20) {
                     Spacer()
@@ -105,10 +117,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.white)
                 .ignoresSafeArea()
-            } else {
-                // Korrektur: Stelle sicher, dass webViewStore an WebView übergeben wird
-                WebView(webViewStore: webViewStore, onScriptMessage: handleScriptMessage)
-                    .ignoresSafeArea()
             }
 
             if tapToPayTransition.isVisible {
@@ -117,52 +125,56 @@ struct ContentView: View {
                     .zIndex(100)
             }
         }
-        .onChange(of: scenePhase) { newPhase, oldPhase in // scenePhase direkt verwenden
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 print("App became active. Checking for URL updates.")
                 webViewStore.reloadCurrentOrNewURL()
             }
         }
+        .onDisappear {
+            idleTimerBridge.shutdown()
+            locationBridge.shutdown()
+            screenStreamBridge.shutdown()
+            sensorBridge.shutdown()
+        }
         .sheet(isPresented: $showDocumentScanner, onDismiss: handleSheetDismiss) {
-                // Korrektur: Binding übergeben
-                DocumentScannerView(isPresented: $showDocumentScanner) { result in
-                    handleDocumentScanResult(result)
-                }
+            DocumentScannerView(isPresented: $showDocumentScanner) { result in
+                handleDocumentScanResult(result)
             }
-            .sheet(isPresented: $showImagePicker, onDismiss: handleSheetDismiss) {
-                let requestedCamera = currentRequest?["camera"] as? String
-                let cameraDevice: UIImagePickerController.CameraDevice = (requestedCamera == "front") ? .front : .rear
-                // Korrektur: Binding übergeben
-                ImagePickerView(isPresented: $showImagePicker, cameraDevice: cameraDevice) { result in
-                    handleImagePickerResult(result)
-                }
+        }
+        .sheet(isPresented: $showImagePicker, onDismiss: handleSheetDismiss) {
+            let requestedCamera = currentRequest?["camera"] as? String
+            let cameraDevice: UIImagePickerController.CameraDevice = (requestedCamera == "front") ? .front : .rear
+
+            ImagePickerView(isPresented: $showImagePicker, cameraDevice: cameraDevice) { result in
+                handleImagePickerResult(result)
             }
-            .sheet(isPresented: $showBarcodeScanner, onDismiss: handleSheetDismiss) {
-                if BarcodeScannerView.isSupported {
-                    let requestedTypes = currentRequest?["types"] as? [String]
-                    let scanTypes = BarcodeUtils.mapStringToDataTypes(requestedTypes)
-                    // Korrektur: Binding übergeben
-                    BarcodeScannerView(isPresented: $showBarcodeScanner, recognizedDataTypes: scanTypes) { result in
-                         handleBarcodeScanResult(result)
+        }
+        .sheet(isPresented: $showBarcodeScanner, onDismiss: handleSheetDismiss) {
+            if BarcodeScannerView.isSupported {
+                let requestedTypes = currentRequest?["types"] as? [String]
+                let scanTypes = BarcodeUtils.mapStringToDataTypes(requestedTypes)
+
+                BarcodeScannerView(isPresented: $showBarcodeScanner, recognizedDataTypes: scanTypes) { result in
+                    handleBarcodeScanResult(result)
+                }
+            } else {
+                Text(NSLocalizedString("error.barcodeScannerNotSupported.message", comment: "Barcode scanner not supported message"))
+                    .padding()
+                    .onAppear {
+                        let action = currentRequest?["action"] as? String
+                        webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
+                        showBarcodeScanner = false
                     }
-                } else {
-                     Text(NSLocalizedString("error.barcodeScannerNotSupported.message", comment: "Barcode scanner not supported message"))
-                         .padding()
-                         .onAppear {
-                             let action = currentRequest?["action"] as? String
-                             // Korrektur: AppError Instanz übergeben
-                             webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
-                             showBarcodeScanner = false
-                         }
-                 }
             }
+        }
     }
 
     // MARK: - JavaScript Message Handling
     private func handleScriptMessage(_ message: [String: Any]) {
         guard let action = message["action"] as? String else {
             print("Error: Received message from JS without 'action' key.")
-            // Korrektur: AppError Instanz übergeben
+
             webViewStore.sendErrorToWebView(action: nil, error: AppError.invalidRequest(NSLocalizedString("error.invalidRequest.missingAction", comment: "Missing action parameter error")))
             return
         }
@@ -177,7 +189,7 @@ struct ContentView: View {
         case "takePhoto":
              guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
                  print("Error: Camera not available.")
-                 // Korrektur: AppError Instanz übergeben
+
                  webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera")))
                  currentRequest = nil
                  return
@@ -187,7 +199,7 @@ struct ContentView: View {
         case "scanBarcode":
             guard BarcodeScannerView.isSupported else {
                  print("Error: DataScanner is not supported on this device.")
-                 // Korrektur: AppError Instanz übergeben
+
                  webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
                  currentRequest = nil
                  return
@@ -228,18 +240,332 @@ struct ContentView: View {
                 }
             }
 
+        case "deviceInfoGet":
+            webViewStore.sendResultToWebView(result: deviceBridge.deviceInfo(request: message))
+            currentRequest = nil
+
+        case "screenOrientationGet":
+            webViewStore.sendResultToWebView(result: OrientationController.shared.statusPayload(request: message))
+            currentRequest = nil
+
+        case "screenOrientationSet":
+            let mode = stringValue(message["mode"]).isEmpty ? stringValue(message["orientation"]) : stringValue(message["mode"])
+            var response = OrientationController.shared.setMode(mode.isEmpty ? "unlocked" : mode)
+            if let requestId = message["requestId"] {
+                response["requestId"] = requestId
+            }
+            webViewStore.sendResultToWebView(result: response)
+            currentRequest = nil
+
+        case "wifiStatusGet":
+            currentRequest = nil
+            deviceBridge.wifiStatus(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "wifiConfigure":
+            currentRequest = nil
+            deviceBridge.configureWifi(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "screenshotGet":
+            currentRequest = nil
+            deviceBridge.screenshot(request: message, webView: webViewStore.webView) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "geoLocationGet":
+            currentRequest = nil
+            locationBridge.get(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "geoLocationStart":
+            webViewStore.sendResultToWebView(result: locationBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "geoLocationStop":
+            webViewStore.sendResultToWebView(result: locationBridge.stop(request: message))
+            currentRequest = nil
+
+        case "soundPlay":
+            webViewStore.sendResultToWebView(result: deviceBridge.playSound(request: message))
+            currentRequest = nil
+
+        case "idleTimerStart":
+            webViewStore.sendResultToWebView(result: idleTimerBridge.start(request: message, webView: webViewStore.webView) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "idleTimerStop":
+            webViewStore.sendResultToWebView(result: idleTimerBridge.stop(request: message))
+            currentRequest = nil
+
+        case "idleTimerReset":
+            webViewStore.sendResultToWebView(result: idleTimerBridge.reset(request: message))
+            currentRequest = nil
+
+        case "idleActivity":
+            idleTimerBridge.recordActivity()
+            currentRequest = nil
+
+        case "screenStreamStart":
+            webViewStore.sendResultToWebView(result: screenStreamBridge.start(request: message, webView: webViewStore.webView) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "screenStreamStop":
+            webViewStore.sendResultToWebView(result: screenStreamBridge.stop(request: message))
+            currentRequest = nil
+
+        case "sensorCapabilitiesGet":
+            webViewStore.sendResultToWebView(result: sensorBridge.capabilities(request: message))
+            currentRequest = nil
+
+        case "sensorStreamStart":
+            webViewStore.sendResultToWebView(result: sensorBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "sensorStreamStop":
+            webViewStore.sendResultToWebView(result: sensorBridge.stop(request: message))
+            currentRequest = nil
+
+        case "continuousScanStart", "dataScanStart", "loginScanStart":
+            startContinuousScanner(action: action, request: message)
+
+        case "continuousScanStop", "dataScanEnd", "loginScanEnd":
+            stopContinuousScanner(action: action, request: message)
+
+        case "previewBoxLocationUpdate":
+            updateContinuousScannerPreviewRect(action: action, request: message)
+
+        case "beaconsStart":
+            let response = beaconBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+            webViewStore.sendResultToWebView(result: response)
+            currentRequest = nil
+
+        case "beaconsStop":
+            webViewStore.sendResultToWebView(result: beaconBridge.stop(request: message))
+            currentRequest = nil
+
         case "printerEpsonHelloWorld":
             currentRequest = nil
             printerBridge.printEpsonHelloWorld(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
 
+        case "printerHelloWorld":
+            currentRequest = nil
+            printerBridge.printHelloWorld(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "printerDiscover":
+            currentRequest = nil
+            printerBridge.discoverPrinters(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
         default:
             print("Error: Received unknown action from JS: \(action)")
-            // Korrektur: AppError Instanz übergeben
+
             webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)))
             currentRequest = nil
         }
+    }
+
+    private var continuousScannerOverlay: some View {
+        GeometryReader { proxy in
+            if let config = continuousScannerConfig {
+                let frame = scannerFrame(for: config.previewRect, in: proxy.size)
+                ZStack(alignment: .topTrailing) {
+                    ContinuousBarcodeScannerView(
+                        config: config,
+                        onResult: { result in
+                            webViewStore.sendResultToWebView(result: result)
+                        },
+                        onError: { message in
+                            webViewStore.sendResultToWebView(result: [
+                                "platform": "ios",
+                                "action": "continuousScanStart",
+                                "success": false,
+                                "error": message
+                            ])
+                            continuousScannerConfig = nil
+                        }
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(.yellow, lineWidth: 2)
+                    )
+
+                    Button {
+                        stopContinuousScanner(action: "continuousScanStop", request: ["action": "continuousScanStop"])
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .shadow(radius: 3)
+                            .padding(6)
+                    }
+                    .accessibilityLabel("Stop scanner")
+                }
+                .frame(width: frame.width, height: frame.height)
+                .position(x: frame.midX, y: frame.midY)
+                .zIndex(40)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func startContinuousScanner(action: String, request: [String: Any]) {
+        var config = continuousScannerConfig ?? ContinuousBarcodeScannerConfig()
+        config.action = action
+        config.mode = scannerMode(for: action, request: request)
+        config.camera = scannerCamera(for: action, request: request)
+        config.types = request["types"] as? [String] ?? config.types
+        config.repeatDelaySeconds = numericValue(request["repeatDelaySeconds"])
+            ?? numericValue(request["repeatDelay"])
+            ?? config.repeatDelaySeconds
+        config.previewRect = previewRect(from: request["previewRect"] as? [String: Any]) ?? config.previewRect
+        continuousScannerConfig = config
+
+        webViewStore.sendResultToWebView(result: [
+            "platform": "ios",
+            "action": action,
+            "success": true,
+            "mode": config.mode,
+            "camera": config.camera,
+            "types": config.types,
+            "repeatDelaySeconds": config.repeatDelaySeconds,
+            "previewRect": previewRectPayload(config.previewRect)
+        ])
+        currentRequest = nil
+    }
+
+    private func stopContinuousScanner(action: String, request: [String: Any]) {
+        continuousScannerConfig = nil
+        var response: [String: Any] = [
+            "platform": "ios",
+            "action": action,
+            "success": true
+        ]
+        if let requestId = request["requestId"] {
+            response["requestId"] = requestId
+        }
+        webViewStore.sendResultToWebView(result: response)
+        currentRequest = nil
+    }
+
+    private func updateContinuousScannerPreviewRect(action: String, request: [String: Any]) {
+        guard var config = continuousScannerConfig else {
+            webViewStore.sendResultToWebView(result: [
+                "platform": "ios",
+                "action": action,
+                "success": false,
+                "error": "No continuous scanner is running."
+            ])
+            currentRequest = nil
+            return
+        }
+
+        guard let previewRect = previewRect(from: request["previewRect"] as? [String: Any]) else {
+            webViewStore.sendResultToWebView(result: [
+                "platform": "ios",
+                "action": action,
+                "success": false,
+                "error": "Invalid previewRect."
+            ])
+            currentRequest = nil
+            return
+        }
+
+        config.previewRect = previewRect
+        continuousScannerConfig = config
+        webViewStore.sendResultToWebView(result: [
+            "platform": "ios",
+            "action": action,
+            "success": true,
+            "previewRect": previewRectPayload(previewRect)
+        ])
+        currentRequest = nil
+    }
+
+    private func scannerMode(for action: String, request: [String: Any]) -> String {
+        if let mode = request["mode"] as? String, !mode.isEmpty {
+            return mode
+        }
+        return action == "loginScanStart" ? "login" : "data"
+    }
+
+    private func scannerCamera(for action: String, request: [String: Any]) -> String {
+        if let camera = request["camera"] as? String, camera == "front" || camera == "back" {
+            return camera
+        }
+        return action == "loginScanStart" ? "front" : "back"
+    }
+
+    private func previewRect(from value: [String: Any]?) -> CGRect? {
+        guard let value,
+              let left = normalizedRectValue(value["left"] ?? value["x"]),
+              let top = normalizedRectValue(value["top"] ?? value["y"]),
+              let width = normalizedRectValue(value["width"]),
+              let height = normalizedRectValue(value["height"]) else {
+            return nil
+        }
+
+        let safeWidth = min(max(width, 0.1), 1)
+        let safeHeight = min(max(height, 0.1), 1)
+        let safeLeft = min(max(left, 0), 1 - safeWidth)
+        let safeTop = min(max(top, 0), 1 - safeHeight)
+        return CGRect(x: safeLeft, y: safeTop, width: safeWidth, height: safeHeight)
+    }
+
+    private func normalizedRectValue(_ value: Any?) -> CGFloat? {
+        guard let rawValue = numericValue(value) else { return nil }
+        let normalized = rawValue > 1 ? rawValue / 100 : rawValue
+        return CGFloat(normalized)
+    }
+
+    private func numericValue(_ value: Any?) -> Double? {
+        switch value {
+        case let doubleValue as Double:
+            return doubleValue
+        case let intValue as Int:
+            return Double(intValue)
+        case let numberValue as NSNumber:
+            return numberValue.doubleValue
+        case let stringValue as String:
+            return Double(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    private func previewRectPayload(_ rect: CGRect) -> [String: Double] {
+        [
+            "left": Double(rect.minX),
+            "top": Double(rect.minY),
+            "width": Double(rect.width),
+            "height": Double(rect.height)
+        ]
+    }
+
+    private func scannerFrame(for rect: CGRect, in size: CGSize) -> CGRect {
+        let width = max(size.width * rect.width, 120)
+        let height = max(size.height * rect.height, 120)
+        let x = min(max(size.width * rect.minX, 0), max(size.width - width, 0))
+        let y = min(max(size.height * rect.minY, 0), max(size.height - height, 0))
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     private func showTapToPayTransition(_ phase: TapToPayBridge.Phase) {
@@ -289,7 +615,7 @@ struct ContentView: View {
             }
             guard !images.isEmpty else {
                 print("Error: Document scan returned success but no images.")
-                 // Korrektur: AppError Instanz übergeben
+
                 webViewStore.sendErrorToWebView(action: action, error: AppError.internalError(NSLocalizedString("error.internalError.noImagesFromScanner", comment: "No images from scanner error")))
                 currentRequest = nil // Reset nicht vergessen
                 return
@@ -333,7 +659,7 @@ struct ContentView: View {
                 response["pdfData"] = pdfDataURL
                 response["format"] = "pdf"
             } else {
-                 // Korrektur: AppError Instanz übergeben
+
                 webViewStore.sendErrorToWebView(action: action, error: AppError.pdfCreationFailed)
                 return
             }
@@ -342,10 +668,10 @@ struct ContentView: View {
              let imageDataURLs = ImageConverter.convertImagesToDataURLs(images: images, format: imageFormat)
              if !imageDataURLs.isEmpty {
                  response["images"] = imageDataURLs
-                  // Korrektur: Überprüfe den Enum-Wert für den Format-String
+
                  response["format"] = (imageFormat == .png) ? "png" : "jpeg"
              } else {
-                 // Korrektur: AppError Instanz übergeben
+
                  webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed(NSLocalizedString("error.imageConversionFailed.noImagesConverted", comment: "No images could be converted error")))
                  return
              }
@@ -489,7 +815,7 @@ struct ContentView: View {
         // Wenn currentRequest noch gesetzt ist, wurde kein Ergebnis/Fehler vom Coordinator gemeldet.
         if let request = currentRequest, let action = request["action"] as? String {
              print(String(format: NSLocalizedString("warning.sheetDismissed.requestActive", comment: "Sheet dismissed while request active warning format"), action))
-             // Korrektur: AppError Instanz übergeben
+
              webViewStore.sendErrorToWebView(action: action, error: AppError.userCancelled)
              currentRequest = nil
         }
@@ -498,6 +824,6 @@ struct ContentView: View {
 
 // MARK: - Preview
 #Preview {
-    // Korrektur: Preview benötigt einen StateObject
+
     ContentView()
 }

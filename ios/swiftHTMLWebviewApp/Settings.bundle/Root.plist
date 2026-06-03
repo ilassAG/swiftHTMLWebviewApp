@@ -7,13 +7,19 @@
     <array>
         <dict>
             <key>Type</key>
+            <string>PSGroupSpecifier</string>
+            <key>Title</key>
+            <string>Web App</string>
+        </dict>
+        <dict>
+            <key>Type</key>
             <string>PSTextFieldSpecifier</string>
             <key>Title</key>
-            <string>Server URL</string>
+            <string>Primary URL</string>
             <key>Key</key>
             <string>server_url_preference</string>
             <key>DefaultValue</key>
-            <string>https://apps.ilass.com/swiftHTMLWebviewDemo/</string>
+            <string>local</string>
             <key>IsSecure</key>
             <false/>
             <key>KeyboardType</key>
@@ -31,13 +37,129 @@
             <key>Key</key>
             <string>security_token_preference</string>
             <key>DefaultValue</key>
-            <string>CHANGEmeASAP!</string>
+            <string>change-me-before-production</string>
             <key>IsSecure</key>
             <true/>
             <key>KeyboardType</key>
             <string>Alphabet</string>
             <key>AutocapitalizationType</key>
             <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSGroupSpecifier</string>
+            <key>Title</key>
+            <string>High Availability</string>
+            <key>FooterText</key>
+            <string>When enabled, the wrapper tries the primary URL first and then URL 2, URL 3, and URL 4 after the configured timeout.</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSToggleSwitchSpecifier</string>
+            <key>Title</key>
+            <string>Enable Failover</string>
+            <key>Key</key>
+            <string>ha_enabled</string>
+            <key>DefaultValue</key>
+            <false/>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Timeout Seconds</string>
+            <key>Key</key>
+            <string>ha_timeout</string>
+            <key>DefaultValue</key>
+            <integer>5</integer>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>NumberPad</string>
+            <key>AutocapitalizationType</key>
+            <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>URL 2</string>
+            <key>Key</key>
+            <string>ha_url2</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>URL</string>
+            <key>AutocapitalizationType</key>
+            <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>URL 3</string>
+            <key>Key</key>
+            <string>ha_url3</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>URL</string>
+            <key>AutocapitalizationType</key>
+            <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>URL 4</string>
+            <key>Key</key>
+            <string>ha_url4</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>URL</string>
+            <key>AutocapitalizationType</key>
+            <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSGroupSpecifier</string>
+            <key>Title</key>
+            <string>iBeacon</string>
+            <key>FooterText</key>
+            <string>iBeacon ranging can only see beacons for the configured Proximity UUID.</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Proximity UUID</string>
+            <key>Key</key>
+            <string>beacon_uuid</string>
+            <key>DefaultValue</key>
+            <string>7763A937-B779-4D31-A20C-49E83047048F</string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>Alphabet</string>
+            <key>AutocapitalizationType</key>
+            <string>AllCharacters</string>
             <key>AutocorrectionType</key>
             <string>No</string>
         </dict>

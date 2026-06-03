@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	host := flag.String("host", "10.10.10.131", "Epson ePOS printer host or base URL")
+	host := flag.String("host", "", "Epson ePOS printer host or base URL")
 	devid := flag.String("devid", "local_printer", "Epson device id")
 	timeout := flag.Int("timeout", 20000, "Epson ePOS timeout in milliseconds")
 	title := flag.String("title", "Hallo Welt", "headline")
