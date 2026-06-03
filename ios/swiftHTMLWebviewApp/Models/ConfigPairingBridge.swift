@@ -18,6 +18,8 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     private static let commandUUID = CBUUID(string: "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A02")
     private static let responseUUID = CBUUID(string: "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A03")
     private static let sessionLifetimeSeconds: TimeInterval = 300
+    private static let singleNotificationLimit = 160
+    private static let chunkPayloadSize = 32
 
     @Published private(set) var targetPayload: String?
     @Published private(set) var targetQRCode: UIImage?
@@ -27,6 +29,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     private var targetSessionID = ""
     private var targetSecret = ""
     private var targetExpiry = Date.distantPast
+    private var targetCentral: CBCentral?
     private var peripheralManager: CBPeripheralManager?
     private var commandCharacteristic: CBMutableCharacteristic?
     private var responseCharacteristic: CBMutableCharacteristic?
@@ -36,6 +39,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     private var connectedPeripheral: CBPeripheral?
     private var centralCommandCharacteristic: CBCharacteristic?
     private var centralResponseCharacteristic: CBCharacteristic?
+    private var centralChunkAccumulators: [String: ConfigChunkAccumulator] = [:]
 
     private var eventHandler: (([String: Any]) -> Void)?
     private var settingsProvider: () -> [String: Any] = { AppSettings.shared.configurationSnapshot() }
@@ -126,6 +130,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         connectedPeripheral = nil
         centralCommandCharacteristic = nil
         centralResponseCharacteristic = nil
+        centralChunkAccumulators.removeAll()
 
         var response = baseResponse(request: request, action: "configPairingDisconnect")
         response["success"] = true
@@ -192,6 +197,15 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         targetSessionID = ""
         targetSecret = ""
         targetExpiry = Date.distantPast
+        targetCentral = nil
+    }
+
+    private func closePairingPromptAfterConnection() {
+        peripheralManager?.stopAdvertising()
+        targetPayload = nil
+        targetQRCode = nil
+        targetExpiresAt = nil
+        targetAdvertising = false
     }
 
     private func configurePeripheralServiceIfReady() {
@@ -257,7 +271,16 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         ])
     }
 
-    private func handleTargetCommand(_ data: Data) {
+    private func handleTargetCommand(_ data: Data, central: CBCentral) {
+        if let targetCentral,
+           targetCentral.identifier != central.identifier {
+            notifyTargetResponse(
+                errorPayload(command: "unknown", error: "Another config device is already connected."),
+                centrals: [central]
+            )
+            return
+        }
+
         guard let command = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             notifyTargetResponse(errorPayload(command: "unknown", error: "Invalid JSON command."))
             return
@@ -340,13 +363,45 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         return token == AppSettings.shared.securityToken
     }
 
-    private func notifyTargetResponse(_ payload: [String: Any]) {
+    private func notifyTargetResponse(_ payload: [String: Any], centrals: [CBCentral]? = nil) {
         emitEvent(payload)
         guard let responseCharacteristic,
               let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
 
-        responseCharacteristic.value = data
-        peripheralManager?.updateValue(data, for: responseCharacteristic, onSubscribedCentrals: nil)
+        if data.count <= Self.singleNotificationLimit {
+            notifyTargetData(data, characteristic: responseCharacteristic, centrals: centrals)
+            return
+        }
+
+        notifyTargetDataInChunks(data, characteristic: responseCharacteristic, centrals: centrals)
+    }
+
+    private func notifyTargetData(_ data: Data, characteristic: CBMutableCharacteristic, centrals: [CBCentral]? = nil) {
+        characteristic.value = data
+        peripheralManager?.updateValue(data, for: characteristic, onSubscribedCentrals: centrals ?? targetCentral.map { [$0] })
+    }
+
+    private func notifyTargetDataInChunks(_ data: Data, characteristic: CBMutableCharacteristic, centrals: [CBCentral]? = nil) {
+        let chunkID = UUID().uuidString
+        let chunkCount = Int(ceil(Double(data.count) / Double(Self.chunkPayloadSize)))
+
+        for index in 0..<chunkCount {
+            let start = index * Self.chunkPayloadSize
+            let end = min(start + Self.chunkPayloadSize, data.count)
+            let chunk = data.subdata(in: start..<end)
+            let payload: [String: Any] = [
+                "action": "configPairingChunk",
+                "id": chunkID,
+                "i": index,
+                "n": chunkCount,
+                "d": chunk.base64EncodedString()
+            ]
+            guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else { continue }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.02) { [weak self, weak characteristic, centrals] in
+                guard let self, let characteristic else { return }
+                self.notifyTargetData(payloadData, characteristic: characteristic, centrals: centrals)
+            }
+        }
     }
 
     private func responsePayload(command: String, requestId: Any?) -> [String: Any] {
@@ -487,7 +542,7 @@ extension ConfigPairingBridge: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for request in requests where request.characteristic.uuid == Self.commandUUID {
             if let value = request.value {
-                handleTargetCommand(value)
+                handleTargetCommand(value, central: request.central)
             }
             peripheral.respond(to: request, withResult: .success)
         }
@@ -500,6 +555,39 @@ extension ConfigPairingBridge: CBPeripheralManagerDelegate {
         } else {
             peripheral.respond(to: request, withResult: .attributeNotFound)
         }
+    }
+
+    func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
+        guard characteristic.uuid == Self.responseUUID else { return }
+        if targetCentral == nil {
+            targetCentral = central
+            closePairingPromptAfterConnection()
+            emitEvent([
+                "action": "configPairingEvent",
+                "platform": "ios",
+                "role": "target",
+                "event": "subscribed",
+                "success": true
+            ])
+            return
+        }
+
+        if targetCentral?.identifier != central.identifier {
+            emitEvent([
+                "action": "configPairingEvent",
+                "platform": "ios",
+                "role": "target",
+                "event": "subscriptionRejected",
+                "success": false,
+                "error": "Another config device is already connected."
+            ])
+        }
+    }
+
+    func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
+        guard characteristic.uuid == Self.responseUUID,
+              targetCentral?.identifier == central.identifier else { return }
+        targetCentral = nil
     }
 }
 
@@ -565,6 +653,7 @@ extension ConfigPairingBridge: CBCentralManagerDelegate {
         connectedPeripheral = nil
         centralCommandCharacteristic = nil
         centralResponseCharacteristic = nil
+        centralChunkAccumulators.removeAll()
         emitEvent([
             "action": "configPairingEvent",
             "platform": "ios",
@@ -653,7 +742,7 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
             ])
             return
         }
-        emitEvent(object)
+        handleCentralResponseObject(object)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -667,6 +756,66 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
                 "error": error.localizedDescription
             ])
         }
+    }
+}
+
+private extension ConfigPairingBridge {
+    func handleCentralResponseObject(_ object: [String: Any]) {
+        guard configString(object["action"]) == "configPairingChunk" else {
+            emitEvent(object)
+            return
+        }
+
+        guard let chunkID = configString(object["id"]),
+              let index = intConfigValue(object["i"]),
+              let count = intConfigValue(object["n"]),
+              let encoded = configString(object["d"]),
+              let chunkData = Data(base64Encoded: encoded),
+              index >= 0,
+              count > 0,
+              index < count else {
+            emitEvent([
+                "action": "configPairingEvent",
+                "platform": "ios",
+                "role": "configurator",
+                "event": "chunkParseFailed",
+                "success": false
+            ])
+            return
+        }
+
+        var accumulator = centralChunkAccumulators[chunkID] ?? ConfigChunkAccumulator(count: count)
+        accumulator.chunks[index] = chunkData
+        centralChunkAccumulators[chunkID] = accumulator
+
+        guard accumulator.isComplete else { return }
+        centralChunkAccumulators.removeValue(forKey: chunkID)
+
+        let assembled = (0..<accumulator.count).reduce(into: Data()) { output, chunkIndex in
+            if let chunk = accumulator.chunks[chunkIndex] {
+                output.append(chunk)
+            }
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: assembled, options: []) as? [String: Any] else {
+            emitEvent([
+                "action": "configPairingEvent",
+                "platform": "ios",
+                "role": "configurator",
+                "event": "chunkAssemblyFailed",
+                "success": false
+            ])
+            return
+        }
+        emitEvent(object)
+    }
+}
+
+private struct ConfigChunkAccumulator {
+    let count: Int
+    var chunks: [Int: Data] = [:]
+
+    var isComplete: Bool {
+        chunks.count == count
     }
 }
 
@@ -700,6 +849,20 @@ private func configString(_ value: Any?) -> String? {
     }
     if let numberValue = value as? NSNumber {
         return numberValue.stringValue
+    }
+    return nil
+}
+
+private func intConfigValue(_ value: Any?) -> Int? {
+    guard let value else { return nil }
+    if let intValue = value as? Int {
+        return intValue
+    }
+    if let numberValue = value as? NSNumber {
+        return numberValue.intValue
+    }
+    if let stringValue = value as? String {
+        return Int(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     return nil
 }

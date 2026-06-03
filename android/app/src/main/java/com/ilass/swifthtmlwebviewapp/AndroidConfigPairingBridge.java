@@ -24,6 +24,8 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Base64;
 
@@ -39,9 +41,11 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -69,13 +73,18 @@ final class AndroidConfigPairingBridge {
     private static final UUID RESPONSE_UUID = UUID.fromString("6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A03");
     private static final UUID CLIENT_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final long SESSION_LIFETIME_MS = 300000L;
+    private static final int SINGLE_NOTIFICATION_LIMIT = 160;
+    private static final int CHUNK_PAYLOAD_SIZE = 32;
 
     private final Host host;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private BluetoothGattServer gattServer;
     private BluetoothGattCharacteristic responseCharacteristic;
     private BluetoothLeAdvertiser advertiser;
     private final Set<BluetoothDevice> subscribedDevices = new HashSet<>();
+    private final Map<String, ChunkAccumulator> inboundChunks = new HashMap<>();
+    private BluetoothDevice targetDevice;
 
     private BluetoothLeScanner scanner;
     private BluetoothGatt centralGatt;
@@ -232,9 +241,23 @@ final class AndroidConfigPairingBridge {
         gattServer = null;
         responseCharacteristic = null;
         subscribedDevices.clear();
+        targetDevice = null;
         sessionId = "";
         sessionSecret = "";
         sessionExpiresAtMs = 0L;
+        host.hidePairingOverlay();
+    }
+
+    private void closePairingPromptAfterConnection() {
+        if (advertiser != null) {
+            try {
+                advertiser.stopAdvertising(advertiseCallback);
+            } catch (Exception ignored) {
+                // Already stopped.
+            }
+        }
+        advertiser = null;
+        host.setPairingOverlayAdvertising(false);
         host.hidePairingOverlay();
     }
 
@@ -299,6 +322,11 @@ final class AndroidConfigPairingBridge {
     }
 
     private void handleTargetCommand(BluetoothDevice device, byte[] value) {
+        if (targetDevice != null && device != null && !targetDevice.getAddress().equals(device.getAddress())) {
+            notifyResponse(device, errorPayload("unknown", "", "Another config device is already connected."));
+            return;
+        }
+
         JSONObject command;
         try {
             command = new JSONObject(new String(value, StandardCharsets.UTF_8));
@@ -393,16 +421,44 @@ final class AndroidConfigPairingBridge {
             return;
         }
         byte[] data = response.toString().getBytes(StandardCharsets.UTF_8);
-        if (data.length > 512) {
-            try {
-                response = errorPayload(response.optString("command", "unknown"), response.optString("requestId", ""), "Config response is too large for BLE notification.");
-                data = response.toString().getBytes(StandardCharsets.UTF_8);
-            } catch (Exception ignored) {
-                return;
-            }
+        if (data.length <= SINGLE_NOTIFICATION_LIMIT) {
+            notifyData(device, data);
+            return;
         }
+        notifyDataInChunks(device, data);
+    }
+
+    private void notifyData(BluetoothDevice device, byte[] data) {
         responseCharacteristic.setValue(data);
         gattServer.notifyCharacteristicChanged(device, responseCharacteristic, false);
+    }
+
+    private void notifyDataInChunks(BluetoothDevice device, byte[] data) {
+        String chunkId = UUID.randomUUID().toString();
+        int count = (int) Math.ceil(data.length / (double) CHUNK_PAYLOAD_SIZE);
+        for (int index = 0; index < count; index += 1) {
+            int start = index * CHUNK_PAYLOAD_SIZE;
+            int length = Math.min(CHUNK_PAYLOAD_SIZE, data.length - start);
+            byte[] chunk = new byte[length];
+            System.arraycopy(data, start, chunk, 0, length);
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("action", "configPairingChunk");
+                payload.put("id", chunkId);
+                payload.put("i", index);
+                payload.put("n", count);
+                payload.put("d", Base64.encodeToString(chunk, Base64.NO_WRAP));
+            } catch (JSONException ignored) {
+                continue;
+            }
+            byte[] payloadData = payload.toString().getBytes(StandardCharsets.UTF_8);
+            long delayMs = index * 20L;
+            handler.postDelayed(() -> {
+                if (gattServer != null && responseCharacteristic != null) {
+                    notifyData(device, payloadData);
+                }
+            }, delayMs);
+        }
     }
 
     private JSONObject responsePayload(String command, String requestId) throws JSONException {
@@ -448,14 +504,27 @@ final class AndroidConfigPairingBridge {
         centralGatt = null;
         centralCommandCharacteristic = null;
         pairingTarget = null;
+        inboundChunks.clear();
     }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
         @Override
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             emitEvent("target", newState == BluetoothProfile.STATE_CONNECTED ? "connected" : "disconnected", status == BluetoothGatt.GATT_SUCCESS, null);
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                if (targetDevice == null) {
+                    targetDevice = device;
+                    closePairingPromptAfterConnection();
+                } else if (device != null && !targetDevice.getAddress().equals(device.getAddress()) && gattServer != null) {
+                    gattServer.cancelConnection(device);
+                    emitEvent("target", "connectionRejected", false, "Another config device is already connected.");
+                }
+            }
             if (newState != BluetoothProfile.STATE_CONNECTED) {
                 subscribedDevices.remove(device);
+                if (targetDevice != null && device != null && targetDevice.getAddress().equals(device.getAddress())) {
+                    targetDevice = null;
+                }
             }
         }
 
@@ -563,7 +632,7 @@ final class AndroidConfigPairingBridge {
             }
             try {
                 JSONObject response = new JSONObject(new String(characteristic.getValue(), StandardCharsets.UTF_8));
-                host.sendResult(response);
+                handleCentralResponse(response);
             } catch (JSONException error) {
                 emitEvent("configurator", "responseParseFailed", false, error.getMessage());
             }
@@ -591,6 +660,48 @@ final class AndroidConfigPairingBridge {
             host.sendResult(payload);
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
+        }
+    }
+
+    private void handleCentralResponse(JSONObject response) throws JSONException {
+        if (!"configPairingChunk".equals(response.optString("action", ""))) {
+            host.sendResult(response);
+            return;
+        }
+
+        String chunkId = response.optString("id", "");
+        int index = response.optInt("i", -1);
+        int count = response.optInt("n", 0);
+        String encoded = response.optString("d", "");
+        if (chunkId.isEmpty() || index < 0 || count <= 0 || index >= count || encoded.isEmpty()) {
+            emitEvent("configurator", "chunkParseFailed", false, "Invalid config response chunk.");
+            return;
+        }
+
+        byte[] chunk;
+        try {
+            chunk = Base64.decode(encoded, Base64.NO_WRAP);
+        } catch (IllegalArgumentException error) {
+            emitEvent("configurator", "chunkParseFailed", false, error.getMessage());
+            return;
+        }
+
+        ChunkAccumulator accumulator = inboundChunks.get(chunkId);
+        if (accumulator == null) {
+            accumulator = new ChunkAccumulator(count);
+            inboundChunks.put(chunkId, accumulator);
+        }
+        accumulator.chunks.put(index, chunk);
+        if (!accumulator.isComplete()) {
+            return;
+        }
+
+        inboundChunks.remove(chunkId);
+        byte[] assembled = accumulator.assembled();
+        try {
+            host.sendResult(new JSONObject(new String(assembled, StandardCharsets.UTF_8)));
+        } catch (JSONException error) {
+            emitEvent("configurator", "chunkAssemblyFailed", false, error.getMessage());
         }
     }
 
@@ -718,6 +829,40 @@ final class AndroidConfigPairingBridge {
                 // Use default service UUID.
             }
             return new PairingTarget(id, secret, serviceUuid, values.optString("name", ""));
+        }
+    }
+
+    private static final class ChunkAccumulator {
+        final int count;
+        final Map<Integer, byte[]> chunks = new HashMap<>();
+
+        ChunkAccumulator(int count) {
+            this.count = count;
+        }
+
+        boolean isComplete() {
+            return chunks.size() == count;
+        }
+
+        byte[] assembled() {
+            int total = 0;
+            for (int index = 0; index < count; index += 1) {
+                byte[] chunk = chunks.get(index);
+                if (chunk != null) {
+                    total += chunk.length;
+                }
+            }
+            byte[] data = new byte[total];
+            int offset = 0;
+            for (int index = 0; index < count; index += 1) {
+                byte[] chunk = chunks.get(index);
+                if (chunk == null) {
+                    continue;
+                }
+                System.arraycopy(chunk, 0, data, offset, chunk.length);
+                offset += chunk.length;
+            }
+            return data;
         }
     }
 }

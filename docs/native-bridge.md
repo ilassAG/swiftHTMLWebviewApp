@@ -102,7 +102,10 @@ The native app displays a QR code containing an ephemeral
 `swifthtml-config://pair?...` payload and advertises a BLE GATT service. The QR
 payload contains only a short-lived session id, BLE service UUID, and random
 session secret. It does not contain the persistent `security_token_preference`.
-Close the target pairing UI with `configPairingStop`.
+After the first config device connects and subscribes for responses, the target
+closes the QR pairing UI and stops advertising so another device cannot start a
+parallel pairing attempt. Close the target pairing UI manually with
+`configPairingStop`.
 
 The configuring device scans or receives the QR payload, connects, and sends
 commands:
@@ -129,12 +132,17 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 });
 ```
 
+Large target responses are split into `configPairingChunk` BLE notifications by
+native code and reassembled before the web app receives the final
+`configPairingResponse`.
+
 Supported `configPairingSend.command` values:
 
-- `statusGet`: returns settings plus a compact device summary.
+- `statusGet`: returns settings plus platform device status/details.
 - `settingsGet`: returns non-sensitive native settings.
 - `settingsSet`: updates URL/HA/beacon settings and optionally rotates the
-  security token through `settings.newSecurityToken`.
+  security token through `settings.newSecurityToken`. The current token is
+  still required in `token`.
 - `wifiConfigure`: asks the target OS to add/join a WLAN with `ssid` and
   `passphrase`.
 - `reload`: reloads the target wrapper from its configured startup URL.

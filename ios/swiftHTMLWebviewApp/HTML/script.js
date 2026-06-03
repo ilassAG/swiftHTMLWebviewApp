@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const wifiPasswordInput = document.getElementById('wifiPasswordInput');
     const configPairingPayloadInput = document.getElementById('configPairingPayloadInput');
     const configSecurityTokenInput = document.getElementById('configSecurityTokenInput');
+    const configNewSecurityTokenInput = document.getElementById('configNewSecurityTokenInput');
     const configServerUrlInput = document.getElementById('configServerUrlInput');
     const configHaEnabledInput = document.getElementById('configHaEnabledInput');
     const configHaTimeoutInput = document.getElementById('configHaTimeoutInput');
@@ -506,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function configSettingsFromForm() {
-        return {
+        const settings = {
             serverURL: String(configServerUrlInput?.value || "").trim() || "local",
             highAvailabilityEnabled: Boolean(configHaEnabledInput?.checked),
             highAvailabilityTimeoutSeconds: Math.max(1, numericInputValue(configHaTimeoutInput, 5)),
@@ -515,6 +516,11 @@ document.addEventListener('DOMContentLoaded', () => {
             highAvailabilityURL4: String(configUrl4Input?.value || "").trim(),
             beaconUUID: String(configBeaconUuidInput?.value || "").trim()
         };
+        const newSecurityToken = String(configNewSecurityTokenInput?.value || "").trim();
+        if (newSecurityToken) {
+            settings.newSecurityToken = newSecurityToken;
+        }
+        return settings;
     }
 
     function sendConfigPairingCommand(command, extra = {}) {
