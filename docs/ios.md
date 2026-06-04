@@ -38,6 +38,9 @@ Runtime settings:
 | `active_server_url` | empty | Internal value updated after a successful load. |
 | `last_server_url` | empty | Internal value updated with the last successful URL. |
 | `beacon_uuid` | `7763A937-B779-4D31-A20C-49E83047048F` | iBeacon Proximity UUID used by the continuous beacon bridge. |
+| `device_name` | empty | Deployment-specific display name for this wrapper install. |
+| `device_uuid` | generated on first start | Persistent per-install identifier exposed through settings APIs. |
+| `device_location` | empty | Deployment-specific physical/logical location label. |
 
 When HA is enabled, the app tries `server_url_preference` first, then `ha_url2`,
 `ha_url3`, and `ha_url4` in order. If every configured remote URL fails, the app
@@ -57,11 +60,23 @@ The iOS wrapper includes:
 - `dataScanStart` / `dataScanEnd`
 - `loginScanStart` / `loginScanEnd`
 - `previewBoxLocationUpdate`
+- `nfcTagRead`
 - `beaconsStart` / `beaconsStop`
+- `beaconAdvertiseStart` / `beaconAdvertiseStop`
 
 Continuous scanner events are delivered as `barcodeData` or `barcodeLogin`.
 Beacon ranging events are delivered as `beacons`. All continuous events use the
 same `window.handleNativeResult(...)` callback as one-shot bridge actions.
+`beaconAdvertiseStart` uses CoreBluetooth to transmit as an iBeacon with the
+configured or requested UUID plus the requested `major` and `minor` values.
+Stop advertising with `beaconAdvertiseStop`.
+
+`nfcTagRead` uses CoreNFC `NFCTagReaderSession` for one-shot tag reads. The app
+needs `NFCReaderUsageDescription` and the Near Field Communication Tag Reading
+capability with `NDEF`/`TAG` reader-session formats in the signing profile. The
+default iOS reader polls ISO 14443 and ISO 15693 tags; FeliCa / ISO 18092 is not
+enabled by default because Apple requires additional FeliCa system-code
+entitlements for that polling mode.
 
 ## Optional Stripe Tap to Pay
 
@@ -88,13 +103,15 @@ Epson printer support should be active in that build.
 The app includes `NSLocalNetworkUsageDescription` for LAN printer access.
 It also includes `NSLocationWhenInUseUsageDescription` so the iBeacon ranging
 bridge can request the permission that iOS requires for beacon ranging.
-It includes Bluetooth usage descriptions for the BLE config-pairing bridge.
+It includes Bluetooth usage descriptions for the BLE config-pairing bridge and
+iBeacon advertising.
 
 ## Runtime Diagnostics
 
 iOS implements the shared runtime bridge actions:
 
 - `deviceInfoGet`
+- `settingsGet` / `settingsSet`
 - `screenOrientationGet` / `screenOrientationSet`
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
@@ -103,6 +120,8 @@ iOS implements the shared runtime bridge actions:
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
+- `nfcTagRead`
+- `beaconAdvertiseStart` / `beaconAdvertiseStop`
 - `configPairingShow` / `configPairingStop`
 - `configPairingConnect` / `configPairingDisconnect`
 - `configPairingSend`

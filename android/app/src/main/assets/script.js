@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cropTransparentCheckbox = document.getElementById('cropTransparentCheckbox');
     const confettiBtn = document.getElementById('confettiBtn');
     const scanBarcodeBtn = document.getElementById('scanBarcodeBtn');
+    const nfcTagReadBtn = document.getElementById('nfcTagReadBtn');
     const scannerModeSelect = document.getElementById('scannerModeSelect');
     const scannerCameraSelect = document.getElementById('scannerCameraSelect');
     const scannerTopInput = document.getElementById('scannerTopInput');
@@ -24,6 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const beaconUuidInput = document.getElementById('beaconUuidInput');
     const beaconsStartBtn = document.getElementById('beaconsStartBtn');
     const beaconsStopBtn = document.getElementById('beaconsStopBtn');
+    const beaconAdvertiseUuidInput = document.getElementById('beaconAdvertiseUuidInput');
+    const beaconAdvertiseMajorInput = document.getElementById('beaconAdvertiseMajorInput');
+    const beaconAdvertiseMinorInput = document.getElementById('beaconAdvertiseMinorInput');
+    const beaconAdvertiseStartBtn = document.getElementById('beaconAdvertiseStartBtn');
+    const beaconAdvertiseStopBtn = document.getElementById('beaconAdvertiseStopBtn');
     const orientationSelect = document.getElementById('orientationSelect');
     const orientationSetBtn = document.getElementById('orientationSetBtn');
     const wifiSsidInput = document.getElementById('wifiSsidInput');
@@ -31,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const configPairingPayloadInput = document.getElementById('configPairingPayloadInput');
     const configSecurityTokenInput = document.getElementById('configSecurityTokenInput');
     const configNewSecurityTokenInput = document.getElementById('configNewSecurityTokenInput');
+    const configDeviceNameInput = document.getElementById('configDeviceNameInput');
+    const configDeviceUuidInput = document.getElementById('configDeviceUuidInput');
+    const configDeviceLocationInput = document.getElementById('configDeviceLocationInput');
     const configServerUrlInput = document.getElementById('configServerUrlInput');
     const configHaEnabledInput = document.getElementById('configHaEnabledInput');
     const configHaTimeoutInput = document.getElementById('configHaTimeoutInput');
@@ -45,6 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const configPairingScanBtn = document.getElementById('configPairingScanBtn');
     const configPairingConnectBtn = document.getElementById('configPairingConnectBtn');
     const configPairingDisconnectBtn = document.getElementById('configPairingDisconnectBtn');
+    const localSettingsGetBtn = document.getElementById('localSettingsGetBtn');
+    const localSettingsSetBtn = document.getElementById('localSettingsSetBtn');
     const configStatusBtn = document.getElementById('configStatusBtn');
     const configSettingsGetBtn = document.getElementById('configSettingsGetBtn');
     const configSettingsSetBtn = document.getElementById('configSettingsSetBtn');
@@ -111,6 +122,10 @@ document.addEventListener('DOMContentLoaded', () => {
         "previewBoxLocationUpdate",
         "beaconsStart",
         "beaconsStop",
+        "beaconAdvertiseStart",
+        "beaconAdvertiseStop",
+        "settingsGet",
+        "settingsSet",
         "geoLocationStart",
         "geoLocationStop",
         "soundPlay",
@@ -168,6 +183,13 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBridgeMessage(request);
     });
 
+    nfcTagReadBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "nfcTagRead",
+            timeoutSeconds: 30
+        });
+    });
+
     permanentScanStartBtn?.addEventListener('click', () => {
         sendBridgeMessage(createPermanentScanStartRequest());
     });
@@ -196,6 +218,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     beaconsStopBtn?.addEventListener('click', () => {
         sendBridgeMessage({ action: "beaconsStop" });
+    });
+
+    beaconAdvertiseStartBtn?.addEventListener('click', () => {
+        const uuid = String(beaconAdvertiseUuidInput?.value || "").trim();
+        const major = Number.parseInt(beaconAdvertiseMajorInput?.value || "1", 10);
+        const minor = Number.parseInt(beaconAdvertiseMinorInput?.value || "1", 10);
+        const request = {
+            action: "beaconAdvertiseStart",
+            major: Number.isFinite(major) ? major : 1,
+            minor: Number.isFinite(minor) ? minor : 1
+        };
+        if (uuid) {
+            request.uuid = uuid;
+        }
+        sendBridgeMessage(request);
+    });
+
+    beaconAdvertiseStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "beaconAdvertiseStop" });
     });
 
     orientationSetBtn?.addEventListener('click', () => {
@@ -258,6 +299,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     configPairingDisconnectBtn?.addEventListener('click', () => {
         sendBridgeMessage({ action: "configPairingDisconnect" });
+    });
+
+    localSettingsGetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "settingsGet" });
+    });
+
+    localSettingsSetBtn?.addEventListener('click', () => {
+        const token = configSecurityToken();
+        if (!token) {
+            displayError("Bitte den Security Token für lokale Settings eingeben.");
+            return;
+        }
+        sendBridgeMessage({
+            action: "settingsSet",
+            token,
+            settings: configSettingsFromForm()
+        });
     });
 
     configStatusBtn?.addEventListener('click', () => {
@@ -514,7 +572,10 @@ document.addEventListener('DOMContentLoaded', () => {
             highAvailabilityURL2: String(configUrl2Input?.value || "").trim(),
             highAvailabilityURL3: String(configUrl3Input?.value || "").trim(),
             highAvailabilityURL4: String(configUrl4Input?.value || "").trim(),
-            beaconUUID: String(configBeaconUuidInput?.value || "").trim()
+            beaconUUID: String(configBeaconUuidInput?.value || "").trim(),
+            deviceName: String(configDeviceNameInput?.value || "").trim(),
+            deviceUUID: String(configDeviceUuidInput?.value || "").trim(),
+            deviceLocation: String(configDeviceLocationInput?.value || "").trim()
         };
         const newSecurityToken = String(configNewSecurityTokenInput?.value || "").trim();
         if (newSecurityToken) {
@@ -544,6 +605,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (configServerUrlInput && typeof settings.serverURL === "string") {
             configServerUrlInput.value = settings.serverURL;
+        }
+        if (configDeviceNameInput && typeof settings.deviceName === "string") {
+            configDeviceNameInput.value = settings.deviceName;
+        }
+        if (configDeviceUuidInput && typeof settings.deviceUUID === "string") {
+            configDeviceUuidInput.value = settings.deviceUUID;
+        }
+        if (configDeviceLocationInput && typeof settings.deviceLocation === "string") {
+            configDeviceLocationInput.value = settings.deviceLocation;
         }
         if (configHaEnabledInput && typeof settings.highAvailabilityEnabled === "boolean") {
             configHaEnabledInput.checked = settings.highAvailabilityEnabled;
@@ -653,6 +723,9 @@ document.addEventListener('DOMContentLoaded', () => {
             case "scanBarcode":
                 displayBarcodeResult(result);
                 break;
+            case "nfcTagRead":
+                displayNfcTagResult(result);
+                break;
             case "screenshotGet":
                 displayScreenshotResult(result);
                 break;
@@ -678,6 +751,15 @@ document.addEventListener('DOMContentLoaded', () => {
             case "previewBoxLocationUpdate":
             case "beaconsStart":
             case "beaconsStop":
+            case "beaconAdvertiseStart":
+            case "beaconAdvertiseStop":
+            case "settingsGet":
+            case "settingsSet":
+                if (result.settings) {
+                    updateConfigFormFromSettings(result.settings);
+                }
+                displayCommandResult(result);
+                break;
             case "screenOrientationSet":
             case "wifiConfigure":
             case "geoLocationStart":
@@ -834,6 +916,46 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
              displayError("Kein Barcode erkannt oder Scan abgebrochen.");
         }
+    }
+
+    function displayNfcTagResult(result) {
+        if (!result.success) {
+            displayFallbackResult(result);
+            return;
+        }
+
+        const tag = result.tag || {};
+        const ndef = result.ndef || {};
+        const records = Array.isArray(ndef.records) ? ndef.records : [];
+
+        resultArea.appendChild(createResultHeader("NFC Tag gelesen:"));
+
+        const summary = document.createElement('p');
+        summary.className = 'success';
+        const techs = Array.isArray(tag.technologies) ? tag.technologies.join(', ') : (tag.type || 'unbekannt');
+        summary.textContent = `Tag ${tag.identifierHex || tag.identifierBase64 || ''} ${techs ? `(${techs})` : ''}`.trim();
+        resultArea.appendChild(summary);
+
+        if (records.length > 0) {
+            const list = document.createElement('ul');
+            records.forEach((record) => {
+                const item = document.createElement('li');
+                const value = record.text || record.uri || record.mimeType || record.payloadHex || record.payloadBase64 || '';
+                item.textContent = `${record.typeNameFormat || 'record'}${record.type ? `/${record.type}` : ''}: ${value}`;
+                list.appendChild(item);
+            });
+            resultArea.appendChild(list);
+        } else {
+            const message = document.createElement('p');
+            message.textContent = ndef.available === false
+                ? "Kein NDEF-Inhalt auf diesem Tag verfügbar."
+                : "Keine NDEF-Records gefunden.";
+            resultArea.appendChild(message);
+        }
+
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(result, null, 2);
+        resultArea.appendChild(pre);
     }
 
     function displayCommandResult(result) {

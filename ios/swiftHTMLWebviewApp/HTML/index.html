@@ -55,6 +55,7 @@
             <button id="printEpsonHelloBtn">Hallo Welt drucken</button>
             <button id="confettiBtn">Konfetti!</button>
             <button id="scanBarcodeBtn">QR/EAN Scannen</button>
+            <button id="nfcTagReadBtn">NFC Tag lesen</button>
             <div class="bridge-options">
                 <label for="scannerModeSelect">Permanent Scan</label>
                 <select id="scannerModeSelect">
@@ -80,6 +81,14 @@
             <button id="beaconsStartBtn">Beacons starten</button>
             <button id="beaconsStopBtn">Beacons stoppen</button>
             <div class="bridge-options">
+                <label for="beaconAdvertiseUuidInput">iBeacon senden</label>
+                <input type="text" id="beaconAdvertiseUuidInput" placeholder="leer = Native Settings">
+                <input type="number" id="beaconAdvertiseMajorInput" value="1" min="0" max="65535" step="1" aria-label="iBeacon major">
+                <input type="number" id="beaconAdvertiseMinorInput" value="1" min="0" max="65535" step="1" aria-label="iBeacon minor">
+            </div>
+            <button id="beaconAdvertiseStartBtn">iBeacon senden starten</button>
+            <button id="beaconAdvertiseStopBtn">iBeacon senden stoppen</button>
+            <div class="bridge-options">
                 <label for="orientationSelect">Rotation</label>
                 <select id="orientationSelect">
                     <option value="unlocked">Auto</option>
@@ -104,6 +113,12 @@
                     <input type="password" id="configSecurityTokenInput" value="change-me-before-production" autocomplete="off">
                     <label for="configNewSecurityTokenInput">Neuer Token</label>
                     <input type="password" id="configNewSecurityTokenInput" placeholder="optional rotieren" autocomplete="off">
+                    <label for="configDeviceNameInput">Gerätename</label>
+                    <input type="text" id="configDeviceNameInput" placeholder="z.B. Kasse AP03">
+                    <label for="configDeviceUuidInput">Geräte UUID</label>
+                    <input type="text" id="configDeviceUuidInput" placeholder="auto wenn leer">
+                    <label for="configDeviceLocationInput">Standort</label>
+                    <input type="text" id="configDeviceLocationInput" placeholder="z.B. Zelt A / Eingang">
                     <label for="configServerUrlInput">URL 1</label>
                     <input type="text" id="configServerUrlInput" placeholder="local oder https://...">
                     <label for="configHaEnabledInput">Failover</label>
@@ -132,6 +147,8 @@
                     <button id="configPairingScanBtn" type="button">Pairing QR scannen</button>
                     <button id="configPairingConnectBtn" type="button">Config verbinden</button>
                     <button id="configPairingDisconnectBtn" type="button">Config trennen</button>
+                    <button id="localSettingsGetBtn" type="button">Lokale Settings holen</button>
+                    <button id="localSettingsSetBtn" type="button">Lokale Settings setzen</button>
                     <button id="configStatusBtn" type="button">Config Status</button>
                     <button id="configSettingsGetBtn" type="button">Settings holen</button>
                     <button id="configSettingsSetBtn" type="button">Settings setzen</button>

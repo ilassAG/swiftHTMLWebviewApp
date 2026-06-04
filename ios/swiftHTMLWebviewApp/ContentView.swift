@@ -73,12 +73,14 @@ struct ContentView: View {
     @StateObject private var tapToPayBridge = TapToPayBridge()
     @StateObject private var printerBridge = PrinterBridge()
     @StateObject private var beaconBridge = BeaconBridge()
+    @StateObject private var beaconAdvertiserBridge = BeaconAdvertiserBridge()
     @StateObject private var deviceBridge = DeviceBridge()
     @StateObject private var idleTimerBridge = IdleTimerBridge()
     @StateObject private var locationBridge = LocationBridge()
     @StateObject private var screenStreamBridge = ScreenStreamBridge()
     @StateObject private var sensorBridge = SensorBridge()
     @StateObject private var configPairingBridge = ConfigPairingBridge()
+    @StateObject private var nfcTagReaderBridge = NFCTagReaderBridge()
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showDocumentScanner = false
@@ -147,6 +149,8 @@ struct ContentView: View {
             screenStreamBridge.shutdown()
             sensorBridge.shutdown()
             _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
+            nfcTagReaderBridge.shutdown()
+            beaconAdvertiserBridge.shutdown()
         }
         .sheet(isPresented: $showDocumentScanner, onDismiss: handleSheetDismiss) {
             DocumentScannerView(isPresented: $showDocumentScanner) { result in
@@ -216,6 +220,12 @@ struct ContentView: View {
                  return
              }
             self.showBarcodeScanner = true
+
+        case "nfcTagRead":
+            currentRequest = nil
+            nfcTagReaderBridge.read(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
 
         case "launchConfetti":
             guard let burstCount = ConfettiOverlayPresenter.shared.launchBurst() else {
@@ -370,6 +380,14 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: configPairingBridge.send(request: message))
             currentRequest = nil
 
+        case "settingsGet":
+            webViewStore.sendResultToWebView(result: settingsGetResponse(request: message))
+            currentRequest = nil
+
+        case "settingsSet":
+            webViewStore.sendResultToWebView(result: settingsSetResponse(request: message))
+            currentRequest = nil
+
         case "continuousScanStart", "dataScanStart", "loginScanStart":
             startContinuousScanner(action: action, request: message)
 
@@ -388,6 +406,17 @@ struct ContentView: View {
 
         case "beaconsStop":
             webViewStore.sendResultToWebView(result: beaconBridge.stop(request: message))
+            currentRequest = nil
+
+        case "beaconAdvertiseStart":
+            let response = beaconAdvertiserBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+            webViewStore.sendResultToWebView(result: response)
+            currentRequest = nil
+
+        case "beaconAdvertiseStop":
+            webViewStore.sendResultToWebView(result: beaconAdvertiserBridge.stop(request: message))
             currentRequest = nil
 
         case "printerEpsonHelloWorld":
@@ -499,6 +528,41 @@ struct ContentView: View {
                 deviceBridge.deviceInfo(request: ["action": "deviceInfoGet"])
             }
         )
+    }
+
+    private func settingsGetResponse(request: [String: Any]) -> [String: Any] {
+        var response = baseSettingsResponse(request: request, action: "settingsGet")
+        response["success"] = true
+        response["settings"] = AppSettings.shared.configurationSnapshot()
+        return response
+    }
+
+    private func settingsSetResponse(request: [String: Any]) -> [String: Any] {
+        let token = stringValue(request["token"] ?? request["securityToken"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty, token == AppSettings.shared.securityToken else {
+            var response = baseSettingsResponse(request: request, action: "settingsSet")
+            response["success"] = false
+            response["error"] = "securityToken is required for settingsSet."
+            return response
+        }
+
+        let values = (request["settings"] as? [String: Any]) ?? request
+        let snapshot = AppSettings.shared.applyConfiguration(values)
+        var response = baseSettingsResponse(request: request, action: "settingsSet")
+        response["success"] = true
+        response["settings"] = snapshot
+        return response
+    }
+
+    private func baseSettingsResponse(request: [String: Any], action: String) -> [String: Any] {
+        var response: [String: Any] = [
+            "platform": "ios",
+            "action": action
+        ]
+        if let requestId = request["requestId"] {
+            response["requestId"] = requestId
+        }
+        return response
     }
 
     private func showConfigPairingFromGesture() {

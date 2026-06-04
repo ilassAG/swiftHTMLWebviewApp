@@ -15,14 +15,18 @@ Implemented:
 - Native Android confetti overlay.
 - Photo capture through Android camera intent.
 - Barcode/QR scanning through Google Code Scanner.
+- NFC tag reading through Android reader mode.
 - Document scanning through Google ML Kit Document Scanner with JPEG/PDF result handling.
 - Embedded continuous QR/barcode scanning through CameraX and ML Kit.
 - iBeacon ranging through AltBeacon.
+- iBeacon advertising through AltBeacon when the device supports BLE advertising.
 - Optional printer discovery and Epson Hello World printing through the Go `printercore` AAR.
 - Sunmi internal-printer discovery and Hello World printing when the Sunmi AIDL service is installed.
 - Runtime diagnostics: device info, app screenshot, orientation lock, sound,
   idle timer, location, sensors, Wi-Fi setup/status, and app-screen JPEG
   streaming over WebSocket.
+- SharedPreferences-backed settings for URL/HA/beacon/device identity plus
+  direct `settingsGet` / `settingsSet` bridge actions.
 
 Not implemented yet:
 

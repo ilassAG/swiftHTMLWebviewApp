@@ -2,6 +2,7 @@ package com.ilass.swifthtmlwebviewapp;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -104,6 +105,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -123,6 +125,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final int REQUEST_WIFI_ADD_NETWORK = 2007;
     private static final int REQUEST_WIFI_STATUS_PERMISSION = 2008;
     private static final int REQUEST_CONFIG_PAIRING_PERMISSION = 2009;
+    private static final int REQUEST_BEACON_ADVERTISE_PERMISSION = 2010;
     private static final String PRINTERCORE_CLASS_NAME = "com.ilass.printercore.Printercore";
     private static final String PREFS_NAME = "swift_html_webview_app_settings";
     private static final String SERVER_URL_KEY = "server_url_preference";
@@ -133,6 +136,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final String HA_URL3_KEY = "ha_url3";
     private static final String HA_URL4_KEY = "ha_url4";
     private static final String BEACON_UUID_KEY = "beacon_uuid";
+    private static final String DEVICE_NAME_KEY = "device_name";
+    private static final String DEVICE_UUID_KEY = "device_uuid";
+    private static final String DEVICE_LOCATION_KEY = "device_location";
     private static final String DEFAULT_SERVER_URL = "local";
     private static final String DEFAULT_SECURITY_TOKEN = "change-me-before-production";
     private static final String DEFAULT_BEACON_UUID = "7763A937-B779-4D31-A20C-49E83047048F";
@@ -142,6 +148,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private String pendingAction;
     private JSONObject pendingContinuousScanRequest;
     private JSONObject pendingBeaconStartRequest;
+    private JSONObject pendingBeaconAdvertiseStartRequest;
     private JSONObject pendingLocationRequest;
     private JSONObject pendingWifiRequest;
     private JSONObject pendingWifiStatusRequest;
@@ -150,9 +157,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private AndroidConfigPairingBridge.ResultCallback pendingWifiConfigCallback;
     private ContinuousBarcodeScannerController continuousScannerController;
     private AndroidBeaconBridge beaconBridge;
+    private AndroidBeaconAdvertiserBridge beaconAdvertiserBridge;
     private AndroidScreenStreamBridge screenStreamBridge;
     private AndroidSensorBridge sensorBridge;
     private AndroidConfigPairingBridge configPairingBridge;
+    private AndroidNfcTagReaderBridge nfcTagReaderBridge;
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     private final Handler loadHandler = new Handler(Looper.getMainLooper());
     private boolean idleTimerRunning = false;
@@ -175,6 +184,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ensureDeviceUUID();
 
         webView = new WebView(this);
         setContentView(webView);
@@ -230,8 +240,25 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             }
         });
         beaconBridge = new AndroidBeaconBridge(this, this::sendResult);
+        beaconAdvertiserBridge = new AndroidBeaconAdvertiserBridge(this, this::sendResult);
         screenStreamBridge = new AndroidScreenStreamBridge(this, this::sendResult);
         sensorBridge = new AndroidSensorBridge(this, this::sendResult);
+        nfcTagReaderBridge = new AndroidNfcTagReaderBridge(new AndroidNfcTagReaderBridge.Host() {
+            @Override
+            public Activity activity() {
+                return MainActivity.this;
+            }
+
+            @Override
+            public Context context() {
+                return MainActivity.this;
+            }
+
+            @Override
+            public void sendResult(JSONObject payload) {
+                MainActivity.this.sendResult(payload);
+            }
+        });
         configPairingBridge = new AndroidConfigPairingBridge(new AndroidConfigPairingBridge.Host() {
             @Override
             public Context context() {
@@ -323,6 +350,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         if (beaconBridge != null) {
             beaconBridge.shutdown();
         }
+        if (beaconAdvertiserBridge != null) {
+            beaconAdvertiserBridge.shutdown();
+        }
         if (screenStreamBridge != null) {
             screenStreamBridge.shutdown();
         }
@@ -331,6 +361,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         }
         if (configPairingBridge != null) {
             configPairingBridge.shutdown();
+        }
+        if (nfcTagReaderBridge != null) {
+            nfcTagReaderBridge.shutdown();
         }
         stopLocationUpdates();
         stopIdleTimer();
@@ -405,6 +438,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     case "scanDocument":
                         startDocumentScanner(message);
                         break;
+                    case "nfcTagRead":
+                        nfcTagReaderBridge.startRead(message);
+                        break;
                     case "tapToPayAvailability":
                         sendTapToPayAvailability(message);
                         break;
@@ -475,6 +511,12 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     case "configPairingSend":
                         handleConfigPairingAction(message);
                         break;
+                    case "settingsGet":
+                        sendResult(settingsGet(message));
+                        break;
+                    case "settingsSet":
+                        sendResult(settingsSet(message));
+                        break;
                     case "continuousScanStart":
                     case "dataScanStart":
                     case "loginScanStart":
@@ -493,6 +535,12 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                         break;
                     case "beaconsStop":
                         stopBeacons(message);
+                        break;
+                    case "beaconAdvertiseStart":
+                        startBeaconAdvertise(message);
+                        break;
+                    case "beaconAdvertiseStop":
+                        stopBeaconAdvertise(message);
                         break;
                     case "printerHelloWorld":
                         printHelloWorld(message);
@@ -541,6 +589,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         JSONObject response = baseResponse(message, "deviceInfoGet");
         response.put("success", true);
         response.put("name", Build.DEVICE != null ? Build.DEVICE : "");
+        response.put("configuredDeviceName", configDeviceName());
+        response.put("configuredDeviceUUID", configDeviceUUID());
+        response.put("configuredDeviceLocation", configDeviceLocation());
         response.put("os", "Android");
         response.put("osVersion", Build.VERSION.RELEASE != null ? Build.VERSION.RELEASE : "");
         response.put("sdkInt", Build.VERSION.SDK_INT);
@@ -566,6 +617,8 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject deviceCapabilities() throws JSONException {
         JSONObject capabilities = new JSONObject();
         capabilities.put("deviceInfoGet", true);
+        capabilities.put("settingsGet", true);
+        capabilities.put("settingsSet", true);
         capabilities.put("screenOrientationSet", true);
         capabilities.put("wifiConfigure", true);
         capabilities.put("screenshotGet", true);
@@ -577,6 +630,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         capabilities.put("sensorStreamStart", true);
         capabilities.put("configPairingShow", true);
         capabilities.put("configPairingConnect", true);
+        capabilities.put("nfcTagRead", AndroidNfcTagReaderBridge.isAvailable(this));
+        capabilities.put("nfcEnabled", AndroidNfcTagReaderBridge.isEnabled(this));
+        capabilities.put("beaconAdvertiseStart", AndroidBeaconAdvertiserBridge.isSupported(this));
+        capabilities.put("beaconAdvertiseStop", true);
+        capabilities.put("beaconAdvertiseSupported", AndroidBeaconAdvertiserBridge.isSupported(this));
         return capabilities;
     }
 
@@ -1312,11 +1370,35 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         sendResult(beaconBridge.stop(copyRequest(message)));
     }
 
+    private void startBeaconAdvertise(JSONObject message) throws JSONException {
+        JSONObject request = copyRequest(message);
+        if (!beaconAdvertiserBridge.hasRequiredPermissions()) {
+            pendingBeaconAdvertiseStartRequest = request;
+            requestPermissions(beaconAdvertisePermissions(), REQUEST_BEACON_ADVERTISE_PERMISSION);
+            return;
+        }
+        sendResult(beaconAdvertiserBridge.start(request));
+    }
+
+    private void stopBeaconAdvertise(JSONObject message) throws JSONException {
+        pendingBeaconAdvertiseStartRequest = null;
+        sendResult(beaconAdvertiserBridge.stop(copyRequest(message)));
+    }
+
     private String[] beaconPermissions() {
         ArrayList<String> permissions = new ArrayList<>();
         permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_SCAN);
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+        return permissions.toArray(new String[0]);
+    }
+
+    private String[] beaconAdvertisePermissions() {
+        ArrayList<String> permissions = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
         }
         return permissions.toArray(new String[0]);
@@ -1489,6 +1571,33 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         return nonEmpty(configPrefs().getString(SECURITY_TOKEN_KEY, DEFAULT_SECURITY_TOKEN), DEFAULT_SECURITY_TOKEN);
     }
 
+    private String configDeviceName() {
+        return nonEmpty(configPrefs().getString(DEVICE_NAME_KEY, ""), "");
+    }
+
+    private String configDeviceUUID() {
+        ensureDeviceUUID();
+        return nonEmpty(configPrefs().getString(DEVICE_UUID_KEY, ""), "");
+    }
+
+    private String configDeviceLocation() {
+        return nonEmpty(configPrefs().getString(DEVICE_LOCATION_KEY, ""), "");
+    }
+
+    private void ensureDeviceUUID() {
+        SharedPreferences prefs = configPrefs();
+        String value = nonEmpty(prefs.getString(DEVICE_UUID_KEY, ""), "");
+        try {
+            if (!value.isEmpty()) {
+                UUID.fromString(value);
+                return;
+            }
+        } catch (Exception ignored) {
+            // Replace invalid persisted values with a usable UUID below.
+        }
+        prefs.edit().putString(DEVICE_UUID_KEY, UUID.randomUUID().toString().toUpperCase(Locale.US)).apply();
+    }
+
     private JSONObject configSettingsSnapshot() throws JSONException {
         SharedPreferences prefs = configPrefs();
         JSONObject settings = new JSONObject();
@@ -1500,6 +1609,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         settings.put("highAvailabilityURL3", nonEmpty(prefs.getString(HA_URL3_KEY, ""), ""));
         settings.put("highAvailabilityURL4", nonEmpty(prefs.getString(HA_URL4_KEY, ""), ""));
         settings.put("beaconUUID", nonEmpty(prefs.getString(BEACON_UUID_KEY, DEFAULT_BEACON_UUID), DEFAULT_BEACON_UUID));
+        settings.put("deviceName", configDeviceName());
+        settings.put("deviceUUID", configDeviceUUID());
+        settings.put("deviceLocation", configDeviceLocation());
         return settings;
     }
 
@@ -1510,17 +1622,57 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         putStringSetting(editor, values, HA_URL3_KEY, "highAvailabilityURL3", "haURL3", "ha_url3");
         putStringSetting(editor, values, HA_URL4_KEY, "highAvailabilityURL4", "haURL4", "ha_url4");
         putStringSetting(editor, values, BEACON_UUID_KEY, "beaconUUID", "beaconUuid", "beacon_uuid");
+        putStringSetting(editor, values, DEVICE_NAME_KEY, "deviceName", "device_name", "name");
+        putDeviceUUIDSetting(editor, values, "deviceUUID", "deviceUuid", "device_uuid", "uuid");
+        putStringSetting(editor, values, DEVICE_LOCATION_KEY, "deviceLocation", "device_location", "location");
         putStringSetting(editor, values, SECURITY_TOKEN_KEY, "newSecurityToken", "securityToken");
         putBooleanSetting(editor, values, HA_ENABLED_KEY, "highAvailabilityEnabled", "haEnabled", "ha_enabled");
         putIntSetting(editor, values, HA_TIMEOUT_KEY, "highAvailabilityTimeoutSeconds", "haTimeout", "ha_timeout");
         editor.apply();
+        ensureDeviceUUID();
         return configSettingsSnapshot();
+    }
+
+    private JSONObject settingsGet(JSONObject message) throws JSONException {
+        JSONObject response = baseResponse(message, "settingsGet");
+        response.put("success", true);
+        response.put("settings", configSettingsSnapshot());
+        return response;
+    }
+
+    private JSONObject settingsSet(JSONObject message) throws JSONException {
+        String token = nonEmpty(message.optString("token", message.optString("securityToken", "")), "");
+        if (token.isEmpty() || !token.equals(configSecurityToken())) {
+            JSONObject response = baseResponse(message, "settingsSet");
+            response.put("success", false);
+            response.put("error", "securityToken is required for settingsSet.");
+            return response;
+        }
+
+        JSONObject values = message.optJSONObject("settings");
+        JSONObject snapshot = applyConfigSettings(values != null ? values : message);
+        JSONObject response = baseResponse(message, "settingsSet");
+        response.put("success", true);
+        response.put("settings", snapshot);
+        return response;
     }
 
     private void putStringSetting(SharedPreferences.Editor editor, JSONObject values, String prefKey, String... aliases) {
         String value = stringFromAliases(values, aliases);
         if (value != null) {
             editor.putString(prefKey, value.trim());
+        }
+    }
+
+    private void putDeviceUUIDSetting(SharedPreferences.Editor editor, JSONObject values, String... aliases) {
+        String value = stringFromAliases(values, aliases);
+        if (value == null) {
+            return;
+        }
+        try {
+            editor.putString(DEVICE_UUID_KEY, UUID.fromString(value.trim()).toString().toUpperCase(Locale.US));
+        } catch (Exception ignored) {
+            editor.putString(DEVICE_UUID_KEY, UUID.randomUUID().toString().toUpperCase(Locale.US));
         }
     }
 
@@ -2396,6 +2548,21 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             }
             return;
         }
+        if (requestCode == REQUEST_BEACON_ADVERTISE_PERMISSION) {
+            if (allPermissionsGranted(grantResults) && pendingBeaconAdvertiseStartRequest != null) {
+                try {
+                    sendResult(beaconAdvertiserBridge.start(pendingBeaconAdvertiseStartRequest));
+                } catch (JSONException error) {
+                    sendErrorSafe(pendingBeaconAdvertiseStartRequest, "beaconAdvertiseStart", error.getMessage());
+                } finally {
+                    pendingBeaconAdvertiseStartRequest = null;
+                }
+            } else {
+                sendErrorSafe(pendingBeaconAdvertiseStartRequest, "beaconAdvertiseStart", "Bluetooth advertise permission is required for iBeacon advertising.");
+                pendingBeaconAdvertiseStartRequest = null;
+            }
+            return;
+        }
         if (requestCode == REQUEST_LOCATION_PERMISSION) {
             JSONObject request = pendingLocationRequest;
             String action = pendingAction != null ? pendingAction : "geoLocationGet";
@@ -2723,8 +2890,18 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
 
     private void sendBarcodeResult(Barcode barcode) {
         try {
+            String code = barcode.getRawValue() != null ? barcode.getRawValue() : "";
+            if (tryApplyConfigQRCode(code)) {
+                JSONObject response = baseResponse(pendingRequest, "scanBarcode");
+                response.put("code", "configChanged");
+                response.put("format", "JSONConfig");
+                response.put("success", true);
+                response.put("settings", configSettingsSnapshot());
+                sendResult(response);
+                return;
+            }
             JSONObject response = baseResponse(pendingRequest, "scanBarcode");
-            response.put("code", barcode.getRawValue() != null ? barcode.getRawValue() : "");
+            response.put("code", code);
             response.put("format", barcodeFormatName(barcode.getFormat()));
             sendResult(response);
         } catch (JSONException error) {
@@ -2732,6 +2909,36 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         } finally {
             clearPendingAction();
         }
+    }
+
+    private boolean tryApplyConfigQRCode(String code) throws JSONException {
+        if (code == null || code.trim().isEmpty()) {
+            return false;
+        }
+
+        JSONObject config;
+        try {
+            config = new JSONObject(code);
+        } catch (JSONException ignored) {
+            return false;
+        }
+
+        if (!"changeConfig".equals(config.optString("toolmode", ""))) {
+            return false;
+        }
+
+        String scannedToken = config.optString("securityToken", "").trim();
+        if (scannedToken.isEmpty() || !scannedToken.equals(configSecurityToken())) {
+            throw new JSONException("Security token mismatch.");
+        }
+
+        String defaultServerUrl = config.optString("defaultServerUrl", "").trim();
+        if (!defaultServerUrl.isEmpty() && !config.has("serverURL")) {
+            config.put("serverURL", defaultServerUrl);
+        }
+        applyConfigSettings(config);
+        reloadConfiguredUrlFromSettings();
+        return true;
     }
 
     private String barcodeFormatName(int format) {

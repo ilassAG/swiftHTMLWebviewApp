@@ -141,6 +141,68 @@
             <key>Type</key>
             <string>PSGroupSpecifier</string>
             <key>Title</key>
+            <string>Device Identity</string>
+            <key>FooterText</key>
+            <string>Device UUID is generated automatically on first start if left empty.</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Device Name</string>
+            <key>Key</key>
+            <string>device_name</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>Alphabet</string>
+            <key>AutocapitalizationType</key>
+            <string>Words</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Device UUID</string>
+            <key>Key</key>
+            <string>device_uuid</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>Alphabet</string>
+            <key>AutocapitalizationType</key>
+            <string>AllCharacters</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Device Location</string>
+            <key>Key</key>
+            <string>device_location</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>IsSecure</key>
+            <false/>
+            <key>KeyboardType</key>
+            <string>Alphabet</string>
+            <key>AutocapitalizationType</key>
+            <string>Words</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSGroupSpecifier</string>
+            <key>Title</key>
             <string>iBeacon</string>
             <key>FooterText</key>
             <string>iBeacon ranging can only see beacons for the configured Proximity UUID.</string>

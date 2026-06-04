@@ -46,12 +46,15 @@ Error:
 - `scanDocument`
 - `takePhoto`
 - `scanBarcode`
+- `nfcTagRead`
 - `continuousScanStart` / `continuousScanStop`
 - `dataScanStart` / `dataScanEnd` (Kassa-compatible continuous scanner aliases)
 - `loginScanStart` / `loginScanEnd` (Kassa-compatible continuous scanner aliases)
 - `previewBoxLocationUpdate`
 - `beaconsStart` / `beaconsStop`
+- `beaconAdvertiseStart` / `beaconAdvertiseStop`
 - `deviceInfoGet`
+- `settingsGet` / `settingsSet`
 - `screenOrientationGet` / `screenOrientationSet`
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
@@ -81,6 +84,10 @@ actions. On iOS they live in Settings.bundle:
 - `ha_url2`, `ha_url3`, `ha_url4`: fallback URLs.
 - `beacon_uuid`: iBeacon Proximity UUID used by the continuous beacon bridge
   when that native module is enabled.
+- `device_name`: deployment-specific display name for this wrapper install.
+- `device_uuid`: persistent per-install identifier. Native code generates one
+  on first start if the value is empty.
+- `device_location`: deployment-specific physical/logical location label.
 
 Web apps should not hard-code these values. They should treat the native wrapper
 as the owner of startup URL selection and beacon-region selection.
@@ -127,7 +134,9 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
     highAvailabilityURL2: 'https://backup-1.example.invalid/app/',
     highAvailabilityURL3: '',
     highAvailabilityURL4: '',
-    beaconUUID: '7763A937-B779-4D31-A20C-49E83047048F'
+    beaconUUID: '7763A937-B779-4D31-A20C-49E83047048F',
+    deviceName: 'Kasse AP03',
+    deviceLocation: 'Zelt A / Eingang'
   }
 });
 ```
@@ -140,9 +149,9 @@ Supported `configPairingSend.command` values:
 
 - `statusGet`: returns settings plus platform device status/details.
 - `settingsGet`: returns non-sensitive native settings.
-- `settingsSet`: updates URL/HA/beacon settings and optionally rotates the
-  security token through `settings.newSecurityToken`. The current token is
-  still required in `token`.
+- `settingsSet`: updates URL/HA/beacon/device identity settings and optionally
+  rotates the security token through `settings.newSecurityToken`. The current
+  token is still required in `token`.
 - `wifiConfigure`: asks the target OS to add/join a WLAN with `ssid` and
   `passphrase`.
 - `reload`: reloads the target wrapper from its configured startup URL.
@@ -154,6 +163,29 @@ Android show system confirmation UI, so WLAN changes are not silent.
 The local demo page includes a `Config Pairing` panel for both roles: show the
 target QR, scan a pairing QR, connect, fetch status/settings, set URL/HA/beacon
 settings, configure target WLAN, and reload the target.
+
+The same settings are available locally through direct JS bridge actions:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'settingsGet'
+});
+
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'settingsSet',
+  token: 'current-security-token',
+  settings: {
+    deviceName: 'Kasse AP03',
+    deviceUUID: '4EF955C4-DC2B-4328-9B4D-1D0341B9DF90',
+    deviceLocation: 'Zelt A / Eingang'
+  }
+});
+```
+
+`settingsGet` returns non-sensitive values plus `securityTokenSet`.
+`settingsSet` requires the current security token. If `deviceUUID` is omitted,
+the existing UUID is kept. If it is explicitly set to an empty string, native
+code generates and stores a new UUID.
 
 ## Continuous scanner
 
@@ -193,6 +225,63 @@ For login mode the event action is `barcodeLogin`. Stop the scanner with
 with `previewBoxLocationUpdate`.
 
 Android uses CameraX and ML Kit for the same continuous scanner action names.
+
+## NFC tag reading
+
+`nfcTagRead` starts one native NFC reader session and returns when the user
+presents a tag, cancels, or the session times out. The first implementation
+focuses on tag metadata and NDEF payloads. Platform privacy and tag-technology
+limits apply: iOS exposes only the identifiers and data allowed by CoreNFC, and
+Android exposes technology-specific details only when the tag/driver provides
+them.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'nfcTagRead',
+  requestId: crypto.randomUUID(),
+  timeoutSeconds: 30
+});
+```
+
+Typical response:
+
+```json
+{
+  "platform": "ios",
+  "action": "nfcTagRead",
+  "success": true,
+  "tag": {
+    "type": "miFare",
+    "identifierHex": "04A1B2C3D4E5F6",
+    "identifierBase64": "BKGyw9Tl9g==",
+    "ndefAvailable": true,
+    "ndefWritable": true,
+    "ndefStatus": "readWrite",
+    "ndefCapacityBytes": 512
+  },
+  "ndef": {
+    "available": true,
+    "status": "readWrite",
+    "recordCount": 1,
+    "records": [
+      {
+        "index": 0,
+        "typeNameFormat": "nfcWellKnown",
+        "type": "T",
+        "text": "Hallo NFC",
+        "languageCode": "de",
+        "payloadBase64": "..."
+      }
+    ]
+  }
+}
+```
+
+On Android the `tag.technologies` array may include values such as `NfcA`,
+`IsoDep`, `Ndef`, `MifareUltralight`, or `NfcV`. On iOS the app must be signed
+with the Near Field Communication Tag Reading capability and the
+`com.apple.developer.nfc.readersession.formats` entitlement for `NDEF`/`TAG`.
+The bundled demo page exposes this through `NFC Tag lesen`.
 
 ## iBeacon ranging
 
@@ -236,6 +325,51 @@ Typical event:
 ```
 
 Stop ranging with `beaconsStop`.
+
+## iBeacon advertising
+
+`beaconAdvertiseStart` makes the device transmit as an iBeacon while the native
+app is running. The web app can pass a Proximity UUID plus `major` and `minor`.
+If `uuid` is omitted, native code uses the configured `beacon_uuid` setting.
+`major` and `minor` default to `1` and must be in the iBeacon range `0...65535`.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'beaconAdvertiseStart',
+  uuid: '7763A937-B779-4D31-A20C-49E83047048F',
+  major: 3,
+  minor: 17
+});
+```
+
+Typical response:
+
+```json
+{
+  "platform": "ios",
+  "action": "beaconAdvertiseStart",
+  "success": true,
+  "provider": "ios_corebluetooth",
+  "state": "starting",
+  "uuid": "7763A937-B779-4D31-A20C-49E83047048F",
+  "major": 3,
+  "minor": 17
+}
+```
+
+The native advertiser also sends a follow-up result with the same action when
+the platform confirms `state: "advertising"` or reports an advertising error.
+Stop transmitting with:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'beaconAdvertiseStop'
+});
+```
+
+iOS uses CoreBluetooth and can advertise while the app is foregrounded. Android
+uses the AltBeacon transmitter and requires BLE advertising support on the
+device plus `BLUETOOTH_ADVERTISE` permission on Android 12+.
 
 ## Device, runtime, and diagnostics
 

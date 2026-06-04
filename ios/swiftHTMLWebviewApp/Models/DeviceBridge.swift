@@ -6,7 +6,9 @@
 //
 
 import AVFoundation
+@preconcurrency import CoreBluetooth
 import CoreMotion
+import CoreNFC
 import Darwin
 import Foundation
 @preconcurrency import NetworkExtension
@@ -22,6 +24,9 @@ final class DeviceBridge: ObservableObject {
         var response = baseResponse(request: request, action: "deviceInfoGet")
         response["success"] = true
         response["name"] = UIDevice.current.name
+        response["configuredDeviceName"] = AppSettings.shared.deviceName
+        response["configuredDeviceUUID"] = AppSettings.shared.deviceUUIDString
+        response["configuredDeviceLocation"] = AppSettings.shared.deviceLocation
         response["os"] = UIDevice.current.systemName
         response["osVersion"] = UIDevice.current.systemVersion
         response["device"] = UIDevice.current.model
@@ -152,6 +157,8 @@ final class DeviceBridge: ObservableObject {
     private func capabilities() -> [String: Any] {
         [
             "deviceInfoGet": true,
+            "settingsGet": true,
+            "settingsSet": true,
             "screenOrientationSet": true,
             "wifiConfigure": true,
             "screenshotGet": true,
@@ -160,7 +167,11 @@ final class DeviceBridge: ObservableObject {
             "screenStreamFormats": ["jpeg"],
             "soundPlay": true,
             "idleTimerStart": true,
-            "sensorStreamStart": true
+            "sensorStreamStart": true,
+            "nfcTagRead": NFCTagReaderSession.readingAvailable,
+            "beaconAdvertiseStart": BeaconAdvertiserBridge.isSupported(),
+            "beaconAdvertiseStop": true,
+            "beaconAdvertiseSupported": CBPeripheralManager.authorization != .denied
         ]
     }
 

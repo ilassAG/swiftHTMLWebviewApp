@@ -103,17 +103,17 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                             do {
                                 if let json = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
                                     if let toolmode = json["toolmode"] as? String, toolmode == "changeConfig",
-                                       let scannedToken = json["securityToken"] as? String,
-                                       let newUrl = json["defaultServerUrl"] as? String, !newUrl.isEmpty {
+                                       let scannedToken = json["securityToken"] as? String {
 
                                         let storedToken = AppSettings.shared.securityToken
                                         if scannedToken == storedToken {
-                                            print(String(format: NSLocalizedString("status.securityToken.match", comment: "Security token match status format"), newUrl))
-                                            AppSettings.shared.serverURL = newUrl
-
-                                            // Optional: Verarbeite newSecurityToken
-                                            if let newSecurityToken = json["newSecurityToken"] as? String, !newSecurityToken.isEmpty {
-                                                AppSettings.shared.securityToken = newSecurityToken
+                                            var configValues = json
+                                            if let defaultServerUrl = json["defaultServerUrl"] as? String, !defaultServerUrl.isEmpty {
+                                                configValues["serverURL"] = defaultServerUrl
+                                                print(String(format: NSLocalizedString("status.securityToken.match", comment: "Security token match status format"), defaultServerUrl))
+                                            }
+                                            let snapshot = AppSettings.shared.applyConfiguration(configValues)
+                                            if let newSecurityToken = snapshot["securityToken"] as? String, !newSecurityToken.isEmpty {
                                                 print(String(format: NSLocalizedString("status.newSecurityToken.set", comment: "New security token set status format"), newSecurityToken))
                                             }
 

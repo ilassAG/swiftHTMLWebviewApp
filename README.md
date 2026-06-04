@@ -5,7 +5,7 @@
 The project started as an iOS wrapper. The repository is now structured to support iOS and Android with a shared web-facing bridge contract.
 Printer smoke tests share a small Go core that can be bound into both mobile platforms.
 
-![App Screenshot](media/v8screenshot.png)
+![Native Bridge Demo Screenshot](media/readme-screenshot.png)
 
 ## Repository Layout
 
@@ -29,13 +29,16 @@ swiftHTMLWebviewApp/
 - Native camera/photo capture.
 - Document scanning.
 - QR/barcode scanning.
+- NFC tag reading with NDEF record decoding.
 - Embedded continuous QR/barcode scanning for web-app workflows.
 - Continuous iBeacon ranging events using the configured Proximity UUID.
+- Optional iBeacon advertising with configurable UUID, major, and minor values.
 - PDF generation.
 - Native confetti burst from JavaScript.
 - QR-code based configuration for server URL and security token.
 - Settings bundle for runtime configuration, including local/remote startup URL,
-  optional high-availability fallback URLs, and the iBeacon Proximity UUID.
+  optional high-availability fallback URLs, the iBeacon Proximity UUID, and
+  deployment identity fields.
 - BLE config pairing for nearby device setup through QR code or two-finger hold.
 - Optional Stripe Terminal / Tap to Pay bridge.
 - Optional Epson network-printer smoke test through the Go printer core.
@@ -79,19 +82,22 @@ window.handleNativeResult = function(result) {
 };
 ```
 
-See `docs/native-bridge.md` for the bridge contract.
+See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
 
 ## Built-in Bridge Actions
 
 - `scanDocument`
 - `takePhoto`
 - `scanBarcode`
+- `nfcTagRead`
 - `continuousScanStart` / `continuousScanStop`
 - `dataScanStart` / `dataScanEnd` (Kassa-compatible aliases)
 - `loginScanStart` / `loginScanEnd` (Kassa-compatible aliases)
 - `previewBoxLocationUpdate`
 - `beaconsStart` / `beaconsStop`
+- `beaconAdvertiseStart` / `beaconAdvertiseStop`
 - `deviceInfoGet`
+- `settingsGet` / `settingsSet`
 - `screenOrientationGet` / `screenOrientationSet`
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
@@ -164,14 +170,21 @@ Important behavior:
 - Without StripeTerminal, `tapToPayAvailability` returns `available: false`.
 - When StripeTerminal is linked and Apple capabilities are configured, `tapToPayCollect` can start a native Tap to Pay flow.
 
-See `docs/stripe-tap-to-pay.md` for setup, entitlements, backend requirements, and JS payload examples.
+See [docs/stripe-tap-to-pay.md](docs/stripe-tap-to-pay.md) for setup, entitlements, backend requirements, and JS payload examples.
 
 ## Platform Docs
 
-- `docs/ios.md`
-- `docs/android.md`
-- `docs/native-bridge.md`
-- `docs/stripe-tap-to-pay.md`
+Start with the bridge contract, then open the platform-specific notes for build,
+capability, and deployment details:
+
+- [Native bridge contract](docs/native-bridge.md)
+- [iOS wrapper notes](docs/ios.md)
+- [Android wrapper notes](docs/android.md)
+- [Stripe Tap to Pay setup](docs/stripe-tap-to-pay.md)
+- [Printer core README](printercore/README.md)
+- [Screenstream viewer README](tools/screenstreamviewer/README.md)
+- [Basic web example](examples/basic/README.md)
+- [Stripe Tap to Pay web example](examples/stripe-tap-to-pay/README.md)
 
 ## Configuration via QR Code
 
@@ -181,15 +194,19 @@ The app can update its server URL and security token by scanning a QR code conta
 {
   "toolmode": "changeConfig",
   "defaultServerUrl": "https://your.server.url/",
-  "securityToken": "YOUR_TOKEN"
+  "securityToken": "YOUR_TOKEN",
+  "deviceName": "Kasse AP03",
+  "deviceLocation": "Zelt A / Eingang"
 }
 ```
 
 The iOS Settings app also supports a local page mode (`local`), an optional
 high-availability URL list (`ha_enabled`, `ha_timeout`, `ha_url2`, `ha_url3`,
-`ha_url4`), and an iBeacon Proximity UUID (`beacon_uuid`). The HA keys are kept
-compatible with the existing Kassa iOS naming so deployments can reuse the same
-configuration model.
+`ha_url4`), an iBeacon Proximity UUID (`beacon_uuid`), and device identity
+fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
+generated on first start if it is empty. The HA keys are kept compatible with
+the existing Kassa iOS naming so deployments can reuse the same configuration
+model.
 
 Optional token rotation:
 
@@ -207,7 +224,7 @@ starts a BLE GATT config session. Another device running the wrapper can scan
 that QR, call `configPairingConnect`, then send `configPairingSend` commands
 for status, URL/HA/beacon settings, WLAN setup, and reload. The same target UI
 opens with a two-finger long press in the center of the WebView for about
-1.5 seconds. See `docs/native-bridge.md`.
+1.5 seconds. See [docs/native-bridge.md](docs/native-bridge.md).
 
 ## Design Principle
 

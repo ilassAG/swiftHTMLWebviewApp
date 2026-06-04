@@ -16,9 +16,13 @@ Implemented:
 - Native Android confetti overlay for `launchConfetti`.
 - Android camera photo capture for `takePhoto`.
 - Google Code Scanner UI for `scanBarcode`.
+- Android NFC reader-mode bridge for `nfcTagRead` with tag metadata and NDEF
+  record decoding when the device has NFC hardware.
 - CameraX + ML Kit embedded continuous scanner for `continuousScanStart`,
   `dataScanStart`, `loginScanStart`, and preview updates.
 - AltBeacon iBeacon ranging for `beaconsStart` / `beaconsStop`.
+- AltBeacon iBeacon advertising for `beaconAdvertiseStart` /
+  `beaconAdvertiseStop` when the device supports BLE advertising.
 - Google ML Kit Document Scanner UI for `scanDocument`, returning JPEG image data URLs or PDF data URLs.
 - Go `printercore` AAR bridge for `printerDiscover`, `printerHelloWorld`, and
   `printerEpsonHelloWorld`.
@@ -32,7 +36,9 @@ Implemented:
   Wi-Fi status/setup, and app-screen JPEG streaming over WebSocket.
 - Native SharedPreferences-backed startup URL settings with Kassa-compatible
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
-  `ha_url2`, `ha_url3`, `ha_url4`) and `beacon_uuid`.
+  `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity
+  fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
+  generated on first start if it is empty.
 - BLE config pairing as target and config device through `configPairingShow`,
   `configPairingConnect`, and `configPairingSend`.
 - `wifiStatusGet` mirrors the iOS response shape for `ssidAvailable`, `ssid`,

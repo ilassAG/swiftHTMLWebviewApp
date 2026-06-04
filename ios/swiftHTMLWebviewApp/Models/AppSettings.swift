@@ -25,6 +25,9 @@ class AppSettings {
     private let activeServerUrlKey = "active_server_url"
     private let lastServerUrlKey = "last_server_url"
     private let beaconUUIDKey = "beacon_uuid"
+    private let deviceNameKey = "device_name"
+    private let deviceUUIDKey = "device_uuid"
+    private let deviceLocationKey = "device_location"
     private let defaultHighAvailabilityTimeoutSeconds = 5
     private let defaultBeaconUUID = "7763A937-B779-4D31-A20C-49E83047048F"
 
@@ -88,6 +91,28 @@ class AppSettings {
         UUID(uuidString: beaconUUIDString) ?? UUID(uuidString: defaultBeaconUUID)!
     }
 
+    var deviceName: String {
+        get { normalizedOptionalValue(userDefaults.string(forKey: deviceNameKey)) ?? "" }
+        set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: deviceNameKey) }
+    }
+
+    var deviceUUIDString: String {
+        get {
+            ensureDeviceUUID()
+            return normalizedOptionalValue(userDefaults.string(forKey: deviceUUIDKey)) ?? ""
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let uuid = UUID(uuidString: trimmed) ?? UUID()
+            userDefaults.set(uuid.uuidString, forKey: deviceUUIDKey)
+        }
+    }
+
+    var deviceLocation: String {
+        get { normalizedOptionalValue(userDefaults.string(forKey: deviceLocationKey)) ?? "" }
+        set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: deviceLocationKey) }
+    }
+
     var highAvailabilityURL2: String {
         get { normalizedOptionalValue(userDefaults.string(forKey: highAvailabilityUrl2Key)) ?? "" }
         set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: highAvailabilityUrl2Key) }
@@ -122,8 +147,12 @@ class AppSettings {
             highAvailabilityUrl4Key: "",
             activeServerUrlKey: "",
             lastServerUrlKey: "",
-            beaconUUIDKey: defaultBeaconUUID
+            beaconUUIDKey: defaultBeaconUUID,
+            deviceNameKey: "",
+            deviceUUIDKey: "",
+            deviceLocationKey: ""
         ])
+        ensureDeviceUUID()
     }
 
     func resetToDefaultURL() {
@@ -172,7 +201,10 @@ class AppSettings {
             "highAvailabilityURL4": highAvailabilityURL4,
             "activeServerURL": activeServerURL ?? "",
             "lastServerURL": lastServerURL ?? "",
-            "beaconUUID": beaconUUIDString
+            "beaconUUID": beaconUUIDString,
+            "deviceName": deviceName,
+            "deviceUUID": deviceUUIDString,
+            "deviceLocation": deviceLocation
         ]
 
         if includeSensitive {
@@ -207,12 +239,29 @@ class AppSettings {
         if let value = settingString(values["beaconUUID"] ?? values["beaconUuid"] ?? values["beacon_uuid"]) {
             beaconUUIDString = value
         }
+        if let value = settingString(values["deviceName"] ?? values["device_name"] ?? values["name"]) {
+            deviceName = value
+        }
+        if let value = settingString(values["deviceUUID"] ?? values["deviceUuid"] ?? values["device_uuid"] ?? values["uuid"]) {
+            deviceUUIDString = value
+        }
+        if let value = settingString(values["deviceLocation"] ?? values["device_location"] ?? values["location"]) {
+            deviceLocation = value
+        }
         if let value = settingString(values["newSecurityToken"] ?? values["securityToken"]) {
             securityToken = value
         }
 
         userDefaults.synchronize()
         return configurationSnapshot()
+    }
+
+    private func ensureDeviceUUID() {
+        let value = normalizedOptionalValue(userDefaults.string(forKey: deviceUUIDKey))
+        if value == nil || value.flatMap(UUID.init(uuidString:)) == nil {
+            userDefaults.set(UUID().uuidString, forKey: deviceUUIDKey)
+            userDefaults.synchronize()
+        }
     }
 
     private func normalizedSettingValue(_ value: String?, fallback: String) -> String {
