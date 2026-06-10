@@ -626,8 +626,8 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         counterValueLabel.text = "\(counter) | R \(rest) W \(websocket)"
 
         if let rtt = doubleValue(stats["lastRttMs"]) {
-            let protocolName = stringValue(stats["lastProtocol"]).isEmpty ? "RTT" : stringValue(stats["lastProtocol"])
-            rttValueLabel.text = "\(protocolName) \(Int(rtt.rounded())) ms"
+            let protocolName = nonEmpty(stringValue(stats["lastProtocol"]).lowercased()) ?? "rtt"
+            rttValueLabel.text = "\(Int(rtt.rounded()))ms \(protocolName)"
         } else {
             rttValueLabel.text = "-"
         }
