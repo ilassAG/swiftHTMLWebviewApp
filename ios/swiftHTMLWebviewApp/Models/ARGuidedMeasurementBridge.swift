@@ -167,6 +167,20 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         return nil
     }
 
+    func floorPlanPlanPayload() -> [String: Any]? {
+        if let plan = latestRequest["floorPlanPlanJson"] as? [String: Any] {
+            return plan
+        }
+        if let plan = latestRequest["normalizedPlan"] as? [String: Any] {
+            return plan
+        }
+        if let floorPlan = latestRequest["floorPlan"] as? [String: Any],
+           let plan = floorPlan["planJson"] as? [String: Any] {
+            return plan
+        }
+        return nil
+    }
+
     private func positionResponse(frame: ARFrame, action: String) -> [String: Any] {
         var response = baseResponse(request: latestRequest, action: action)
         response["success"] = true
@@ -325,6 +339,7 @@ private struct ARGuidedMeasurementRepresentable: UIViewControllerRepresentable {
 
 final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelegate {
     private let sceneView = ARSCNView(frame: .zero)
+    private let coachingOverlay = ARCoachingOverlayView(frame: .zero)
     private let overlayView = UIView(frame: .zero)
     private let statusLabel = UILabel(frame: .zero)
     private let detailLabel = UILabel(frame: .zero)
@@ -338,15 +353,16 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private let pointButton = UIButton(type: .system)
     private weak var bridge: ARGuidedMeasurementBridge?
     private var arrowNode: SCNNode?
+    private var roomPlanNode: SCNNode?
     private var arrowPlacedInWorld = false
     private var alignmentStartTime: TimeInterval?
     private var lastAlignmentStatusTime: TimeInterval = 0
     private var statsHeightConstraint: NSLayoutConstraint?
 
     private enum AlignmentThresholds {
-        static let horizontalDistanceMeters: Float = 0.36
-        static let yawRadians: Float = 0.44
-        static let requiredStableSeconds: TimeInterval = 0.7
+        static let horizontalDistanceMeters: Float = 0.65
+        static let yawRadians: Float = 0.35
+        static let requiredStableSeconds: TimeInterval = 0.85
         static let statusIntervalSeconds: TimeInterval = 0.35
     }
 
@@ -381,6 +397,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tap.cancelsTouchesInView = false
         sceneView.addGestureRecognizer(tap)
+        configureCoachingOverlay()
         configureOverlay()
         refreshStartArrow()
     }
@@ -403,7 +420,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         refreshStartArrow(resetPlacement: true)
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
-        configuration.planeDetection = [.horizontal]
+        configuration.planeDetection = [.horizontal, .vertical]
         sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         bridge?.emitReadyFromController()
     }
@@ -437,6 +454,8 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         if resetPlacement {
             arrowPlacedInWorld = false
             alignmentStartTime = nil
+            roomPlanNode?.removeFromParentNode()
+            roomPlanNode = nil
             arrowNode?.removeFromParentNode()
             arrowNode = nil
         }
@@ -513,7 +532,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private func showConfirmedStatus() {
         arrowNode?.isHidden = true
         statusLabel.text = "Messung läuft"
-        detailLabel.text = "Messung beginnt. Live-Werte erscheinen hier."
+        detailLabel.text = "Start bestätigt. Messung beginnt, Live-Werte erscheinen hier."
         confirmButton.isEnabled = false
         confirmButton.alpha = 0.55
         var configuration = confirmButton.configuration
@@ -530,6 +549,21 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         detailLabel.text = detail
     }
 
+    private func configureCoachingOverlay() {
+        coachingOverlay.translatesAutoresizingMaskIntoConstraints = false
+        coachingOverlay.session = sceneView.session
+        coachingOverlay.goal = .tracking
+        coachingOverlay.activatesAutomatically = true
+        coachingOverlay.setActive(true, animated: false)
+        view.addSubview(coachingOverlay)
+        NSLayoutConstraint.activate([
+            coachingOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            coachingOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            coachingOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            coachingOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
     private func configureOverlay() {
         overlayView.translatesAutoresizingMaskIntoConstraints = false
         overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -544,7 +578,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         statusLabel.numberOfLines = 1
 
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        detailLabel.text = "Zum Pfeil gehen, in Pfeilrichtung schauen oder Start bestätigen antippen."
+        detailLabel.text = "Auf dem Planpfeil stehen, iPhone in Pfeilrichtung halten. Start wird automatisch bestätigt."
         detailLabel.textColor = UIColor.white.withAlphaComponent(0.86)
         detailLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         detailLabel.numberOfLines = 2
@@ -690,7 +724,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         lastAlignmentStatusTime = frame.timestamp
         let centimeters = max(0, Int(distance * 100))
         let degrees = max(0, Int(yawDelta * 180 / .pi))
-        detailLabel.text = "\(prefix): \(centimeters) cm / \(degrees) Grad. Antippen bestätigt sofort."
+        detailLabel.text = "\(prefix): \(centimeters) cm / \(degrees) Grad. Stehen bleiben, Richtung halten."
     }
 
     private func isTapNearStartArrow(_ point: CGPoint) -> Bool {
@@ -709,15 +743,16 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         arrowNode.eulerAngles = SCNVector3(0, startArrowWorldYaw(frame: frame), 0)
         arrowNode.isHidden = false
         arrowPlacedInWorld = true
+        placeRoomPlanOverlayIfNeeded()
     }
 
-    // The start arrow is a fixed working-height marker. The web app shows the
-    // plan position first; when AR opens, the technician is expected to stand
-    // at that spot and this marker confirms the current camera pose.
+    // The start arrow is a working-height direction marker, not the physical
+    // plan coordinate. The current iPhone camera pose becomes the calibrated
+    // plan start when the user is already standing on the plan arrow.
     private func startArrowWorldPosition(frame: ARFrame) -> SIMD3<Float> {
         let cameraTransform = frame.camera.transform
         let cameraPosition = cameraTransform.columns.3
-        return SIMD3<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z) + horizontalForwardVector(cameraTransform) * 0.9
+        return SIMD3<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z) + horizontalForwardVector(cameraTransform) * 0.35
     }
 
     private func startArrowWorldYaw(frame: ARFrame) -> Float {
@@ -740,6 +775,79 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     private func normalizedAngle(_ angle: Float) -> Float {
         atan2(sin(angle), cos(angle))
+    }
+
+    private func placeRoomPlanOverlayIfNeeded() {
+        guard roomPlanNode == nil,
+              let arrowNode,
+              let plan = bridge?.floorPlanPlanPayload(),
+              let startAnchor = bridge?.startAnchorPayload() else { return }
+        let walls = plan["walls"] as? [[String: Any]] ?? []
+        guard !walls.isEmpty else { return }
+
+        let startPlanX = Float(doubleValue(startAnchor["planX"]) ?? 0)
+        let startPlanY = Float(doubleValue(startAnchor["planY"]) ?? 0)
+        let axes = planWorldAxes(for: arrowNode)
+        let base = arrowNode.simdWorldPosition
+        let overlay = SCNNode()
+        overlay.name = "roomPlanOverlay"
+
+        for wall in walls {
+            guard let line = roomPlanWallLineNode(wall: wall, startPlanX: startPlanX, startPlanY: startPlanY, base: base, xAxis: axes.xAxis, yAxis: axes.yAxis) else {
+                continue
+            }
+            overlay.addChildNode(line)
+        }
+
+        sceneView.scene.rootNode.addChildNode(overlay)
+        roomPlanNode = overlay
+    }
+
+    private func planWorldAxes(for arrowNode: SCNNode) -> (xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) {
+        let transform = arrowNode.simdWorldTransform
+        var xAxis = SIMD3<Float>(transform.columns.0.x, 0, transform.columns.0.z)
+        if simd_length(xAxis) <= 0.001 {
+            xAxis = SIMD3<Float>(1, 0, 0)
+        } else {
+            xAxis = simd_normalize(xAxis)
+        }
+        let yAxis = simd_normalize(SIMD3<Float>(-xAxis.z, 0, xAxis.x))
+        return (xAxis, yAxis)
+    }
+
+    private func roomPlanWallLineNode(wall: [String: Any], startPlanX: Float, startPlanY: Float, base: SIMD3<Float>, xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) -> SCNNode? {
+        guard let x1 = doubleValue(wall["x1"]),
+              let y1 = doubleValue(wall["y1"]),
+              let x2 = doubleValue(wall["x2"]),
+              let y2 = doubleValue(wall["y2"]) else { return nil }
+        let start = worldPosition(planX: Float(x1), planY: Float(y1), startPlanX: startPlanX, startPlanY: startPlanY, base: base, xAxis: xAxis, yAxis: yAxis)
+        let end = worldPosition(planX: Float(x2), planY: Float(y2), startPlanX: startPlanX, startPlanY: startPlanY, base: base, xAxis: xAxis, yAxis: yAxis)
+        return lineNode(from: start, to: end, radius: 0.012, color: UIColor.systemCyan.withAlphaComponent(0.82))
+    }
+
+    private func worldPosition(planX: Float, planY: Float, startPlanX: Float, startPlanY: Float, base: SIMD3<Float>, xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) -> SIMD3<Float> {
+        let deltaX = planX - startPlanX
+        let deltaY = planY - startPlanY
+        var position = base + xAxis * deltaX + yAxis * deltaY
+        position.y = base.y - 0.32
+        return position
+    }
+
+    private func lineNode(from start: SIMD3<Float>, to end: SIMD3<Float>, radius: CGFloat, color: UIColor) -> SCNNode? {
+        let vector = end - start
+        let length = simd_length(vector)
+        guard length > 0.01 else { return nil }
+
+        let geometry = SCNCylinder(radius: radius, height: CGFloat(length))
+        geometry.firstMaterial?.diffuse.contents = color
+        geometry.firstMaterial?.emission.contents = color.withAlphaComponent(0.2)
+        geometry.firstMaterial?.isDoubleSided = true
+
+        let node = SCNNode(geometry: geometry)
+        node.name = "roomPlanWall"
+        node.simdPosition = (start + end) / 2
+        node.simdOrientation = simd_quatf(from: SIMD3<Float>(0, 1, 0), to: simd_normalize(vector))
+        return node
     }
 
     private func wifiStatsText(_ stats: [String: Any]) -> String {
