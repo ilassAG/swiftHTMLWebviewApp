@@ -76,7 +76,7 @@ final class ARGuidedMeasurementBridge: ObservableObject {
 
     func setAnchors(request: [String: Any]) -> [String: Any] {
         latestRequest = mergeAnchors(into: latestRequest, from: request)
-        controller?.refreshStartArrow()
+        controller?.refreshStartArrow(resetPlacement: true)
         var response = baseResponse(request: request, action: "arGuidedMeasurementSetAnchors")
         response["success"] = true
         response["source"] = "arkit-guided"
@@ -346,6 +346,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private let sceneView = ARSCNView(frame: .zero)
     private weak var bridge: ARGuidedMeasurementBridge?
     private var arrowNode: SCNNode?
+    private var arrowPlacedInWorld = false
     var currentFrame: ARFrame? {
         sceneView.session.currentFrame
     }
@@ -394,6 +395,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             bridge?.emitError("ARKit world tracking is not supported on this device.")
             return
         }
+        refreshStartArrow(resetPlacement: true)
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
         configuration.planeDetection = [.horizontal]
@@ -405,17 +407,25 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         sceneView.session.pause()
     }
 
-    func refreshStartArrow() {
-        arrowNode?.removeFromParentNode()
-        arrowNode = makeArrowNode()
-        if let arrowNode {
-            sceneView.scene.rootNode.addChildNode(arrowNode)
+    func refreshStartArrow(resetPlacement: Bool = false) {
+        if resetPlacement {
+            arrowPlacedInWorld = false
+            arrowNode?.removeFromParentNode()
+            arrowNode = nil
+        }
+        guard arrowNode == nil else { return }
+        let node = makeArrowNode()
+        node.isHidden = true
+        arrowNode = node
+        sceneView.scene.rootNode.addChildNode(node)
+        if !resetPlacement, let frame = sceneView.session.currentFrame {
+            placeStartArrowInWorldIfNeeded(frame: frame)
         }
     }
 
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         Task { @MainActor in
-            self.placeArrowRelativeToCamera(frame: frame)
+            self.placeStartArrowInWorldIfNeeded(frame: frame)
             self.bridge?.emitPosition(frame: frame)
         }
     }
@@ -451,14 +461,33 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         }
     }
 
-    private func placeArrowRelativeToCamera(frame: ARFrame) {
-        guard let arrowNode, arrowNode.parent != nil else { return }
+    private func placeStartArrowInWorldIfNeeded(frame: ARFrame) {
+        guard !arrowPlacedInWorld, let arrowNode, arrowNode.parent != nil else { return }
+        arrowNode.simdPosition = startArrowWorldPosition(frame: frame)
+        arrowNode.eulerAngles = SCNVector3(0, startArrowWorldYaw(frame: frame), 0)
+        arrowNode.isHidden = false
+        arrowPlacedInWorld = true
+    }
+
+    // The start arrow must be a fixed AR world marker. It is placed once near
+    // the detected floor, then remains stationary while the user walks/turns.
+    private func startArrowWorldPosition(frame: ARFrame) -> SIMD3<Float> {
+        let center = CGPoint(x: sceneView.bounds.midX, y: sceneView.bounds.midY)
+        if let query = sceneView.raycastQuery(from: center, allowing: .estimatedPlane, alignment: .horizontal),
+           let result = sceneView.session.raycast(query).first {
+            let position = result.worldTransform.columns.3
+            return SIMD3<Float>(position.x, position.y + 0.02, position.z)
+        }
+
         let cameraTransform = frame.camera.transform
         let cameraPosition = cameraTransform.columns.3
         let forward = simd_normalize(-SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z))
-        let target = SIMD3<Float>(cameraPosition.x, cameraPosition.y - 0.36, cameraPosition.z) + forward * 1.05
-        arrowNode.simdPosition = target
-        arrowNode.eulerAngles.y = frame.camera.eulerAngles.y
+        return SIMD3<Float>(cameraPosition.x, cameraPosition.y - 1.15, cameraPosition.z) + forward * 1.1
+    }
+
+    private func startArrowWorldYaw(frame: ARFrame) -> Float {
+        let anchorYaw = Float(doubleValue(bridge?.startAnchorPayload()?["yawRadians"]) ?? 0)
+        return frame.camera.eulerAngles.y + Float.pi / 2 + anchorYaw
     }
 
     private func makeArrowNode() -> SCNNode {
