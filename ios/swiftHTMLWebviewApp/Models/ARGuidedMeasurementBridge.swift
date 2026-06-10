@@ -469,25 +469,26 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         arrowPlacedInWorld = true
     }
 
-    // The start arrow must be a fixed AR world marker. It is placed once near
-    // the detected floor, then remains stationary while the user walks/turns.
+    // The start arrow is a fixed working-height marker. The web app shows the
+    // plan position first; when AR opens, the technician is expected to stand
+    // at that spot and this marker confirms the current camera pose.
     private func startArrowWorldPosition(frame: ARFrame) -> SIMD3<Float> {
-        let center = CGPoint(x: sceneView.bounds.midX, y: sceneView.bounds.midY)
-        if let query = sceneView.raycastQuery(from: center, allowing: .estimatedPlane, alignment: .horizontal),
-           let result = sceneView.session.raycast(query).first {
-            let position = result.worldTransform.columns.3
-            return SIMD3<Float>(position.x, position.y + 0.02, position.z)
-        }
-
         let cameraTransform = frame.camera.transform
         let cameraPosition = cameraTransform.columns.3
-        let forward = simd_normalize(-SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z))
-        return SIMD3<Float>(cameraPosition.x, cameraPosition.y - 1.15, cameraPosition.z) + forward * 1.1
+        return SIMD3<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z) + horizontalForwardVector(cameraTransform) * 0.9
     }
 
     private func startArrowWorldYaw(frame: ARFrame) -> Float {
         let anchorYaw = Float(doubleValue(bridge?.startAnchorPayload()?["yawRadians"]) ?? 0)
         return frame.camera.eulerAngles.y + Float.pi / 2 + anchorYaw
+    }
+
+    private func horizontalForwardVector(_ transform: simd_float4x4) -> SIMD3<Float> {
+        let rawForward = -SIMD3<Float>(transform.columns.2.x, 0, transform.columns.2.z)
+        if simd_length(rawForward) > 0.001 {
+            return simd_normalize(rawForward)
+        }
+        return SIMD3<Float>(0, 0, -1)
     }
 
     private func makeArrowNode() -> SCNNode {
