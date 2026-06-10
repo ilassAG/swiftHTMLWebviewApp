@@ -181,6 +181,41 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         return nil
     }
 
+    func requestedWorldMapBase64() -> String {
+        stringValue(latestRequest["worldMapBase64"]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func requestedWorldMapURL() -> URL? {
+        let raw = stringValue(latestRequest["worldMapUrl"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        return URL(string: raw)
+    }
+
+    func requestedWorldMapAvailable() -> Bool {
+        if boolValue(latestRequest["worldMapAvailable"]) == true {
+            return true
+        }
+        return !requestedWorldMapBase64().isEmpty || requestedWorldMapURL() != nil
+    }
+
+    func emitRelocalizationState(action: String, state: String, message: String, frame: ARFrame? = nil) {
+        var response = baseResponse(request: latestRequest, action: action)
+        response["success"] = true
+        response["source"] = "arkit-guided"
+        response["state"] = state
+        response["message"] = message
+        response["worldMapAvailable"] = requestedWorldMapAvailable()
+        if let frame {
+            let tracking = trackingStatePayload(frame.camera.trackingState)
+            response["trackingState"] = tracking.state
+            if !tracking.reason.isEmpty {
+                response["trackingReason"] = tracking.reason
+            }
+            response["worldMappingStatus"] = worldMappingStatusName(frame.worldMappingStatus)
+        }
+        eventHandler?(response)
+    }
+
     private func positionResponse(frame: ARFrame, action: String) -> [String: Any] {
         var response = baseResponse(request: latestRequest, action: action)
         response["success"] = true
@@ -190,12 +225,14 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         response["arTimestampSeconds"] = frame.timestamp
         response["elapsedSeconds"] = Date().timeIntervalSince(startedAt)
         response["supported"] = true
+        response["worldMapAvailable"] = requestedWorldMapAvailable()
 
         let tracking = trackingStatePayload(frame.camera.trackingState)
         response["trackingState"] = tracking.state
         if !tracking.reason.isEmpty {
             response["trackingReason"] = tracking.reason
         }
+        response["worldMappingStatus"] = worldMappingStatusName(frame.worldMappingStatus)
 
         let transform = frame.camera.transform
         let position = transform.columns.3
@@ -229,6 +266,7 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         response["coordinateSystem"] = "arkit-gravity-local"
         response["intervalMs"] = Int(intervalSeconds * 1000)
         response["startAnchor"] = startAnchorPayload()
+        response["worldMapAvailable"] = requestedWorldMapAvailable()
         return response
     }
 
@@ -322,6 +360,35 @@ final class ARGuidedMeasurementBridge: ObservableObject {
     }
 }
 
+private func worldMappingStatusName(_ status: ARFrame.WorldMappingStatus) -> String {
+    switch status {
+    case .notAvailable:
+        return "notAvailable"
+    case .limited:
+        return "limited"
+    case .extending:
+        return "extending"
+    case .mapped:
+        return "mapped"
+    @unknown default:
+        return "unknown"
+    }
+}
+
+private enum ARGuidedMeasurementError: LocalizedError {
+    case worldMapMissing
+    case worldMapDecodeFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .worldMapMissing:
+            return "Keine ARWorldMap im Start-Request."
+        case .worldMapDecodeFailed:
+            return "ARWorldMap konnte nicht dekodiert werden."
+        }
+    }
+}
+
 struct ARGuidedMeasurementSheet: View {
     @ObservedObject var bridge: ARGuidedMeasurementBridge
     @Environment(\.dismiss) private var dismiss
@@ -369,9 +436,14 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private var arrowNode: SCNNode?
     private var roomPlanNode: SCNNode?
     private var arrowPlacedInWorld = false
+    private var arrowDesiredHeadingYaw: Float?
     private var alignmentStartTime: TimeInterval?
     private var lastAlignmentStatusTime: TimeInterval = 0
     private var statsHeightConstraint: NSLayoutConstraint?
+    private var initialWorldMap: ARWorldMap?
+    private var requiresWorldMapRelocalization = false
+    private var worldMapRelocalized = false
+    private var runTask: Task<Void, Never>?
 
     private enum AlignmentThresholds {
         static let horizontalDistanceMeters: Float = 0.16
@@ -432,15 +504,77 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             return
         }
         refreshStartArrow(resetPlacement: true)
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.worldAlignment = .gravity
-        configuration.planeDetection = [.horizontal, .vertical]
-        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-        bridge?.emitReadyFromController()
+        runTask?.cancel()
+        runTask = Task { [weak self] in
+            await self?.runSessionAfterWorldMapLoad()
+        }
     }
 
     func stopSession() {
+        runTask?.cancel()
+        runTask = nil
         sceneView.session.pause()
+    }
+
+    private func runSessionAfterWorldMapLoad() async {
+        initialWorldMap = nil
+        requiresWorldMapRelocalization = false
+        worldMapRelocalized = false
+
+        if bridge?.requestedWorldMapAvailable() == true {
+            showRelocalizingStatus("AR-Raumkarte wird geladen.")
+            do {
+                initialWorldMap = try await loadInitialWorldMap()
+                requiresWorldMapRelocalization = true
+                bridge?.emitRelocalizationState(
+                    action: "arGuidedRelocalizing",
+                    state: "loading",
+                    message: "AR-Raumkarte geladen. Raum langsam mit dem iPhone wiedererkennen."
+                )
+            } catch {
+                bridge?.emitError("AR-Raumkarte konnte nicht geladen werden: \(error.localizedDescription)")
+                showRelocalizingStatus("AR-Raumkarte konnte nicht geladen werden.")
+                return
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.worldAlignment = .gravity
+        configuration.planeDetection = [.horizontal, .vertical]
+        configuration.initialWorldMap = initialWorldMap
+        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        if requiresWorldMapRelocalization {
+            showRelocalizingStatus("Raum langsam scannen, bis ARKit die gespeicherte Position erkennt.")
+            bridge?.emitRelocalizationState(
+                action: "arGuidedRelocalizing",
+                state: "relocalizing",
+                message: "Raum langsam scannen, bis der gespeicherte Startpfeil erscheint."
+            )
+        }
+        bridge?.emitReadyFromController()
+    }
+
+    private func loadInitialWorldMap() async throws -> ARWorldMap {
+        if let base64 = bridge?.requestedWorldMapBase64(), !base64.isEmpty {
+            let encoded = base64.contains(",") ? String(base64.split(separator: ",", maxSplits: 1).last ?? "") : base64
+            guard let data = Data(base64Encoded: encoded) else {
+                throw ARGuidedMeasurementError.worldMapDecodeFailed
+            }
+            return try decodeWorldMap(data)
+        }
+        if let url = bridge?.requestedWorldMapURL() {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            return try decodeWorldMap(data)
+        }
+        throw ARGuidedMeasurementError.worldMapMissing
+    }
+
+    private func decodeWorldMap(_ data: Data) throws -> ARWorldMap {
+        guard let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data) else {
+            throw ARGuidedMeasurementError.worldMapDecodeFailed
+        }
+        return worldMap
     }
 
     func updateMeasurementStats(_ stats: [String: Any]) {
@@ -472,6 +606,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             roomPlanNode = nil
             arrowNode?.removeFromParentNode()
             arrowNode = nil
+            arrowDesiredHeadingYaw = nil
         }
         guard arrowNode == nil else { return }
         let node = makeArrowNode()
@@ -485,8 +620,12 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         Task { @MainActor in
-            self.placeStartArrowInWorldIfNeeded(frame: frame)
-            self.evaluateStartAlignment(frame: frame)
+            self.updateRelocalizationState(frame: frame)
+            if self.canUseWorldAnchors {
+                self.placeWorldMapRoomPlanOverlayIfNeeded(frame: frame)
+                self.placeStartArrowInWorldIfNeeded(frame: frame)
+                self.evaluateStartAlignment(frame: frame)
+            }
             self.bridge?.emitPosition(frame: frame)
         }
     }
@@ -719,6 +858,47 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         button.addTarget(self, action: action, for: .touchUpInside)
     }
 
+    private var canUseWorldAnchors: Bool {
+        !requiresWorldMapRelocalization || worldMapRelocalized
+    }
+
+    private func updateRelocalizationState(frame: ARFrame) {
+        guard requiresWorldMapRelocalization, !worldMapRelocalized else { return }
+        switch frame.camera.trackingState {
+        case .normal:
+            worldMapRelocalized = true
+            statusLabel.text = "Raum erkannt"
+            detailLabel.text = "Startpfeil ist jetzt an der gespeicherten Position."
+            confirmButton.isEnabled = true
+            confirmButton.alpha = 1
+            bridge?.emitRelocalizationState(
+                action: "arGuidedRelocalized",
+                state: "relocalized",
+                message: "ARKit hat die gespeicherte Raumkarte wiedererkannt.",
+                frame: frame
+            )
+        case .limited, .notAvailable:
+            guard frame.timestamp - lastAlignmentStatusTime >= AlignmentThresholds.statusIntervalSeconds else { return }
+            lastAlignmentStatusTime = frame.timestamp
+            showRelocalizingStatus("Raum langsam links/rechts scannen. Der Pfeil erscheint erst nach Wiedererkennung.")
+            bridge?.emitRelocalizationState(
+                action: "arGuidedRelocalizing",
+                state: "relocalizing",
+                message: "ARKit sucht die gespeicherte Raumkarte.",
+                frame: frame
+            )
+        }
+    }
+
+    private func showRelocalizingStatus(_ detail: String) {
+        statusLabel.text = "Raum wiedererkennen"
+        detailLabel.text = detail
+        confirmButton.isEnabled = false
+        confirmButton.alpha = 0.55
+        pointButton.isEnabled = false
+        pointButton.alpha = 0.55
+    }
+
     private func evaluateStartAlignment(frame: ARFrame) {
         guard bridge?.startConfirmed != true, arrowPlacedInWorld, let arrowNode else { return }
 
@@ -742,7 +922,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     private func startAlignment(frame: ARFrame, arrowNode: SCNNode) -> (aligned: Bool, distance: Float, yawDelta: Float) {
         let distance = horizontalDistance(from: cameraPosition(frame), to: arrowNode.simdWorldPosition)
-        let yawDelta = abs(normalizedAngle(frame.camera.eulerAngles.y - desiredCameraYaw(for: arrowNode)))
+        let yawDelta = abs(normalizedAngle(arHeadingYaw(frame: frame) - desiredCameraHeadingYaw(for: arrowNode)))
         return (
             distance <= AlignmentThresholds.horizontalDistanceMeters && yawDelta <= AlignmentThresholds.yawRadians,
             distance,
@@ -771,7 +951,9 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private func placeStartArrowInWorldIfNeeded(frame: ARFrame) {
         guard !arrowPlacedInWorld, let arrowNode, arrowNode.parent != nil else { return }
         arrowNode.simdPosition = startArrowWorldPosition(frame: frame)
-        arrowNode.eulerAngles = SCNVector3(0, startArrowWorldYaw(frame: frame), 0)
+        let desiredHeading = startArrowDesiredHeading(frame: frame)
+        arrowNode.eulerAngles = SCNVector3(0, sceneKitYaw(forHeadingYaw: desiredHeading), 0)
+        arrowDesiredHeadingYaw = desiredHeading
         arrowNode.isHidden = false
         arrowPlacedInWorld = true
     }
@@ -780,14 +962,31 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     // plan coordinate. The current iPhone camera pose becomes the calibrated
     // plan start when the user is already standing on the plan arrow.
     private func startArrowWorldPosition(frame: ARFrame) -> SIMD3<Float> {
+        if initialWorldMap != nil, let startAnchor = bridge?.startAnchorPayload() {
+            let x = Float(doubleValue(startAnchor["planX"]) ?? 0)
+            let z = Float(doubleValue(startAnchor["planY"]) ?? 0)
+            return SIMD3<Float>(x, workingHeightMeters(startAnchor: startAnchor), z)
+        }
         let cameraTransform = frame.camera.transform
         let cameraPosition = cameraTransform.columns.3
         return SIMD3<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z) + horizontalForwardVector(cameraTransform) * 0.35
     }
 
-    private func startArrowWorldYaw(frame: ARFrame) -> Float {
+    private func startArrowDesiredHeading(frame: ARFrame) -> Float {
         let anchorYaw = Float(doubleValue(bridge?.startAnchorPayload()?["yawRadians"]) ?? 0)
-        return frame.camera.eulerAngles.y + Float.pi / 2 + anchorYaw
+        if initialWorldMap != nil {
+            return anchorYaw
+        }
+        return arHeadingYaw(frame: frame) + anchorYaw
+    }
+
+    private func sceneKitYaw(forHeadingYaw headingYaw: Float) -> Float {
+        -headingYaw
+    }
+
+    private func workingHeightMeters(startAnchor: [String: Any]) -> Float {
+        let planZ = Float(doubleValue(startAnchor["planZ"]) ?? 0)
+        return planZ > 0.2 ? planZ : 1.4
     }
 
     private func cameraPosition(_ frame: ARFrame) -> SIMD3<Float> {
@@ -799,8 +998,11 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         simd_length(SIMD2<Float>(first.x - second.x, first.z - second.z))
     }
 
-    private func desiredCameraYaw(for arrowNode: SCNNode) -> Float {
-        arrowNode.eulerAngles.y - Float.pi / 2
+    private func desiredCameraHeadingYaw(for arrowNode: SCNNode) -> Float {
+        if let arrowDesiredHeadingYaw {
+            return arrowDesiredHeadingYaw
+        }
+        return -arrowNode.eulerAngles.y
     }
 
     private func normalizedAngle(_ angle: Float) -> Float {
@@ -808,6 +1010,10 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     }
 
     private func placeRoomPlanOverlay(forConfirmedFrame frame: ARFrame) {
+        if initialWorldMap != nil {
+            placeWorldMapRoomPlanOverlayIfNeeded(frame: frame)
+            return
+        }
         guard roomPlanNode == nil,
               let plan = bridge?.floorPlanPlanPayload(),
               let startAnchor = bridge?.startAnchorPayload() else { return }
@@ -830,6 +1036,36 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
         sceneView.scene.rootNode.addChildNode(overlay)
         roomPlanNode = overlay
+    }
+
+    private func placeWorldMapRoomPlanOverlayIfNeeded(frame: ARFrame) {
+        guard initialWorldMap != nil,
+              worldMapRelocalized,
+              roomPlanNode == nil,
+              let plan = bridge?.floorPlanPlanPayload() else { return }
+        let walls = plan["walls"] as? [[String: Any]] ?? []
+        guard !walls.isEmpty else { return }
+
+        let overlay = SCNNode()
+        overlay.name = "roomPlanOverlay"
+        let y = cameraPosition(frame).y - 0.32
+        for wall in walls {
+            guard let line = worldMapRoomPlanWallLineNode(wall: wall, y: y) else { continue }
+            overlay.addChildNode(line)
+        }
+
+        sceneView.scene.rootNode.addChildNode(overlay)
+        roomPlanNode = overlay
+    }
+
+    private func worldMapRoomPlanWallLineNode(wall: [String: Any], y: Float) -> SCNNode? {
+        guard let x1 = doubleValue(wall["x1"]),
+              let y1 = doubleValue(wall["y1"]),
+              let x2 = doubleValue(wall["x2"]),
+              let y2 = doubleValue(wall["y2"]) else { return nil }
+        let start = SIMD3<Float>(Float(x1), y, Float(y1))
+        let end = SIMD3<Float>(Float(x2), y, Float(y2))
+        return lineNode(from: start, to: end, radius: 0.012, color: UIColor.systemCyan.withAlphaComponent(0.82))
     }
 
     private func planWorldAxes(frame: ARFrame, startAnchor: [String: Any]) -> (xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) {

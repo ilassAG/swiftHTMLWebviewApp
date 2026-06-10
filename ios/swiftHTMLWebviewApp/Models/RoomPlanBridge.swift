@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import ARKit
 import simd
 
 #if canImport(RoomPlan)
@@ -120,7 +121,7 @@ final class RoomPlanBridge: ObservableObject {
     }
 
     @available(iOS 16.0, *)
-    func complete(room: CapturedRoom) {
+    func complete(room: CapturedRoom, worldMapPayload: [String: Any]?) {
         let normalizedPlan = normalize(room: room)
         let previewSVG = previewSVG(plan: normalizedPlan)
         let rawRoomPlan = rawRoomPlanPayload(room: room)
@@ -133,6 +134,11 @@ final class RoomPlanBridge: ObservableObject {
         response["normalizedPlan"] = normalizedPlan
         response["previewSvg"] = previewSVG
         response["raw"] = rawRoomPlan
+        if let worldMapPayload {
+            response.merge(worldMapPayload) { _, new in new }
+        } else {
+            response["worldMapAvailable"] = false
+        }
         response["counts"] = [
             "walls": room.walls.count,
             "doors": room.doors.count,
@@ -228,17 +234,25 @@ private struct RoomPlanCaptureRepresentable: UIViewControllerRepresentable {
 
 @available(iOS 16.0, *)
 final class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
-    private let captureView = RoomCaptureView(frame: .zero)
+    private let captureView: RoomCaptureView
     private weak var bridge: RoomPlanBridge?
     private var running = false
     private var cancelled = false
+    private var finishing = false
+    private var worldMapPayload: [String: Any]?
 
     init(bridge: RoomPlanBridge) {
         self.bridge = bridge
+        if #available(iOS 17.0, *) {
+            self.captureView = RoomCaptureView(frame: .zero, arSession: ARSession())
+        } else {
+            self.captureView = RoomCaptureView(frame: .zero)
+        }
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) {
+        self.captureView = RoomCaptureView(frame: .zero)
         super.init(coder: coder)
     }
 
@@ -265,6 +279,8 @@ final class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDele
     func startCapture() {
         guard !running else { return }
         cancelled = false
+        finishing = false
+        worldMapPayload = nil
         running = true
         var configuration = RoomCaptureSession.Configuration()
         configuration.isCoachingEnabled = true
@@ -273,10 +289,23 @@ final class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDele
     }
 
     func finishCapture() {
-        guard running else { return }
+        guard running, !finishing else { return }
+        finishing = true
         running = false
-        bridge?.emitState("processing", message: "RoomPlan scan processing.")
-        captureView.captureSession.stop()
+        bridge?.emitState("worldmap", message: "AR-Raumkarte wird gespeichert.")
+        captureView.captureSession.arSession.getCurrentWorldMap { [weak self] worldMap, error in
+            let payload = archivedWorldMapPayload(worldMap: worldMap, error: error)
+            Task { @MainActor in
+                guard let self else { return }
+                self.worldMapPayload = payload
+                self.bridge?.emitState("processing", message: "RoomPlan scan processing.")
+                if #available(iOS 17.0, *) {
+                    self.captureView.captureSession.stop(pauseARSession: true)
+                } else {
+                    self.captureView.captureSession.stop()
+                }
+            }
+        }
     }
 
     func cancelCapture(sendEvent: Bool) {
@@ -302,7 +331,7 @@ final class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDele
             bridge?.emitError(error.localizedDescription)
             return
         }
-        bridge?.complete(room: processedResult)
+        bridge?.complete(room: processedResult, worldMapPayload: worldMapPayload)
     }
 
     func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
@@ -454,6 +483,45 @@ private func rawRoomPlanPayload(room: CapturedRoom) -> [String: Any] {
             "identifier": room.identifier.uuidString
         ]
     }
+}
+
+private func archivedWorldMapPayload(worldMap: ARWorldMap?, error: Error?) -> [String: Any] {
+    guard let worldMap else {
+        var payload: [String: Any] = [
+            "worldMapAvailable": false,
+            "worldMapFormat": "arkit-arworldmap-keyedarchive-v1"
+        ]
+        if let error {
+            payload["worldMapError"] = error.localizedDescription
+        }
+        return payload
+    }
+    do {
+        let data = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
+        return [
+            "worldMapAvailable": true,
+            "worldMapFormat": "arkit-arworldmap-keyedarchive-v1",
+            "worldMapBase64": data.base64EncodedString(),
+            "worldMapByteCount": data.count,
+            "worldMapAnchorCount": worldMap.anchors.count,
+            "worldMapCenter": vectorPayload(worldMap.center),
+            "worldMapExtent": vectorPayload(worldMap.extent)
+        ]
+    } catch {
+        return [
+            "worldMapAvailable": false,
+            "worldMapFormat": "arkit-arworldmap-keyedarchive-v1",
+            "worldMapError": error.localizedDescription
+        ]
+    }
+}
+
+private func vectorPayload(_ vector: SIMD3<Float>) -> [String: Double] {
+    [
+        "x": Double(vector.x),
+        "y": Double(vector.y),
+        "z": Double(vector.z)
+    ]
 }
 
 private func previewSVG(plan: [String: Any]) -> String {

@@ -91,14 +91,20 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
   floorPlanId: 'floor_...',
   startAnchor: { id: 'anchor_...', kind: 'start', planX: 1.2, planY: 0.8, yawRadians: 0 },
   anchors: [],
+  worldMapUrl: 'http://host/api/floor-plans/floor_.../world-map',
+  worldMapFormat: 'arkit-arworldmap-keyedarchive-v1',
   intervalMs: 500
 });
 ```
 
 Native events are delivered through `window.handleNativeResult(result)`.
 Important event actions are `arGuidedReady`, `arGuidedPosition`,
+`arGuidedRelocalizing`, `arGuidedRelocalized`,
 `arGuidedStartAnchorConfirmed`, `arGuidedAnchorCaptured`, and
-`arGuidedError`. Positions use ARKit gravity-aligned local meters with
+`arGuidedError`. When `worldMapUrl` or `worldMapBase64` is supplied, iOS starts
+world tracking with `initialWorldMap` and does not place the start arrow until
+ARKit has relocalized to the saved physical space. Positions use ARKit
+gravity-aligned local meters with
 `position.x/y/z` and `orientation.pitch/yaw/roll`.
 
 ## Native runtime configuration
@@ -613,6 +619,10 @@ Result shape:
     "objects": []
   },
   "previewSvg": "<svg ...></svg>",
+  "worldMapAvailable": true,
+  "worldMapFormat": "arkit-arworldmap-keyedarchive-v1",
+  "worldMapBase64": "...",
+  "worldMapByteCount": 123456,
   "raw": {}
 }
 ```
