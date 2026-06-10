@@ -84,6 +84,14 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         return response
     }
 
+    func updateStats(request: [String: Any]) -> [String: Any] {
+        controller?.updateMeasurementStats(request)
+        var response = baseResponse(request: request, action: "arGuidedMeasurementUpdateStats")
+        response["success"] = true
+        response["source"] = "arkit-guided"
+        return response
+    }
+
     func stop(request: [String: Any]) -> [String: Any] {
         stopInternal(hideView: true)
         var response = baseResponse(request: request, action: "arGuidedMeasurementStop")
@@ -320,6 +328,11 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private let overlayView = UIView(frame: .zero)
     private let statusLabel = UILabel(frame: .zero)
     private let detailLabel = UILabel(frame: .zero)
+    private let statsStack = UIStackView(frame: .zero)
+    private let counterValueLabel = UILabel(frame: .zero)
+    private let rttValueLabel = UILabel(frame: .zero)
+    private let errorsValueLabel = UILabel(frame: .zero)
+    private let wifiValueLabel = UILabel(frame: .zero)
     private let confirmButton = UIButton(type: .system)
     private let closeButton = UIButton(type: .system)
     private let pointButton = UIButton(type: .system)
@@ -328,6 +341,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private var arrowPlacedInWorld = false
     private var alignmentStartTime: TimeInterval?
     private var lastAlignmentStatusTime: TimeInterval = 0
+    private var statsHeightConstraint: NSLayoutConstraint?
 
     private enum AlignmentThresholds {
         static let horizontalDistanceMeters: Float = 0.36
@@ -396,6 +410,27 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     func stopSession() {
         sceneView.session.pause()
+    }
+
+    func updateMeasurementStats(_ stats: [String: Any]) {
+        let rest = intValue(stats["restSequence"]) ?? 0
+        let websocket = intValue(stats["websocketSequence"]) ?? 0
+        let counter = intValue(stats["counter"]) ?? (rest + websocket)
+        counterValueLabel.text = "\(counter) | R \(rest) W \(websocket)"
+
+        if let rtt = doubleValue(stats["lastRttMs"]) {
+            let protocolName = stringValue(stats["lastProtocol"]).isEmpty ? "RTT" : stringValue(stats["lastProtocol"])
+            rttValueLabel.text = "\(protocolName) \(Int(rtt.rounded())) ms"
+        } else {
+            rttValueLabel.text = "-"
+        }
+
+        errorsValueLabel.text = "\(intValue(stats["errors"]) ?? 0)"
+        wifiValueLabel.text = wifiStatsText(stats)
+
+        if let eventText = nonEmpty(stringValue(stats["eventText"])) {
+            detailLabel.text = eventText
+        }
     }
 
     func refreshStartArrow(resetPlacement: Bool = false) {
@@ -476,8 +511,9 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     }
 
     private func showConfirmedStatus() {
+        arrowNode?.isHidden = true
         statusLabel.text = "Messung läuft"
-        detailLabel.text = "Startposition bestätigt. ARKit zeichnet die Messpunkte weiter auf."
+        detailLabel.text = "Messung beginnt. Live-Werte erscheinen hier."
         confirmButton.isEnabled = false
         confirmButton.alpha = 0.55
         var configuration = confirmButton.configuration
@@ -485,6 +521,8 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         confirmButton.configuration = configuration
         pointButton.isEnabled = true
         pointButton.alpha = 1
+        statsStack.isHidden = false
+        statsHeightConstraint?.constant = 52
     }
 
     private func showRunningStatus(_ detail: String) {
@@ -511,6 +549,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         detailLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         detailLabel.numberOfLines = 2
 
+        configureStatsStack()
         configureButton(confirmButton, title: "Start bestätigen", color: .systemGreen, action: #selector(confirmButtonPressed))
         configureButton(closeButton, title: "Schliessen", color: .systemRed, action: #selector(closeButtonPressed))
         configureButton(pointButton, title: "Messpunkt", color: .systemBlue, action: #selector(pointButtonPressed))
@@ -529,10 +568,13 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         buttonStack.distribution = .fillEqually
 
         overlayView.addSubview(textStack)
+        overlayView.addSubview(statsStack)
         overlayView.addSubview(buttonStack)
         view.addSubview(overlayView)
         view.bringSubviewToFront(overlayView)
 
+        let statsHeightConstraint = statsStack.heightAnchor.constraint(equalToConstant: 0)
+        self.statsHeightConstraint = statsHeightConstraint
         NSLayoutConstraint.activate([
             overlayView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
             overlayView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
@@ -542,12 +584,67 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             textStack.trailingAnchor.constraint(equalTo: overlayView.trailingAnchor, constant: -14),
             textStack.topAnchor.constraint(equalTo: overlayView.topAnchor, constant: 12),
 
+            statsStack.leadingAnchor.constraint(equalTo: overlayView.leadingAnchor, constant: 10),
+            statsStack.trailingAnchor.constraint(equalTo: overlayView.trailingAnchor, constant: -10),
+            statsStack.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 10),
+            statsHeightConstraint,
+
             buttonStack.leadingAnchor.constraint(equalTo: overlayView.leadingAnchor, constant: 10),
             buttonStack.trailingAnchor.constraint(equalTo: overlayView.trailingAnchor, constant: -10),
-            buttonStack.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 10),
+            buttonStack.topAnchor.constraint(equalTo: statsStack.bottomAnchor, constant: 10),
             buttonStack.bottomAnchor.constraint(equalTo: overlayView.bottomAnchor, constant: -10),
             buttonStack.heightAnchor.constraint(equalToConstant: 44)
         ])
+    }
+
+    private func configureStatsStack() {
+        statsStack.translatesAutoresizingMaskIntoConstraints = false
+        statsStack.axis = .horizontal
+        statsStack.spacing = 6
+        statsStack.distribution = .fillEqually
+        statsStack.isHidden = true
+        counterValueLabel.text = "0 | R 0 W 0"
+        rttValueLabel.text = "-"
+        errorsValueLabel.text = "0"
+        wifiValueLabel.text = "-"
+        statsStack.addArrangedSubview(makeStatView(title: "Zähler", valueLabel: counterValueLabel))
+        statsStack.addArrangedSubview(makeStatView(title: "RTT", valueLabel: rttValueLabel))
+        statsStack.addArrangedSubview(makeStatView(title: "Fehler", valueLabel: errorsValueLabel))
+        statsStack.addArrangedSubview(makeStatView(title: "WLAN/AP", valueLabel: wifiValueLabel))
+    }
+
+    private func makeStatView(title: String, valueLabel: UILabel) -> UIView {
+        let titleLabel = UILabel(frame: .zero)
+        titleLabel.text = title
+        titleLabel.textColor = UIColor.white.withAlphaComponent(0.62)
+        titleLabel.font = .systemFont(ofSize: 10, weight: .bold)
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 1
+
+        valueLabel.textColor = .white
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .bold)
+        valueLabel.textAlignment = .center
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.68
+        valueLabel.numberOfLines = 1
+
+        let stack = UIStackView(arrangedSubviews: [titleLabel, valueLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = 3
+
+        let container = UIView(frame: .zero)
+        container.backgroundColor = UIColor.white.withAlphaComponent(0.09)
+        container.layer.cornerRadius = 10
+        container.layer.cornerCurve = .continuous
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+        return container
     }
 
     private func configureButton(_ button: UIButton, title: String, color: UIColor, action: Selector) {
@@ -643,6 +740,42 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     private func normalizedAngle(_ angle: Float) -> Float {
         atan2(sin(angle), cos(angle))
+    }
+
+    private func wifiStatsText(_ stats: [String: Any]) -> String {
+        if boolValue(stats["apChanged"]) == true {
+            return "AP Wechsel"
+        }
+        if boolValue(stats["wifiChanged"]) == true {
+            return "WLAN Wechsel"
+        }
+        let bssid = stringValue(stats["bssid"])
+        if !bssid.isEmpty {
+            return "AP \(shortBSSID(bssid))"
+        }
+        let ssid = stringValue(stats["ssid"])
+        if !ssid.isEmpty {
+            return ssid
+        }
+        let apChanges = intValue(stats["apChanges"]) ?? 0
+        let wifiChanges = intValue(stats["wifiChanges"]) ?? 0
+        if apChanges > 0 || wifiChanges > 0 {
+            return "W \(wifiChanges) / AP \(apChanges)"
+        }
+        return "-"
+    }
+
+    private func shortBSSID(_ value: String) -> String {
+        let parts = value.split(separator: ":")
+        if parts.count >= 2 {
+            return parts.suffix(2).joined(separator: ":")
+        }
+        return String(value.suffix(5))
+    }
+
+    private func nonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func horizontalForwardVector(_ transform: simd_float4x4) -> SIMD3<Float> {

@@ -362,6 +362,10 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.setAnchors(request: message))
             currentRequest = nil
 
+        case "arGuidedMeasurementUpdateStats":
+            webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.updateStats(request: message))
+            currentRequest = nil
+
         case "arGuidedMeasurementStop":
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.stop(request: message))
             currentRequest = nil

@@ -169,6 +169,7 @@ final class DeviceBridge: ObservableObject {
             "arPositionSupported": ARPositionBridge.isSupported(),
             "arGuidedMeasurementStart": ARGuidedMeasurementBridge.isSupported(),
             "arGuidedMeasurementSetAnchors": ARGuidedMeasurementBridge.isSupported(),
+            "arGuidedMeasurementUpdateStats": ARGuidedMeasurementBridge.isSupported(),
             "arGuidedMeasurementStop": true,
             "arGuidedMeasurementSupported": ARGuidedMeasurementBridge.isSupported(),
             "roomPlanScanStart": RoomPlanBridge.isSupported(),
