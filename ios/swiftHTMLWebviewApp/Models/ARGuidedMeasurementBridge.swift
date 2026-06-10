@@ -378,6 +378,9 @@ private func worldMappingStatusName(_ status: ARFrame.WorldMappingStatus) -> Str
 private enum ARGuidedMeasurementError: LocalizedError {
     case worldMapMissing
     case worldMapDecodeFailed
+    case worldMapDownloadFailed(String)
+    case worldMapHTTPStatus(Int)
+    case worldMapEmpty
 
     var errorDescription: String? {
         switch self {
@@ -385,6 +388,12 @@ private enum ARGuidedMeasurementError: LocalizedError {
             return "Keine ARWorldMap im Start-Request."
         case .worldMapDecodeFailed:
             return "ARWorldMap konnte nicht dekodiert werden."
+        case .worldMapDownloadFailed(let message):
+            return "ARWorldMap Download fehlgeschlagen: \(message)"
+        case .worldMapHTTPStatus(let status):
+            return "ARWorldMap Download lieferte HTTP \(status)."
+        case .worldMapEmpty:
+            return "ARWorldMap Download war leer."
         }
     }
 }
@@ -532,8 +541,9 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
                     message: "AR-Raumkarte geladen. Raum langsam mit dem iPhone wiedererkennen."
                 )
             } catch {
-                bridge?.emitError("AR-Raumkarte konnte nicht geladen werden: \(error.localizedDescription)")
-                showRelocalizingStatus("AR-Raumkarte konnte nicht geladen werden.")
+                let message = "AR-Raumkarte konnte nicht geladen werden: \(error.localizedDescription)"
+                bridge?.emitError(message)
+                showRelocalizingStatus(message)
                 return
             }
         }
@@ -564,14 +574,46 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             return try decodeWorldMap(data)
         }
         if let url = bridge?.requestedWorldMapURL() {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(from: url)
+            } catch {
+                throw ARGuidedMeasurementError.worldMapDownloadFailed(error.localizedDescription)
+            }
+            if let httpResponse = response as? HTTPURLResponse,
+               !(200..<300).contains(httpResponse.statusCode) {
+                throw ARGuidedMeasurementError.worldMapHTTPStatus(httpResponse.statusCode)
+            }
+            guard !data.isEmpty else {
+                throw ARGuidedMeasurementError.worldMapEmpty
+            }
             return try decodeWorldMap(data)
         }
         throw ARGuidedMeasurementError.worldMapMissing
     }
 
     private func decodeWorldMap(_ data: Data) throws -> ARWorldMap {
-        guard let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data) else {
+        do {
+            if let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data) {
+                return worldMap
+            }
+        } catch {
+            if let worldMap = try? decodeWorldMapWithoutSecureCoding(data) {
+                return worldMap
+            }
+            throw error
+        }
+        throw ARGuidedMeasurementError.worldMapDecodeFailed
+    }
+
+    private func decodeWorldMapWithoutSecureCoding(_ data: Data) throws -> ARWorldMap {
+        let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
+        unarchiver.requiresSecureCoding = false
+        defer {
+            unarchiver.finishDecoding()
+        }
+        guard let worldMap = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? ARWorldMap else {
             throw ARGuidedMeasurementError.worldMapDecodeFailed
         }
         return worldMap

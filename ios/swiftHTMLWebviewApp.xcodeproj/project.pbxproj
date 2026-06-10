@@ -274,8 +274,8 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Frameworks",
 				);
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WIFIMeister;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
@@ -318,8 +318,8 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Frameworks",
 				);
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WIFIMeister;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
