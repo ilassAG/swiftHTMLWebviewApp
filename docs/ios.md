@@ -63,6 +63,8 @@ The iOS wrapper includes:
 - `nfcTagRead`
 - `beaconsStart` / `beaconsStop`
 - `beaconAdvertiseStart` / `beaconAdvertiseStop`
+- `arPositionStart` / `arPositionStop`
+- `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport`
 
 Continuous scanner events are delivered as `barcodeData` or `barcodeLogin`.
 Beacon ranging events are delivered as `beacons`. All continuous events use the
@@ -116,7 +118,12 @@ iOS implements the shared runtime bridge actions:
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
 - `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
+- `arPositionStart` / `arPositionStop`
+- `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport`
 - `soundPlay`
+- `notificationPermissionGet` / `notificationPermissionRequest`
+- `notificationShow` / `notificationSchedule`
+- `notificationCancel` / `notificationCancelAll` / `notificationList`
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
@@ -140,6 +147,11 @@ error domain/code and reports the missing capability hint.
 `WKWebView.takeSnapshot` and streams JPEG frames to a WebSocket target. It does
 not start a system-wide ReplayKit broadcast.
 
+Local notifications use `UNUserNotificationCenter`. The bridge can request
+alert/sound/badge permission, show immediate notifications, schedule
+time-interval notifications, cancel pending or delivered notifications, and
+report notification opens back to the web app as `notificationOpened`.
+
 ## Config Pairing
 
 iOS can act as both config target and config device. As target, it starts a
@@ -148,6 +160,10 @@ short-lived BLE GATT session and displays a QR code with
 center of the WebView for about 1.5 seconds. As config device, it scans or
 receives the QR payload, calls `configPairingConnect`, then sends
 `configPairingSend` commands.
+
+The pairing QR includes `deviceName`, `deviceUUID`, and `deviceLocation` from
+the target settings so the config device can identify the target before sending
+commands. It does not include the persistent security token.
 
 Writable target commands require the current
 `security_token_preference`. `wifiConfigure` still uses

@@ -35,6 +35,8 @@ swiftHTMLWebviewApp/
 - Optional iBeacon advertising with configurable UUID, major, and minor values.
 - PDF generation.
 - Native confetti burst from JavaScript.
+- Local notifications with permission, immediate, scheduled, cancel, and open
+  event bridge actions.
 - QR-code based configuration for server URL and security token.
 - Settings bundle for runtime configuration, including local/remote startup URL,
   optional high-availability fallback URLs, the iBeacon Proximity UUID, and
@@ -45,7 +47,11 @@ swiftHTMLWebviewApp/
 
 ### Android
 
-Android support lives in `android/` as a native WebView wrapper with the same web-facing bridge shape. The implementation includes the WebView container, local smoke-test page, camera/scanner bridge features, and structured bridge responses. The Go printer core is linked as a generated AAR for Epson network-printer smoke tests.
+Android support lives in `android/` as a native WebView wrapper with the same
+web-facing bridge shape. The implementation includes the WebView container,
+local smoke-test page, camera/scanner bridge features, local notifications, and
+structured bridge responses. The Go printer core is linked as a generated AAR
+for Epson network-printer smoke tests.
 
 ## Getting Started: iOS
 
@@ -102,7 +108,12 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
 - `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
+- `arPositionStart` / `arPositionStop` (iOS ARKit local position stream)
+- `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport` (iOS RoomPlan/LiDAR room scan)
 - `soundPlay`
+- `notificationPermissionGet` / `notificationPermissionRequest`
+- `notificationShow` / `notificationSchedule`
+- `notificationCancel` / `notificationCancelAll` / `notificationList`
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
@@ -159,6 +170,21 @@ Open `http://<mac-ip>:18090/` in a browser and set the app demo page target to
 
 `RUNNING_URLS.md` can be used locally to record current LAN/test URLs, but it is
 ignored by git and should not be committed.
+
+## Local Notifications
+
+The core wrapper supports local OS notifications on iOS and Android. Web content
+can request notification permission, show an immediate notification, schedule a
+time-based notification, cancel pending/delivered notifications, and list
+pending notifications. Notification opens are delivered back through
+`window.handleNativeResult(...)` as `notificationOpened` events. Remote push is
+not part of the default wrapper and should be added later as an optional module.
+
+Android 12 and older do not have a runtime notification permission prompt, so
+the bridge reports those devices as authorized immediately. Android immediate
+alerts use a high-importance default channel (`swift_html_alerts`) so test
+notifications can appear visibly instead of only playing a sound in the
+notification shade.
 
 ## Optional Stripe Tap to Pay
 
@@ -222,9 +248,13 @@ Optional token rotation:
 For external setup, `configPairingShow` displays a short-lived QR code and
 starts a BLE GATT config session. Another device running the wrapper can scan
 that QR, call `configPairingConnect`, then send `configPairingSend` commands
-for status, URL/HA/beacon settings, WLAN setup, and reload. The same target UI
-opens with a two-finger long press in the center of the WebView for about
-1.5 seconds. See [docs/native-bridge.md](docs/native-bridge.md).
+for status, URL/HA/beacon/device identity settings, WLAN setup, and reload. The
+pairing QR includes the target `deviceName`, `deviceUUID`, and
+`deviceLocation`, but not the persistent security token. The same target UI opens
+with a two-finger long press in the center of the WebView for about 1.5 seconds.
+Large config commands and responses are chunked over BLE and reassembled by the
+native bridge.
+See [docs/native-bridge.md](docs/native-bridge.md).
 
 ## Design Principle
 

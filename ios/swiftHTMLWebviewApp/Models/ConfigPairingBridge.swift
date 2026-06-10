@@ -40,6 +40,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     private var centralCommandCharacteristic: CBCharacteristic?
     private var centralResponseCharacteristic: CBCharacteristic?
     private var centralChunkAccumulators: [String: ConfigChunkAccumulator] = [:]
+    private var targetChunkAccumulators: [String: ConfigChunkAccumulator] = [:]
 
     private var eventHandler: (([String: Any]) -> Void)?
     private var settingsProvider: () -> [String: Any] = { AppSettings.shared.configurationSnapshot() }
@@ -68,7 +69,8 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         targetSessionID = UUID().uuidString
         targetSecret = randomBase64URL(byteCount: 18)
         targetExpiry = Date().addingTimeInterval(Self.sessionLifetimeSeconds)
-        let payload = pairingPayload(sessionID: targetSessionID, secret: targetSecret, expiresAt: targetExpiry)
+        let identity = targetIdentity()
+        let payload = pairingPayload(sessionID: targetSessionID, secret: targetSecret, expiresAt: targetExpiry, identity: identity)
 
         targetPayload = payload
         targetQRCode = qrImage(for: payload)
@@ -86,6 +88,10 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         response["expiresAt"] = Int(targetExpiry.timeIntervalSince1970)
         response["transport"] = "ble-gatt"
         response["serviceUUID"] = Self.serviceUUID.uuidString
+        response["targetIdentity"] = identity
+        response["deviceName"] = identity["deviceName"] ?? ""
+        response["deviceUUID"] = identity["deviceUUID"] ?? ""
+        response["deviceLocation"] = identity["deviceLocation"] ?? ""
         return response
     }
 
@@ -117,6 +123,10 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         response["success"] = true
         response["state"] = "scanning"
         response["targetName"] = target.name
+        response["targetIdentity"] = target.identity
+        response["deviceName"] = target.deviceName
+        response["deviceUUID"] = target.deviceUUID
+        response["deviceLocation"] = target.deviceLocation
         response["serviceUUID"] = target.serviceUUID.uuidString
         return response
     }
@@ -173,18 +183,17 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
             return errorResponse(request: request, action: "configPairingSend", error: "Could not serialize config command.")
         }
 
-        let maxLength = peripheral.maximumWriteValueLength(for: .withResponse)
-        guard data.count <= maxLength else {
-            return errorResponse(request: request, action: "configPairingSend", error: "Config command is too large for the negotiated BLE write length.")
+        let writeResult = writeCentralCommandData(data, peripheral: peripheral, characteristic: characteristic)
+        guard writeResult.success else {
+            return errorResponse(request: request, action: "configPairingSend", error: writeResult.error ?? "Could not write config command.")
         }
-
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
 
         var response = baseResponse(request: request, action: "configPairingSend")
         response["success"] = true
-        response["state"] = "sent"
+        response["state"] = writeResult.chunks > 1 ? "sentInChunks" : "sent"
         response["command"] = command["command"]
         response["bytes"] = data.count
+        response["chunks"] = writeResult.chunks
         return response
     }
 
@@ -198,6 +207,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         targetSecret = ""
         targetExpiry = Date.distantPast
         targetCentral = nil
+        targetChunkAccumulators.removeAll()
     }
 
     private func closePairingPromptAfterConnection() {
@@ -281,11 +291,20 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
             return
         }
 
-        guard let command = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+        guard let object = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             notifyTargetResponse(errorPayload(command: "unknown", error: "Invalid JSON command."))
             return
         }
 
+        if configString(object["action"]) == "configPairingChunk" {
+            handleTargetCommandChunk(object, central: central)
+            return
+        }
+
+        processTargetCommand(object, central: central)
+    }
+
+    private func processTargetCommand(_ command: [String: Any], central: CBCentral) {
         let commandName = configString(command["command"]) ?? "statusGet"
         guard commandIsPaired(command) else {
             notifyTargetResponse(errorPayload(command: commandName, requestId: command["requestId"], error: "Invalid or expired config pairing session."))
@@ -350,6 +369,102 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         default:
             notifyTargetResponse(errorPayload(command: commandName, requestId: command["requestId"], error: "Unknown config command: \(commandName)."))
         }
+    }
+
+    private func handleTargetCommandChunk(_ object: [String: Any], central: CBCentral) {
+        guard let chunkID = configString(object["id"]),
+              let index = intConfigValue(object["i"]),
+              let count = intConfigValue(object["n"]),
+              let encoded = configString(object["d"]),
+              let chunkData = Data(base64Encoded: encoded),
+              index >= 0,
+              count > 0,
+              index < count else {
+            notifyTargetResponse(
+                errorPayload(command: "unknown", error: "Invalid config command chunk."),
+                centrals: [central]
+            )
+            return
+        }
+
+        var accumulator = targetChunkAccumulators[chunkID] ?? ConfigChunkAccumulator(count: count)
+        accumulator.chunks[index] = chunkData
+        targetChunkAccumulators[chunkID] = accumulator
+
+        guard accumulator.isComplete else { return }
+        targetChunkAccumulators.removeValue(forKey: chunkID)
+
+        let assembled = (0..<accumulator.count).reduce(into: Data()) { output, chunkIndex in
+            if let chunk = accumulator.chunks[chunkIndex] {
+                output.append(chunk)
+            }
+        }
+        guard let command = try? JSONSerialization.jsonObject(with: assembled, options: []) as? [String: Any] else {
+            notifyTargetResponse(
+                errorPayload(command: "unknown", error: "Could not assemble config command chunks."),
+                centrals: [central]
+            )
+            return
+        }
+        processTargetCommand(command, central: central)
+    }
+
+    private func writeCentralCommandData(_ data: Data, peripheral: CBPeripheral, characteristic: CBCharacteristic) -> (success: Bool, chunks: Int, error: String?) {
+        let maxLength = peripheral.maximumWriteValueLength(for: .withResponse)
+        if data.count <= maxLength {
+            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+            return (true, 1, nil)
+        }
+
+        guard let payloads = chunkPayloads(for: data, maxLength: maxLength) else {
+            return (false, 0, "Config command is too large for the negotiated BLE write length.")
+        }
+
+        for (index, payloadData) in payloads.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.03) { [weak peripheral, weak characteristic] in
+                guard let peripheral, let characteristic else { return }
+                peripheral.writeValue(payloadData, for: characteristic, type: .withResponse)
+            }
+        }
+        return (true, payloads.count, nil)
+    }
+
+    private func chunkPayloads(for data: Data, maxLength: Int) -> [Data]? {
+        guard maxLength > 0 else { return nil }
+        let chunkID = UUID().uuidString
+        var chunkSize = Self.chunkPayloadSize
+
+        while chunkSize >= 8 {
+            let chunkCount = Int(ceil(Double(data.count) / Double(chunkSize)))
+            var payloads: [Data] = []
+            var fits = true
+
+            for index in 0..<chunkCount {
+                let start = index * chunkSize
+                let end = min(start + chunkSize, data.count)
+                let chunk = data.subdata(in: start..<end)
+                let payload: [String: Any] = [
+                    "action": "configPairingChunk",
+                    "id": chunkID,
+                    "i": index,
+                    "n": chunkCount,
+                    "d": chunk.base64EncodedString()
+                ]
+                guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []),
+                      payloadData.count <= maxLength else {
+                    fits = false
+                    break
+                }
+                payloads.append(payloadData)
+            }
+
+            if fits {
+                return payloads
+            }
+            chunkSize /= 2
+        }
+
+        return nil
     }
 
     private func commandIsPaired(_ command: [String: Any]) -> Bool {
@@ -428,7 +543,7 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
         }
     }
 
-    private func pairingPayload(sessionID: String, secret: String, expiresAt: Date) -> String {
+    private func pairingPayload(sessionID: String, secret: String, expiresAt: Date, identity: [String: String]) -> String {
         var components = URLComponents()
         components.scheme = "swifthtml-config"
         components.host = "pair"
@@ -438,9 +553,26 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
             URLQueryItem(name: "secret", value: secret),
             URLQueryItem(name: "service", value: Self.serviceUUID.uuidString),
             URLQueryItem(name: "expires", value: String(Int(expiresAt.timeIntervalSince1970))),
-            URLQueryItem(name: "name", value: UIDevice.current.name)
+            URLQueryItem(name: "name", value: identity["name"] ?? ""),
+            URLQueryItem(name: "deviceName", value: identity["deviceName"] ?? ""),
+            URLQueryItem(name: "deviceUUID", value: identity["deviceUUID"] ?? ""),
+            URLQueryItem(name: "deviceLocation", value: identity["deviceLocation"] ?? "")
         ]
         return components.string ?? "swifthtml-config://pair"
+    }
+
+    private func targetIdentity() -> [String: String] {
+        let settings = settingsProvider()
+        let deviceName = configString(settings["deviceName"]) ?? ""
+        let deviceUUID = configString(settings["deviceUUID"]) ?? ""
+        let deviceLocation = configString(settings["deviceLocation"]) ?? ""
+        let displayName = deviceName.isEmpty ? UIDevice.current.name : deviceName
+        return [
+            "name": displayName,
+            "deviceName": deviceName,
+            "deviceUUID": deviceUUID,
+            "deviceLocation": deviceLocation
+        ]
     }
 
     private func qrImage(for text: String) -> UIImage? {
@@ -824,6 +956,18 @@ private struct PairingTarget {
     let secret: String
     let serviceUUID: CBUUID
     let name: String
+    let deviceName: String
+    let deviceUUID: String
+    let deviceLocation: String
+
+    var identity: [String: String] {
+        [
+            "name": name,
+            "deviceName": deviceName,
+            "deviceUUID": deviceUUID,
+            "deviceLocation": deviceLocation
+        ]
+    }
 
     init?(payload: String) {
         guard let components = URLComponents(string: payload),
@@ -837,7 +981,10 @@ private struct PairingTarget {
         self.sessionID = sessionID
         self.secret = secret
         self.serviceUUID = CBUUID(string: items["service"] ?? ConfigPairingBridge.serviceUUID.uuidString)
-        self.name = items["name"] ?? ""
+        self.deviceName = items["deviceName"] ?? items["device_name"] ?? ""
+        self.deviceUUID = items["deviceUUID"] ?? items["deviceUuid"] ?? items["device_uuid"] ?? ""
+        self.deviceLocation = items["deviceLocation"] ?? items["device_location"] ?? ""
+        self.name = self.deviceName.isEmpty ? (items["name"] ?? "") : self.deviceName
     }
 }
 

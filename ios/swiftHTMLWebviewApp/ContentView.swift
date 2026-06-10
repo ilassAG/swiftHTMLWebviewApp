@@ -77,10 +77,14 @@ struct ContentView: View {
     @StateObject private var deviceBridge = DeviceBridge()
     @StateObject private var idleTimerBridge = IdleTimerBridge()
     @StateObject private var locationBridge = LocationBridge()
+    @StateObject private var arPositionBridge = ARPositionBridge()
+    @StateObject private var arGuidedMeasurementBridge = ARGuidedMeasurementBridge()
+    @StateObject private var roomPlanBridge = RoomPlanBridge()
     @StateObject private var screenStreamBridge = ScreenStreamBridge()
     @StateObject private var sensorBridge = SensorBridge()
     @StateObject private var configPairingBridge = ConfigPairingBridge()
     @StateObject private var nfcTagReaderBridge = NFCTagReaderBridge()
+    @StateObject private var notificationBridge = NotificationBridge.shared
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showDocumentScanner = false
@@ -136,6 +140,7 @@ struct ContentView: View {
         }
         .onAppear {
             configureConfigPairingBridge()
+            configureNotificationBridge()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -146,6 +151,9 @@ struct ContentView: View {
         .onDisappear {
             idleTimerBridge.shutdown()
             locationBridge.shutdown()
+            arPositionBridge.shutdown()
+            arGuidedMeasurementBridge.shutdown()
+            roomPlanBridge.shutdown()
             screenStreamBridge.shutdown()
             sensorBridge.shutdown()
             _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
@@ -180,8 +188,30 @@ struct ContentView: View {
                         let action = currentRequest?["action"] as? String
                         webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
                         showBarcodeScanner = false
+                }
+            }
+        }
+        .sheet(isPresented: $roomPlanBridge.scannerVisible) {
+            if #available(iOS 16.0, *) {
+                RoomPlanScannerSheet(bridge: roomPlanBridge)
+            } else {
+                Text("RoomPlan requires iOS 16 or newer.")
+                    .padding()
+                    .onAppear {
+                        webViewStore.sendResultToWebView(result: [
+                            "platform": "ios",
+                            "action": "roomPlanScanError",
+                            "success": false,
+                            "supported": false,
+                            "source": "roomplan",
+                            "error": "RoomPlan requires iOS 16 or newer."
+                        ])
+                        roomPlanBridge.scannerVisible = false
                     }
             }
+        }
+        .sheet(isPresented: $arGuidedMeasurementBridge.viewVisible) {
+            ARGuidedMeasurementSheet(bridge: arGuidedMeasurementBridge)
         }
     }
 
@@ -312,9 +342,85 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: locationBridge.stop(request: message))
             currentRequest = nil
 
+        case "arPositionStart":
+            webViewStore.sendResultToWebView(result: arPositionBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "arPositionStop":
+            webViewStore.sendResultToWebView(result: arPositionBridge.stop(request: message))
+            currentRequest = nil
+
+        case "arGuidedMeasurementStart":
+            webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "arGuidedMeasurementSetAnchors":
+            webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.setAnchors(request: message))
+            currentRequest = nil
+
+        case "arGuidedMeasurementStop":
+            webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.stop(request: message))
+            currentRequest = nil
+
+        case "roomPlanScanStart":
+            webViewStore.sendResultToWebView(result: roomPlanBridge.start(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+
+        case "roomPlanScanStop":
+            webViewStore.sendResultToWebView(result: roomPlanBridge.stop(request: message))
+            currentRequest = nil
+
+        case "roomPlanScanExport":
+            webViewStore.sendResultToWebView(result: roomPlanBridge.export(request: message))
+            currentRequest = nil
+
         case "soundPlay":
             webViewStore.sendResultToWebView(result: deviceBridge.playSound(request: message))
             currentRequest = nil
+
+        case "notificationPermissionGet":
+            currentRequest = nil
+            notificationBridge.permissionStatus(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "notificationPermissionRequest":
+            currentRequest = nil
+            notificationBridge.requestPermission(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "notificationShow":
+            currentRequest = nil
+            notificationBridge.show(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "notificationSchedule":
+            currentRequest = nil
+            notificationBridge.schedule(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
+
+        case "notificationCancel":
+            webViewStore.sendResultToWebView(result: notificationBridge.cancel(request: message))
+            currentRequest = nil
+
+        case "notificationCancelAll":
+            webViewStore.sendResultToWebView(result: notificationBridge.cancelAll(request: message))
+            currentRequest = nil
+
+        case "notificationList":
+            currentRequest = nil
+            notificationBridge.list(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            }
 
         case "idleTimerStart":
             webViewStore.sendResultToWebView(result: idleTimerBridge.start(request: message, webView: webViewStore.webView) { result in
@@ -528,6 +634,12 @@ struct ContentView: View {
                 deviceBridge.deviceInfo(request: ["action": "deviceInfoGet"])
             }
         )
+    }
+
+    private func configureNotificationBridge() {
+        notificationBridge.configure { result in
+            webViewStore.sendResultToWebView(result: result)
+        }
     }
 
     private func settingsGetResponse(request: [String: Any]) -> [String: Any] {

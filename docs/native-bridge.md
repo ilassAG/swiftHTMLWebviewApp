@@ -59,7 +59,13 @@ Error:
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
 - `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
+- `arPositionStart` / `arPositionStop` (iOS ARKit local position stream)
+- `arGuidedMeasurementStart` / `arGuidedMeasurementSetAnchors` / `arGuidedMeasurementStop` (iOS ARKit guided start-arrow measurement)
+- `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport` (iOS RoomPlan/LiDAR room scan)
 - `soundPlay`
+- `notificationPermissionGet` / `notificationPermissionRequest`
+- `notificationShow` / `notificationSchedule`
+- `notificationCancel` / `notificationCancelAll` / `notificationList`
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
@@ -72,6 +78,28 @@ Error:
 - `printerDiscover` (optional Go printer core)
 - `printerHelloWorld` (selected-printer smoke test)
 - `printerEpsonHelloWorld` (optional Go printer core)
+
+## ARKit guided measurement
+
+iOS can show a native AR scene with a tappable 3D start arrow before a web
+measurement begins:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'arGuidedMeasurementStart',
+  sessionId: 'sess_...',
+  floorPlanId: 'floor_...',
+  startAnchor: { id: 'anchor_...', kind: 'start', planX: 1.2, planY: 0.8, yawRadians: 0 },
+  anchors: [],
+  intervalMs: 500
+});
+```
+
+Native events are delivered through `window.handleNativeResult(result)`.
+Important event actions are `arGuidedReady`, `arGuidedPosition`,
+`arGuidedStartAnchorConfirmed`, `arGuidedAnchorCaptured`, and
+`arGuidedError`. Positions use ARKit gravity-aligned local meters with
+`position.x/y/z` and `orientation.pitch/yaw/roll`.
 
 ## Native runtime configuration
 
@@ -92,6 +120,12 @@ actions. On iOS they live in Settings.bundle:
 Web apps should not hard-code these values. They should treat the native wrapper
 as the owner of startup URL selection and beacon-region selection.
 
+On Android these values are stored in app-private SharedPreferences. Android
+does not provide an iOS Settings.bundle equivalent where arbitrary app settings
+automatically appear inside the system Settings app. Change them through the
+local JS bridge, the bundled demo/settings UI, BLE Config Pairing, or through
+Android Enterprise/MDM managed configurations when the device fleet is managed.
+
 ## External config pairing
 
 iOS and Android expose a small BLE-based configuration transport so one
@@ -107,8 +141,10 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 
 The native app displays a QR code containing an ephemeral
 `swifthtml-config://pair?...` payload and advertises a BLE GATT service. The QR
-payload contains only a short-lived session id, BLE service UUID, and random
-session secret. It does not contain the persistent `security_token_preference`.
+payload contains a short-lived session id, BLE service UUID, random session
+secret, and the target identity fields `deviceName`, `deviceUUID`, and
+`deviceLocation` so the config device can show which wrapper it is about to
+configure. It does not contain the persistent `security_token_preference`.
 After the first config device connects and subscribes for responses, the target
 closes the QR pairing UI and stops advertising so another device cannot start a
 parallel pairing attempt. Close the target pairing UI manually with
@@ -141,9 +177,9 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 });
 ```
 
-Large target responses are split into `configPairingChunk` BLE notifications by
-native code and reassembled before the web app receives the final
-`configPairingResponse`.
+Large commands and large target responses are split into `configPairingChunk`
+BLE messages by native code and reassembled by the receiving side before the web
+app receives the final `configPairingResponse`.
 
 Supported `configPairingSend.command` values:
 
@@ -162,7 +198,9 @@ Android show system confirmation UI, so WLAN changes are not silent.
 
 The local demo page includes a `Config Pairing` panel for both roles: show the
 target QR, scan a pairing QR, connect, fetch status/settings, set URL/HA/beacon
-settings, configure target WLAN, and reload the target.
+settings, configure target WLAN, and reload the target. When a pairing QR is
+scanned or pasted, the demo copies `deviceName`, `deviceUUID`, and
+`deviceLocation` from the QR into the config fields before connecting.
 
 The same settings are available locally through direct JS bridge actions:
 
@@ -418,6 +456,60 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 });
 ```
 
+## Local notifications
+
+Local notifications are part of the default wrapper on iOS and Android. Remote
+push notifications are intentionally not part of the core bridge; add them as an
+optional module when APNs/FCM infrastructure is available.
+
+Android 13 and newer require the runtime `POST_NOTIFICATIONS` permission. On
+Android 12 and older, `notificationPermissionRequest` resolves as authorized
+without showing a system prompt because notifications do not use a runtime
+permission there. Android uses a high-importance default channel
+(`swift_html_alerts`) so immediate demo notifications can appear as visible
+alerts instead of only as notification-shade entries. If a web app passes its
+own `channelId`, Android keeps that channel's existing system importance.
+
+Request or inspect permission first:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'notificationPermissionRequest'
+});
+```
+
+Show an immediate local notification:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'notificationShow',
+  id: 'print-job-123',
+  title: 'Druckjob fertig',
+  body: 'Der Bon wurde gedruckt.',
+  sound: true,
+  data: { jobId: '123' }
+});
+```
+
+Schedule one for later:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'notificationSchedule',
+  id: 'idle-warning',
+  title: 'Sitzung laeuft ab',
+  body: 'Seit 30 Sekunden keine Aktivitaet.',
+  seconds: 10,
+  data: { reason: 'idle' }
+});
+```
+
+Cancel by `id`, cancel all, or list pending requests with `notificationCancel`,
+`notificationCancelAll`, and `notificationList`. When the user opens a local
+notification, native code emits a `notificationOpened` event through
+`window.handleNativeResult(...)`. iOS can also emit `notificationReceived` while
+the app is in the foreground.
+
 ## Wi-Fi setup
 
 `wifiStatusGet` returns best-effort current network details. iOS and Android
@@ -479,6 +571,54 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 
 Sensor streaming returns platform sensor snapshots/events through `sensorData`.
 Use `sensorCapabilitiesGet` first when the web app needs a device-specific UI.
+
+On ARKit-capable iOS devices, `arPositionStart` starts a local world-tracking
+stream. Events use action `arPosition` and include `position.x/y/z` in meters,
+Euler `orientation`, `trackingState`, and `coordinateSystem:
+arkit-gravity-local`. This is a local odometry stream, not GPS and not a room
+plan.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'arPositionStart',
+  intervalMs: 500
+});
+```
+
+## RoomPlan scan
+
+On RoomPlan-capable iOS devices, `roomPlanScanStart` presents Apple's native
+RoomPlan/LiDAR scanner. When the user finishes the scan, native code emits
+`roomPlanScanResult` with a normalized 2D meter model plus a preview SVG.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'roomPlanScanStart',
+  requestId: crypto.randomUUID()
+});
+```
+
+Result shape:
+
+```json
+{
+  "action": "roomPlanScanResult",
+  "success": true,
+  "source": "roomplan",
+  "coordinateSystem": "roomplan-local-meter",
+  "normalizedPlan": {
+    "bounds": {"minX": 0, "minY": 0, "maxX": 5, "maxY": 3},
+    "walls": [],
+    "openings": [],
+    "objects": []
+  },
+  "previewSvg": "<svg ...></svg>",
+  "raw": {}
+}
+```
+
+Unsupported devices return `success:false`, `supported:false`, and `error`.
+Android exposes the same action names with a structured unavailable response.
 
 ## Screen stream
 

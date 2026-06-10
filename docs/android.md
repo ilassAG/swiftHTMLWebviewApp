@@ -34,6 +34,10 @@ Implemented:
 - Device diagnostics through `deviceInfoGet`, app screenshot capture,
   orientation lock, sound output, idle timer, location, sensor streaming,
   Wi-Fi status/setup, and app-screen JPEG streaming over WebSocket.
+- Local notifications through Android `NotificationManager`, high-importance
+  default notification channel creation, Android 13+ `POST_NOTIFICATIONS`
+  permission, and `AlarmManager` time-based scheduling. Android 12 and older do
+  not show a runtime notification prompt and are reported as authorized.
 - Native SharedPreferences-backed startup URL settings with Kassa-compatible
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
   `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity
@@ -97,9 +101,19 @@ The demo page also contains a `Config Pairing` panel. On Android 12+ the app
 requests `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, and
 `BLUETOOTH_ADVERTISE` as needed. The target pairing UI can also be opened with
 a two-finger long press in the center of the WebView for about 1.5 seconds.
+The pairing QR includes `deviceName`, `deviceUUID`, and `deviceLocation` from
+the target settings so the config device can identify the target before sending
+commands. It does not include the persistent security token. Large config
+commands and responses are transported as BLE chunks and reassembled natively.
 Writable config commands require the current stored security token. WLAN setup
 uses Android's user-approved add-network/suggestion APIs, so it cannot silently
 change the system Wi-Fi on modern Android.
+
+Android does not have an iOS Settings.bundle equivalent for arbitrary app
+settings in the system Settings app. The wrapper stores startup URL and related
+values in app-private SharedPreferences; expose editable controls in the app,
+use Config Pairing, or use Android Enterprise managed configurations for MDM
+fleets.
 
 ## Bridge behavior
 

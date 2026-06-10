@@ -3,11 +3,13 @@ package com.ilass.swifthtmlwebviewapp;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.media.Image;
 import android.os.Build;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -55,6 +57,7 @@ final class ContinuousBarcodeScannerController {
 
     private FrameLayout overlay;
     private PreviewView previewView;
+    private ImageButton closeButton;
     private ProcessCameraProvider cameraProvider;
     private BarcodeScanner barcodeScanner;
     private ScannerConfig currentConfig;
@@ -78,6 +81,9 @@ final class ContinuousBarcodeScannerController {
             try {
                 ensureOverlay();
                 if (currentConfig != null && generation == scannerGeneration) {
+                    if (closeButton != null) {
+                        closeButton.setVisibility(currentConfig.showCloseButton ? View.VISIBLE : View.GONE);
+                    }
                     applyPreviewRect(currentConfig.rect);
                     bindCamera(generation);
                 }
@@ -126,7 +132,11 @@ final class ContinuousBarcodeScannerController {
 
         overlay = new FrameLayout(activity);
         overlay.setClipToOutline(true);
-        overlay.setBackgroundColor(Color.BLACK);
+        GradientDrawable overlayBackground = new GradientDrawable();
+        overlayBackground.setColor(Color.BLACK);
+        overlayBackground.setStroke(dp(2), Color.rgb(79, 211, 138));
+        overlay.setBackground(overlayBackground);
+        overlay.setPadding(dp(2), dp(2), dp(2), dp(2));
 
         previewView = new PreviewView(activity);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
@@ -135,7 +145,7 @@ final class ContinuousBarcodeScannerController {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        ImageButton closeButton = new ImageButton(activity);
+        closeButton = new ImageButton(activity);
         closeButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
         closeButton.setBackgroundColor(Color.TRANSPARENT);
         closeButton.setColorFilter(Color.WHITE);
@@ -143,7 +153,7 @@ final class ContinuousBarcodeScannerController {
             runOnMainThread(this::stopInternal);
             listener.onScannerClosedByUser();
         });
-        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(46), dp(46));
+        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(28), dp(28));
         closeParams.gravity = Gravity.TOP | Gravity.RIGHT;
         overlay.addView(closeButton, closeParams);
 
@@ -158,8 +168,8 @@ final class ContinuousBarcodeScannerController {
         DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
         int screenWidth = metrics.widthPixels;
         int screenHeight = metrics.heightPixels;
-        int width = Math.max((int) (screenWidth * rect.width), dp(120));
-        int height = Math.max((int) (screenHeight * rect.height), dp(120));
+        int width = Math.max((int) (screenWidth * rect.width), dp(72));
+        int height = Math.max((int) (screenHeight * rect.height), dp(72));
         int left = Math.min(Math.max((int) (screenWidth * rect.left), 0), Math.max(screenWidth - width, 0));
         int top = Math.min(Math.max((int) (screenHeight * rect.top), 0), Math.max(screenHeight - height, 0));
 
@@ -335,6 +345,7 @@ final class ContinuousBarcodeScannerController {
             }
             overlay = null;
             previewView = null;
+            closeButton = null;
         }
         currentConfig = null;
         lastSeenByCode.clear();
@@ -390,15 +401,17 @@ final class ContinuousBarcodeScannerController {
         final String camera;
         final JSONArray types;
         final long repeatDelayMs;
+        final boolean showCloseButton;
         RectPercent rect;
 
-        private ScannerConfig(String action, String mode, String camera, JSONArray types, long repeatDelayMs, RectPercent rect) {
+        private ScannerConfig(String action, String mode, String camera, JSONArray types, long repeatDelayMs, RectPercent rect, boolean showCloseButton) {
             this.action = action;
             this.mode = mode;
             this.camera = camera;
             this.types = types;
             this.repeatDelayMs = repeatDelayMs;
             this.rect = rect;
+            this.showCloseButton = showCloseButton;
         }
 
         static ScannerConfig from(JSONObject request) {
@@ -411,7 +424,8 @@ final class ContinuousBarcodeScannerController {
                     : request.optDouble("repeatDelay", 1.5);
             long repeatDelayMs = Math.max(100L, Math.round(repeatDelaySeconds * 1000.0));
             RectPercent rect = RectPercent.from(request.optJSONObject("previewRect"), RectPercent.defaults());
-            return new ScannerConfig(action, mode, camera, types, repeatDelayMs, rect);
+            boolean showCloseButton = request.optBoolean("showCloseButton", request.optBoolean("closeButton", true));
+            return new ScannerConfig(action, mode, camera, types, repeatDelayMs, rect, showCloseButton);
         }
 
         JSONObject response(JSONObject request, String action, boolean success) throws JSONException {
@@ -421,6 +435,7 @@ final class ContinuousBarcodeScannerController {
             response.put("camera", camera);
             response.put("repeatDelaySeconds", repeatDelayMs / 1000.0);
             response.put("previewRect", rect.toJson());
+            response.put("showCloseButton", showCloseButton);
             response.put("provider", "android_camerax_mlkit");
             if (types != null) {
                 response.put("types", types);

@@ -25,6 +25,8 @@ Implemented:
 - Runtime diagnostics: device info, app screenshot, orientation lock, sound,
   idle timer, location, sensors, Wi-Fi setup/status, and app-screen JPEG
   streaming over WebSocket.
+- Local notifications with permission request/status, immediate show,
+  time-based schedule, cancel, cancel all, and pending-list bridge actions.
 - SharedPreferences-backed settings for URL/HA/beacon/device identity plus
   direct `settingsGet` / `settingsSet` bridge actions.
 

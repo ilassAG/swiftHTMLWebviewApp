@@ -93,6 +93,7 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -126,6 +127,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final int REQUEST_WIFI_STATUS_PERMISSION = 2008;
     private static final int REQUEST_CONFIG_PAIRING_PERMISSION = 2009;
     private static final int REQUEST_BEACON_ADVERTISE_PERMISSION = 2010;
+    private static final int REQUEST_NOTIFICATION_PERMISSION = 2011;
     private static final String PRINTERCORE_CLASS_NAME = "com.ilass.printercore.Printercore";
     private static final String PREFS_NAME = "swift_html_webview_app_settings";
     private static final String SERVER_URL_KEY = "server_url_preference";
@@ -139,7 +141,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final String DEVICE_NAME_KEY = "device_name";
     private static final String DEVICE_UUID_KEY = "device_uuid";
     private static final String DEVICE_LOCATION_KEY = "device_location";
-    private static final String DEFAULT_SERVER_URL = "local";
+    private static final String DEFAULT_SERVER_URL = "http://10.10.10.249:18080/mobile/?sessionId=sess_089eb32cdd6d64aa&v=20260609-roomplan1";
     private static final String DEFAULT_SECURITY_TOKEN = "change-me-before-production";
     private static final String DEFAULT_BEACON_UUID = "7763A937-B779-4D31-A20C-49E83047048F";
 
@@ -153,6 +155,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject pendingWifiRequest;
     private JSONObject pendingWifiStatusRequest;
     private JSONObject pendingConfigPairingRequest;
+    private JSONObject pendingNotificationPermissionRequest;
     private String pendingConfigPairingAction;
     private AndroidConfigPairingBridge.ResultCallback pendingWifiConfigCallback;
     private ContinuousBarcodeScannerController continuousScannerController;
@@ -162,6 +165,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private AndroidSensorBridge sensorBridge;
     private AndroidConfigPairingBridge configPairingBridge;
     private AndroidNfcTagReaderBridge nfcTagReaderBridge;
+    private AndroidNotificationBridge notificationBridge;
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     private final Handler loadHandler = new Handler(Looper.getMainLooper());
     private boolean idleTimerRunning = false;
@@ -177,8 +181,10 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private long configPairingHoldStartMs = 0L;
     private boolean configPairingHoldTriggered = false;
     private final ArrayList<String> loadCandidates = new ArrayList<>();
+    private final ArrayList<JSONObject> queuedNotificationEvents = new ArrayList<>();
     private int loadCandidateIndex = 0;
     private Runnable loadTimeoutRunnable;
+    private boolean webBridgeReady = false;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -205,6 +211,8 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 cancelLoadTimeout();
                 injectBridgeShim();
                 injectIdleActivityShim();
+                webBridgeReady = true;
+                flushQueuedNotificationEvents();
             }
 
             @Override
@@ -243,6 +251,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         beaconAdvertiserBridge = new AndroidBeaconAdvertiserBridge(this, this::sendResult);
         screenStreamBridge = new AndroidScreenStreamBridge(this, this::sendResult);
         sensorBridge = new AndroidSensorBridge(this, this::sendResult);
+        notificationBridge = new AndroidNotificationBridge(this);
         nfcTagReaderBridge = new AndroidNfcTagReaderBridge(new AndroidNfcTagReaderBridge.Host() {
             @Override
             public Activity activity() {
@@ -331,6 +340,14 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         } else {
             loadConfiguredUrlFromSettings();
         }
+        handleNotificationIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNotificationIntent(intent);
     }
 
     @Override
@@ -418,6 +435,33 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         runOnUiThread(() -> webView.evaluateJavascript(script, null));
     }
 
+    private void handleNotificationIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(AndroidNotificationBridge.EXTRA_TAPPED, false)) {
+            return;
+        }
+        try {
+            JSONObject event = notificationBridge.openedEvent(intent);
+            if (webBridgeReady) {
+                sendResult(event);
+            } else {
+                queuedNotificationEvents.add(event);
+            }
+        } catch (JSONException error) {
+            sendErrorSafe(null, "notificationOpened", error.getMessage());
+        }
+    }
+
+    private void flushQueuedNotificationEvents() {
+        if (queuedNotificationEvents.isEmpty()) {
+            return;
+        }
+        ArrayList<JSONObject> events = new ArrayList<>(queuedNotificationEvents);
+        queuedNotificationEvents.clear();
+        for (JSONObject event : events) {
+            sendResult(event);
+        }
+    }
+
     public class NativeBridge {
         @JavascriptInterface
         public void postMessage(String rawMessage) {
@@ -477,6 +521,27 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     case "soundPlay":
                         sendResult(playSound(message));
                         break;
+                    case "notificationPermissionGet":
+                        sendResult(notificationBridge.permissionStatus(message));
+                        break;
+                    case "notificationPermissionRequest":
+                        requestNotificationPermission(message);
+                        break;
+                    case "notificationShow":
+                        sendResult(notificationBridge.show(message));
+                        break;
+                    case "notificationSchedule":
+                        sendResult(notificationBridge.schedule(message));
+                        break;
+                    case "notificationCancel":
+                        sendResult(notificationBridge.cancel(message));
+                        break;
+                    case "notificationCancelAll":
+                        sendResult(notificationBridge.cancelAll(message));
+                        break;
+                    case "notificationList":
+                        sendResult(notificationBridge.list(message));
+                        break;
                     case "idleTimerStart":
                         sendResult(startIdleTimer(message));
                         break;
@@ -503,6 +568,16 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                         break;
                     case "sensorStreamStop":
                         sendResult(sensorBridge.stop(message));
+                        break;
+                    case "roomPlanScanStart":
+                    case "roomPlanScanStop":
+                    case "roomPlanScanExport":
+                        sendRoomPlanUnavailable(message);
+                        break;
+                    case "arGuidedMeasurementStart":
+                    case "arGuidedMeasurementSetAnchors":
+                    case "arGuidedMeasurementStop":
+                        sendARGuidedUnavailable(message);
                         break;
                     case "configPairingShow":
                     case "configPairingStop":
@@ -545,6 +620,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     case "printerHelloWorld":
                         printHelloWorld(message);
                         break;
+                    case "printerPrint":
+                        printGeneric(message);
+                        break;
                     case "printerEpsonHelloWorld":
                         printEpsonHelloWorld(message);
                         break;
@@ -582,6 +660,26 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         response.put("available", false);
         response.put("readerType", "android");
         response.put("reason", "Android Tap to Pay bridge is not implemented in this wrapper build yet.");
+        sendResult(response);
+    }
+
+    private void sendRoomPlanUnavailable(JSONObject message) throws JSONException {
+        String action = message.optString("action", "roomPlanScanStart");
+        JSONObject response = baseResponse(message, action);
+        response.put("success", false);
+        response.put("supported", false);
+        response.put("source", "roomplan");
+        response.put("error", "RoomPlan/LiDAR scanning is iOS-only and not available on Android.");
+        sendResult(response);
+    }
+
+    private void sendARGuidedUnavailable(JSONObject message) throws JSONException {
+        String action = message.optString("action", "arGuidedMeasurementStart");
+        JSONObject response = baseResponse(message, action);
+        response.put("success", false);
+        response.put("supported", false);
+        response.put("source", "arkit-guided");
+        response.put("error", "ARKit guided measurement is iOS-only and not available on Android.");
         sendResult(response);
     }
 
@@ -626,8 +724,23 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         capabilities.put("screenStreamStart", true);
         capabilities.put("screenStreamFormats", new JSONArray(Arrays.asList("jpeg")));
         capabilities.put("soundPlay", true);
+        capabilities.put("notificationPermissionGet", true);
+        capabilities.put("notificationPermissionRequest", true);
+        capabilities.put("notificationShow", true);
+        capabilities.put("notificationSchedule", true);
+        capabilities.put("notificationCancel", true);
+        capabilities.put("notificationCancelAll", true);
+        capabilities.put("notificationList", true);
         capabilities.put("idleTimerStart", true);
         capabilities.put("sensorStreamStart", true);
+        capabilities.put("roomPlanScanStart", false);
+        capabilities.put("roomPlanScanStop", false);
+        capabilities.put("roomPlanScanExport", false);
+        capabilities.put("roomPlanSupported", false);
+        capabilities.put("arGuidedMeasurementStart", false);
+        capabilities.put("arGuidedMeasurementSetAnchors", false);
+        capabilities.put("arGuidedMeasurementStop", false);
+        capabilities.put("arGuidedMeasurementSupported", false);
         capabilities.put("configPairingShow", true);
         capabilities.put("configPairingConnect", true);
         capabilities.put("nfcTagRead", AndroidNfcTagReaderBridge.isAvailable(this));
@@ -673,6 +786,16 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         response.put("mode", mode);
         response.put("requestedOrientation", requested);
         return response;
+    }
+
+    private void requestNotificationPermission(JSONObject message) throws JSONException {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            sendResult(notificationBridge.permissionRequestResult(message, true));
+            return;
+        }
+        pendingNotificationPermissionRequest = copyRequest(message);
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATION_PERMISSION);
     }
 
     private void sendWifiStatus(JSONObject message) throws JSONException {
@@ -1894,6 +2017,24 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         sendErrorSafe(request, "printerHelloWorld", "Unsupported printer kind: " + kind);
     }
 
+    private void printGeneric(JSONObject message) {
+        JSONObject request = copyRequest(message);
+        String kind = selectedPrinterKind(request);
+        if ("sunmi_internal".equals(kind)) {
+            printSunmiGeneric(request);
+            return;
+        }
+        if ("epson_epos_xml".equals(kind)) {
+            sendErrorSafe(request, "printerPrint", "Generic print payloads with QR are implemented for Sunmi internal printers in this build.");
+            return;
+        }
+        if ("escpos_raw".equals(kind)) {
+            sendErrorSafe(request, "printerPrint", "Raw ESC/POS passthrough is not implemented in this wrapper build yet.");
+            return;
+        }
+        sendErrorSafe(request, "printerPrint", "Unsupported printer kind: " + kind);
+    }
+
     private void printEpsonHelloWorld(JSONObject message) {
         printEpsonHelloWorld(message, "printerEpsonHelloWorld");
     }
@@ -1969,7 +2110,43 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         }, "SunmiInternalPrint").start();
     }
 
+    private void printSunmiGeneric(JSONObject message) {
+        JSONObject request = copyRequest(message);
+        new Thread(() -> {
+            try {
+                SunmiPrintOutcome outcome = runSunmiPrintJob(request, true);
+                JSONObject response = baseResponse(request, "printerPrint");
+                response.put("success", outcome.success);
+                response.put("printerKind", "sunmi_internal");
+                response.put("printerLabel", selectedPrinterLabel(request, "Sunmi interner Drucker"));
+                response.put("provider", "android_aidl");
+                response.put("model", Build.MODEL != null ? Build.MODEL : "");
+                if (outcome.serviceVersion != null && !outcome.serviceVersion.isEmpty()) {
+                    response.put("serviceVersion", outcome.serviceVersion);
+                }
+                if (outcome.printerModal != null && !outcome.printerModal.isEmpty()) {
+                    response.put("printerModal", outcome.printerModal);
+                }
+                if (outcome.printerVersion != null && !outcome.printerVersion.isEmpty()) {
+                    response.put("printerVersion", outcome.printerVersion);
+                }
+                if (!outcome.success) {
+                    response.put("error", outcome.message);
+                } else {
+                    response.put("message", outcome.message);
+                }
+                sendResult(response);
+            } catch (Exception error) {
+                sendErrorSafe(request, "printerPrint", "Sunmi printer request failed: " + error.getMessage());
+            }
+        }, "SunmiGenericPrint").start();
+    }
+
     private SunmiPrintOutcome runSunmiPrintJob(JSONObject request) {
+        return runSunmiPrintJob(request, false);
+    }
+
+    private SunmiPrintOutcome runSunmiPrintJob(JSONObject request, boolean genericPayload) {
         if (!isSunmiInternalPrinterAvailable()) {
             return SunmiPrintOutcome.failure("Sunmi internal printer service is not available.");
         }
@@ -2008,6 +2185,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             IWoyouService service = serviceRef.get();
             if (!bindStarted.get() || service == null) {
                 return SunmiPrintOutcome.failure("Could not bind Sunmi printer service.");
+            }
+            if (genericPayload) {
+                return submitSunmiGenericPrintJob(service, request);
             }
             return submitSunmiPrintJob(service, request);
         } catch (InterruptedException error) {
@@ -2073,6 +2253,101 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         } catch (RemoteException error) {
             return SunmiPrintOutcome.failure("Sunmi printer failed: " + error.getMessage());
         }
+    }
+
+    private SunmiPrintOutcome submitSunmiGenericPrintJob(IWoyouService service, JSONObject request) {
+        ICallback callback = new ICallback.Stub() {
+            @Override
+            public void onRunResult(boolean isSuccess) {
+                // Binder submission is synchronous enough for this response.
+            }
+
+            @Override
+            public void onReturnString(String result) {
+                // Not needed for print payload responses.
+            }
+
+            @Override
+            public void onRaiseException(int code, String msg) {
+                // Sunmi reports detailed printer state asynchronously.
+            }
+
+            @Override
+            public void onPrintResult(int code, String msg) {
+                // Submission success is enough for this staff workflow.
+            }
+        };
+
+        try {
+            String title = nonEmpty(request.optString("title", ""), "OrderTerminal");
+            String subtitle = nonEmpty(request.optString("subtitle", ""), "");
+            String body = nonEmpty(request.optString("body", ""), "");
+            String qr = nonEmpty(request.optString("qr", ""), "");
+            int qrSize = Math.max(1, Math.min(16, request.optInt("qrSize", 9)));
+            JSONArray lines = request.optJSONArray("lines");
+
+            SunmiPrintOutcome outcome = SunmiPrintOutcome.success("Sunmi print job submitted.");
+            outcome.serviceVersion = nonEmpty(service.getServiceVersion(), "");
+            outcome.printerModal = nonEmpty(service.getPrinterModal(), "");
+            outcome.printerVersion = nonEmpty(service.getPrinterVersion(), "");
+
+            service.printerInit(callback);
+            service.setAlignment(1, callback);
+            service.printTextWithFont(title + "\n", null, 38f, callback);
+            if (!qr.isEmpty()) {
+                service.lineWrap(1, callback);
+                service.sendRAWData(escposQrCode(qr, qrSize), callback);
+                service.lineWrap(1, callback);
+            }
+            if (!subtitle.isEmpty()) {
+                service.printTextWithFont(subtitle + "\n", null, 24f, callback);
+            }
+            service.lineWrap(1, callback);
+            service.setAlignment(0, callback);
+            if (lines != null && lines.length() > 0) {
+                for (int i = 0; i < lines.length(); i += 1) {
+                    String line = lines.optString(i, "");
+                    if (!line.trim().isEmpty()) {
+                        service.printTextWithFont(line + "\n", null, 23f, callback);
+                    }
+                }
+            } else if (!body.isEmpty()) {
+                service.printTextWithFont(body + "\n", null, 23f, callback);
+            }
+            service.lineWrap(3, callback);
+            if (request.optBoolean("beep", false)) {
+                service.sendRAWData(new byte[]{0x1B, 0x42, 0x03, 0x02}, callback);
+            }
+            if (request.optBoolean("cut", false)) {
+                service.sendRAWData(new byte[]{0x1D, 0x56, 0x42, 0x00}, callback);
+            }
+            return outcome;
+        } catch (RemoteException error) {
+            return SunmiPrintOutcome.failure("Sunmi printer failed: " + error.getMessage());
+        }
+    }
+
+    private byte[] escposQrCode(String value) {
+        return escposQrCode(value, 9);
+    }
+
+    private byte[] escposQrCode(String value, int moduleSize) {
+        byte[] data = value.getBytes(StandardCharsets.UTF_8);
+        int storeLength = data.length + 3;
+        int pL = storeLength & 0xff;
+        int pH = (storeLength >> 8) & 0xff;
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeRaw(out, new byte[]{0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00});
+        writeRaw(out, new byte[]{0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, (byte) moduleSize});
+        writeRaw(out, new byte[]{0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30});
+        writeRaw(out, new byte[]{0x1D, 0x28, 0x6B, (byte) pL, (byte) pH, 0x31, 0x50, 0x30});
+        writeRaw(out, data);
+        writeRaw(out, new byte[]{0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30});
+        return out.toByteArray();
+    }
+
+    private void writeRaw(ByteArrayOutputStream out, byte[] bytes) {
+        out.write(bytes, 0, bytes.length);
     }
 
     private void discoverPrinters(JSONObject message) {
@@ -2622,6 +2897,19 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 }
             } else {
                 sendErrorSafe(request, action, "Bluetooth permissions are required for config pairing.");
+            }
+            return;
+        }
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            JSONObject request = pendingNotificationPermissionRequest;
+            pendingNotificationPermissionRequest = null;
+            if (request != null) {
+                try {
+                    boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                    sendResult(notificationBridge.permissionRequestResult(request, granted));
+                } catch (JSONException error) {
+                    sendErrorSafe(request, "notificationPermissionRequest", error.getMessage());
+                }
             }
         }
     }

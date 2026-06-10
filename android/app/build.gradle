@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.ilass.swifthtmlwebviewapp'
+    namespace 'com.ilass.wifimeister'
     compileSdk 35
 
     buildFeatures {
@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.ilass.swifthtmlwebviewapp'
+        applicationId 'com.ilass.wifimeister'
         minSdk 23
         targetSdk 35
         versionCode 1

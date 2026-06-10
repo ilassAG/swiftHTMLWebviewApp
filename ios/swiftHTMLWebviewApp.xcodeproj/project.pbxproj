@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = swiftHTMLWebviewApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = swiftHTMLWebviewApp.app; path = WIFIMeister.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -276,10 +276,11 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = WIFIMeister;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen, QR-/Barcodes zu lesen und per RoomPlan/LiDAR Raumplaene zu erfassen.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Diese App benötigt Standortzugriff, um konfigurierte iBeacon-Sender in der Nähe zu erkennen.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -294,8 +295,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.wifimeister;
+				PRODUCT_NAME = WIFIMeister;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -319,10 +320,11 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = WIFIMeister;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen und QR-/Barcodes zu lesen.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen, QR-/Barcodes zu lesen und per RoomPlan/LiDAR Raumplaene zu erfassen.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Diese App verbindet sich mit Bondruckern im lokalen Netzwerk.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Diese App benötigt Standortzugriff, um konfigurierte iBeacon-Sender in der Nähe zu erkennen.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -337,8 +339,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.wifimeister;
+				PRODUCT_NAME = WIFIMeister;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -15,6 +15,7 @@ struct swiftHTMLWebviewAppApp: App { // Adjusted struct name
 
     init() {
         AppSettings.shared.registerDefaults()
+        _ = NotificationBridge.shared
     }
 
     var body: some Scene {

@@ -69,6 +69,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const geoStartBtn = document.getElementById('geoStartBtn');
     const geoStopBtn = document.getElementById('geoStopBtn');
     const soundPlayBtn = document.getElementById('soundPlayBtn');
+    const notificationPermissionBtn = document.getElementById('notificationPermissionBtn');
+    const notificationShowBtn = document.getElementById('notificationShowBtn');
+    const notificationScheduleBtn = document.getElementById('notificationScheduleBtn');
+    const notificationCancelBtn = document.getElementById('notificationCancelBtn');
     const idleTimeoutInput = document.getElementById('idleTimeoutInput');
     const idleIntervalInput = document.getElementById('idleIntervalInput');
     const idleStartBtn = document.getElementById('idleStartBtn');
@@ -108,7 +112,9 @@ document.addEventListener('DOMContentLoaded', () => {
         "screenStreamStats",
         "screenStreamError",
         "screenStreamClosed",
-        "configPairingEvent"
+        "configPairingEvent",
+        "notificationReceived",
+        "notificationOpened"
     ]);
     const commandActions = new Set([
         "screenOrientationSet",
@@ -129,6 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
         "geoLocationStart",
         "geoLocationStop",
         "soundPlay",
+        "notificationPermissionGet",
+        "notificationPermissionRequest",
+        "notificationShow",
+        "notificationSchedule",
+        "notificationCancel",
+        "notificationCancelAll",
+        "notificationList",
         "idleTimerStart",
         "idleTimerStop",
         "idleTimerReset",
@@ -291,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             displayError("Bitte zuerst einen Pairing-QR scannen oder das Payload einfügen.");
             return;
         }
+        updateConfigFormFromPairingPayload(payload);
         sendBridgeMessage({
             action: "configPairingConnect",
             payload
@@ -380,6 +394,25 @@ document.addEventListener('DOMContentLoaded', () => {
             durationMs: 260,
             volume: 0.85
         });
+    });
+
+    notificationPermissionBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "notificationPermissionRequest" });
+    });
+
+    notificationShowBtn?.addEventListener('click', () => {
+        sendBridgeMessage(createNotificationRequest("notificationShow"));
+    });
+
+    notificationScheduleBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            ...createNotificationRequest("notificationSchedule", "demo-local-scheduled"),
+            seconds: 10
+        });
+    });
+
+    notificationCancelBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "notificationCancelAll" });
     });
 
     idleStartBtn?.addEventListener('click', () => {
@@ -524,6 +557,20 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    function createNotificationRequest(action, id = "demo-local-now") {
+        return {
+            action,
+            id,
+            title: "swiftHTMLWebviewApp",
+            body: `Lokale Notification ${new Date().toLocaleTimeString()}`,
+            sound: true,
+            data: {
+                source: "demo",
+                id
+            }
+        };
+    }
+
     function createPermanentScanStartRequest() {
         const mode = scannerModeSelect?.value === "login" ? "login" : "data";
         return {
@@ -558,6 +605,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function pairingPayloadFromInput() {
         return String(configPairingPayloadInput?.value || "").trim();
+    }
+
+    function identityFromPairingPayload(payload) {
+        try {
+            const url = new URL(String(payload || ""));
+            if (url.protocol !== "swifthtml-config:" || url.hostname !== "pair") {
+                return null;
+            }
+            const params = url.searchParams;
+            return {
+                deviceName: params.get("deviceName") || params.get("device_name") || "",
+                deviceUUID: params.get("deviceUUID") || params.get("deviceUuid") || params.get("device_uuid") || "",
+                deviceLocation: params.get("deviceLocation") || params.get("device_location") || ""
+            };
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function updateConfigFormFromPairingPayload(payload) {
+        const identity = identityFromPairingPayload(payload);
+        if (identity) {
+            updateConfigFormFromSettings(identity);
+        }
     }
 
     function configSecurityToken() {
@@ -765,6 +836,13 @@ document.addEventListener('DOMContentLoaded', () => {
             case "geoLocationStart":
             case "geoLocationStop":
             case "soundPlay":
+            case "notificationPermissionGet":
+            case "notificationPermissionRequest":
+            case "notificationShow":
+            case "notificationSchedule":
+            case "notificationCancel":
+            case "notificationCancelAll":
+            case "notificationList":
             case "idleTimerStart":
             case "idleTimerStop":
             case "idleTimerReset":
@@ -772,11 +850,24 @@ document.addEventListener('DOMContentLoaded', () => {
             case "sensorStreamStop":
             case "screenStreamStart":
             case "screenStreamStop":
-            case "configPairingShow":
             case "configPairingStop":
-            case "configPairingConnect":
             case "configPairingDisconnect":
             case "configPairingSend":
+                displayCommandResult(result);
+                break;
+            case "configPairingShow":
+                if (result.targetIdentity) {
+                    updateConfigFormFromSettings(result.targetIdentity);
+                }
+                if (result.payload) {
+                    updateConfigFormFromPairingPayload(result.payload);
+                }
+                displayCommandResult(result);
+                break;
+            case "configPairingConnect":
+                if (result.targetIdentity) {
+                    updateConfigFormFromSettings(result.targetIdentity);
+                }
                 displayCommandResult(result);
                 break;
             default:
@@ -892,6 +983,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result.code) {
             if (String(result.code).startsWith("swifthtml-config://pair") && configPairingPayloadInput) {
                 configPairingPayloadInput.value = result.code;
+                updateConfigFormFromPairingPayload(result.code);
             }
             resultArea.appendChild(createResultHeader("Barcode erkannt:"));
             const pre = document.createElement('pre');

@@ -23,6 +23,7 @@ import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -83,13 +84,16 @@ final class AndroidConfigPairingBridge {
     private BluetoothGattCharacteristic responseCharacteristic;
     private BluetoothLeAdvertiser advertiser;
     private final Set<BluetoothDevice> subscribedDevices = new HashSet<>();
-    private final Map<String, ChunkAccumulator> inboundChunks = new HashMap<>();
+    private final Map<String, ChunkAccumulator> targetInboundChunks = new HashMap<>();
+    private final Map<String, ChunkAccumulator> centralInboundChunks = new HashMap<>();
+    private final ArrayList<byte[]> centralWriteQueue = new ArrayList<>();
     private BluetoothDevice targetDevice;
 
     private BluetoothLeScanner scanner;
     private BluetoothGatt centralGatt;
     private BluetoothGattCharacteristic centralCommandCharacteristic;
     private PairingTarget pairingTarget;
+    private boolean centralWriteInProgress = false;
 
     private String sessionId = "";
     private String sessionSecret = "";
@@ -108,7 +112,8 @@ final class AndroidConfigPairingBridge {
         sessionId = UUID.randomUUID().toString();
         sessionSecret = randomBase64Url(18);
         sessionExpiresAtMs = System.currentTimeMillis() + SESSION_LIFETIME_MS;
-        String payload = pairingPayload(sessionId, sessionSecret, sessionExpiresAtMs);
+        JSONObject identity = targetIdentity();
+        String payload = pairingPayload(sessionId, sessionSecret, sessionExpiresAtMs, identity);
 
         Bitmap qrBitmap;
         try {
@@ -127,6 +132,10 @@ final class AndroidConfigPairingBridge {
         response.put("expiresAt", sessionExpiresAtMs / 1000L);
         response.put("transport", "ble-gatt");
         response.put("serviceUUID", SERVICE_UUID.toString());
+        response.put("targetIdentity", identity);
+        response.put("deviceName", identity.optString("deviceName", ""));
+        response.put("deviceUUID", identity.optString("deviceUUID", ""));
+        response.put("deviceLocation", identity.optString("deviceLocation", ""));
         return response;
     }
 
@@ -166,6 +175,10 @@ final class AndroidConfigPairingBridge {
         response.put("state", "scanning");
         response.put("serviceUUID", target.serviceUuid.toString());
         response.put("targetName", target.name);
+        response.put("targetIdentity", target.identityPayload());
+        response.put("deviceName", target.deviceName);
+        response.put("deviceUUID", target.deviceUuid);
+        response.put("deviceLocation", target.deviceLocation);
         return response;
     }
 
@@ -203,20 +216,16 @@ final class AndroidConfigPairingBridge {
         }
 
         byte[] data = command.toString().getBytes(StandardCharsets.UTF_8);
-        if (data.length > 512) {
-            return errorResponse(request, "configPairingSend", "Config command is too large for one BLE write.");
-        }
-
-        centralCommandCharacteristic.setValue(data);
-        boolean started = centralGatt.writeCharacteristic(centralCommandCharacteristic);
+        CentralWriteResult writeResult = writeCentralCommandData(data);
 
         JSONObject response = baseResponse(request, "configPairingSend");
-        response.put("success", started);
-        response.put("state", started ? "sent" : "writeFailed");
+        response.put("success", writeResult.started);
+        response.put("state", writeResult.started ? (writeResult.chunks > 1 ? "sentInChunks" : "sent") : "writeFailed");
         response.put("bytes", data.length);
+        response.put("chunks", writeResult.chunks);
         response.put("command", command.optString("command"));
-        if (!started) {
-            response.put("error", "Android rejected the BLE characteristic write.");
+        if (!writeResult.started) {
+            response.put("error", writeResult.error);
         }
         return response;
     }
@@ -241,6 +250,7 @@ final class AndroidConfigPairingBridge {
         gattServer = null;
         responseCharacteristic = null;
         subscribedDevices.clear();
+        targetInboundChunks.clear();
         targetDevice = null;
         sessionId = "";
         sessionSecret = "";
@@ -334,6 +344,10 @@ final class AndroidConfigPairingBridge {
             notifyResponse(device, errorPayload("unknown", "", "Invalid JSON command."));
             return;
         }
+        if ("configPairingChunk".equals(command.optString("action", ""))) {
+            handleTargetCommandChunk(device, command);
+            return;
+        }
 
         String commandName = nonEmpty(command.optString("command", ""), "statusGet");
         if (!commandIsPaired(command)) {
@@ -407,6 +421,38 @@ final class AndroidConfigPairingBridge {
         } catch (JSONException error) {
             notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), error.getMessage()));
         }
+    }
+
+    private void handleTargetCommandChunk(BluetoothDevice device, JSONObject object) {
+        String chunkId = object.optString("id", "");
+        int index = object.optInt("i", -1);
+        int count = object.optInt("n", 0);
+        String encoded = object.optString("d", "");
+        if (chunkId.isEmpty() || index < 0 || count <= 0 || index >= count || encoded.isEmpty()) {
+            notifyResponse(device, errorPayload("unknown", "", "Invalid config command chunk."));
+            return;
+        }
+
+        byte[] chunk;
+        try {
+            chunk = Base64.decode(encoded, Base64.NO_WRAP);
+        } catch (IllegalArgumentException error) {
+            notifyResponse(device, errorPayload("unknown", "", "Invalid config command chunk encoding."));
+            return;
+        }
+
+        ChunkAccumulator accumulator = targetInboundChunks.get(chunkId);
+        if (accumulator == null) {
+            accumulator = new ChunkAccumulator(count);
+            targetInboundChunks.put(chunkId, accumulator);
+        }
+        accumulator.chunks.put(index, chunk);
+        if (!accumulator.isComplete()) {
+            return;
+        }
+
+        targetInboundChunks.remove(chunkId);
+        handleTargetCommand(device, accumulator.assembled());
     }
 
     private boolean commandIsPaired(JSONObject command) {
@@ -504,7 +550,9 @@ final class AndroidConfigPairingBridge {
         centralGatt = null;
         centralCommandCharacteristic = null;
         pairingTarget = null;
-        inboundChunks.clear();
+        centralInboundChunks.clear();
+        centralWriteQueue.clear();
+        centralWriteInProgress = false;
     }
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
@@ -640,9 +688,16 @@ final class AndroidConfigPairingBridge {
 
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+            centralWriteInProgress = false;
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                centralWriteQueue.clear();
                 emitEvent("configurator", "writeFailed", false, "BLE write failed with status " + status + ".");
+                return;
             }
+            if (!centralWriteQueue.isEmpty()) {
+                centralWriteQueue.remove(0);
+            }
+            writeNextCentralPayload();
         }
     };
 
@@ -686,23 +741,103 @@ final class AndroidConfigPairingBridge {
             return;
         }
 
-        ChunkAccumulator accumulator = inboundChunks.get(chunkId);
+        ChunkAccumulator accumulator = centralInboundChunks.get(chunkId);
         if (accumulator == null) {
             accumulator = new ChunkAccumulator(count);
-            inboundChunks.put(chunkId, accumulator);
+            centralInboundChunks.put(chunkId, accumulator);
         }
         accumulator.chunks.put(index, chunk);
         if (!accumulator.isComplete()) {
             return;
         }
 
-        inboundChunks.remove(chunkId);
+        centralInboundChunks.remove(chunkId);
         byte[] assembled = accumulator.assembled();
         try {
             host.sendResult(new JSONObject(new String(assembled, StandardCharsets.UTF_8)));
         } catch (JSONException error) {
             emitEvent("configurator", "chunkAssemblyFailed", false, error.getMessage());
         }
+    }
+
+    private CentralWriteResult writeCentralCommandData(byte[] data) {
+        if (centralGatt == null || centralCommandCharacteristic == null) {
+            return new CentralWriteResult(false, 0, "Config pairing is not ready yet.");
+        }
+
+        List<byte[]> payloads;
+        if (data.length <= SINGLE_NOTIFICATION_LIMIT) {
+            payloads = new ArrayList<>();
+            payloads.add(data);
+        } else {
+            payloads = chunkPayloads(data, SINGLE_NOTIFICATION_LIMIT);
+            if (payloads.isEmpty()) {
+                return new CentralWriteResult(false, 0, "Config command is too large for the negotiated BLE write length.");
+            }
+        }
+
+        centralWriteQueue.addAll(payloads);
+        boolean started = writeNextCentralPayload();
+        return new CentralWriteResult(started, payloads.size(), started ? "" : "Android rejected the BLE characteristic write.");
+    }
+
+    private boolean writeNextCentralPayload() {
+        if (centralWriteInProgress || centralWriteQueue.isEmpty()) {
+            return true;
+        }
+        if (centralGatt == null || centralCommandCharacteristic == null) {
+            centralWriteQueue.clear();
+            return false;
+        }
+        centralCommandCharacteristic.setValue(centralWriteQueue.get(0));
+        boolean started = centralGatt.writeCharacteristic(centralCommandCharacteristic);
+        centralWriteInProgress = started;
+        if (!started) {
+            centralWriteQueue.clear();
+        }
+        return started;
+    }
+
+    private List<byte[]> chunkPayloads(byte[] data, int maxPayloadLength) {
+        ArrayList<byte[]> payloads = new ArrayList<>();
+        String chunkId = UUID.randomUUID().toString();
+        int chunkSize = CHUNK_PAYLOAD_SIZE;
+
+        while (chunkSize >= 8) {
+            payloads.clear();
+            int count = (int) Math.ceil(data.length / (double) chunkSize);
+            boolean fits = true;
+            for (int index = 0; index < count; index += 1) {
+                int start = index * chunkSize;
+                int length = Math.min(chunkSize, data.length - start);
+                byte[] chunk = new byte[length];
+                System.arraycopy(data, start, chunk, 0, length);
+                JSONObject payload = new JSONObject();
+                try {
+                    payload.put("action", "configPairingChunk");
+                    payload.put("id", chunkId);
+                    payload.put("i", index);
+                    payload.put("n", count);
+                    payload.put("d", Base64.encodeToString(chunk, Base64.NO_WRAP));
+                } catch (JSONException error) {
+                    fits = false;
+                    break;
+                }
+                byte[] payloadData = payload.toString().getBytes(StandardCharsets.UTF_8);
+                if (payloadData.length > maxPayloadLength) {
+                    fits = false;
+                    break;
+                }
+                payloads.add(payloadData);
+            }
+            if (fits) {
+                return new ArrayList<>(payloads);
+            }
+            chunkSize /= 2;
+        }
+
+        payloads.clear();
+        return payloads;
     }
 
     private BluetoothManager bluetoothManager() {
@@ -714,15 +849,35 @@ final class AndroidConfigPairingBridge {
         return manager != null ? manager.getAdapter() : null;
     }
 
-    private String pairingPayload(String id, String secret, long expiresAtMs) {
-        String name = Build.MODEL != null ? Build.MODEL : "Android";
-        return "swifthtml-config://pair"
-                + "?v=1"
-                + "&id=" + id
-                + "&secret=" + secret
-                + "&service=" + SERVICE_UUID
-                + "&expires=" + (expiresAtMs / 1000L)
-                + "&name=" + urlEncodeMinimal(name);
+    private JSONObject targetIdentity() throws JSONException {
+        JSONObject settings = host.settingsSnapshot();
+        String deviceName = settings.optString("deviceName", "");
+        String deviceUuid = settings.optString("deviceUUID", "");
+        String deviceLocation = settings.optString("deviceLocation", "");
+        String name = nonEmpty(deviceName, Build.MODEL != null ? Build.MODEL : "Android");
+        JSONObject identity = new JSONObject();
+        identity.put("name", name);
+        identity.put("deviceName", deviceName);
+        identity.put("deviceUUID", deviceUuid);
+        identity.put("deviceLocation", deviceLocation);
+        return identity;
+    }
+
+    private String pairingPayload(String id, String secret, long expiresAtMs, JSONObject identity) {
+        return new Uri.Builder()
+                .scheme("swifthtml-config")
+                .authority("pair")
+                .appendQueryParameter("v", "1")
+                .appendQueryParameter("id", id)
+                .appendQueryParameter("secret", secret)
+                .appendQueryParameter("service", SERVICE_UUID.toString())
+                .appendQueryParameter("expires", String.valueOf(expiresAtMs / 1000L))
+                .appendQueryParameter("name", identity.optString("name", ""))
+                .appendQueryParameter("deviceName", identity.optString("deviceName", ""))
+                .appendQueryParameter("deviceUUID", identity.optString("deviceUUID", ""))
+                .appendQueryParameter("deviceLocation", identity.optString("deviceLocation", ""))
+                .build()
+                .toString();
     }
 
     private Bitmap qrBitmap(String text, int size) throws WriterException {
@@ -777,21 +932,32 @@ final class AndroidConfigPairingBridge {
         return filters;
     }
 
-    private String urlEncodeMinimal(String value) {
-        return value == null ? "" : value.replace(" ", "%20");
-    }
-
     private static final class PairingTarget {
         final String sessionId;
         final String secret;
         final UUID serviceUuid;
         final String name;
+        final String deviceName;
+        final String deviceUuid;
+        final String deviceLocation;
 
-        private PairingTarget(String sessionId, String secret, UUID serviceUuid, String name) {
+        private PairingTarget(String sessionId, String secret, UUID serviceUuid, String name, String deviceName, String deviceUuid, String deviceLocation) {
             this.sessionId = sessionId;
             this.secret = secret;
             this.serviceUuid = serviceUuid;
             this.name = name;
+            this.deviceName = deviceName;
+            this.deviceUuid = deviceUuid;
+            this.deviceLocation = deviceLocation;
+        }
+
+        JSONObject identityPayload() throws JSONException {
+            JSONObject identity = new JSONObject();
+            identity.put("name", name);
+            identity.put("deviceName", deviceName);
+            identity.put("deviceUUID", deviceUuid);
+            identity.put("deviceLocation", deviceLocation);
+            return identity;
         }
 
         static PairingTarget parse(String payload) {
@@ -828,7 +994,11 @@ final class AndroidConfigPairingBridge {
             } catch (Exception ignored) {
                 // Use default service UUID.
             }
-            return new PairingTarget(id, secret, serviceUuid, values.optString("name", ""));
+            String deviceName = values.optString("deviceName", values.optString("device_name", ""));
+            String deviceUuid = values.optString("deviceUUID", values.optString("deviceUuid", values.optString("device_uuid", "")));
+            String deviceLocation = values.optString("deviceLocation", values.optString("device_location", ""));
+            String name = deviceName.isEmpty() ? values.optString("name", "") : deviceName;
+            return new PairingTarget(id, secret, serviceUuid, name, deviceName, deviceUuid, deviceLocation);
         }
     }
 
@@ -863,6 +1033,18 @@ final class AndroidConfigPairingBridge {
                 offset += chunk.length;
             }
             return data;
+        }
+    }
+
+    private static final class CentralWriteResult {
+        final boolean started;
+        final int chunks;
+        final String error;
+
+        CentralWriteResult(boolean started, int chunks, String error) {
+            this.started = started;
+            this.chunks = chunks;
+            this.error = error;
         }
     }
 }

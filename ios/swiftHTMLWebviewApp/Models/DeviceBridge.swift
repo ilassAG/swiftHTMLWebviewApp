@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import ARKit
 @preconcurrency import CoreBluetooth
 import CoreMotion
 import CoreNFC
@@ -163,9 +164,27 @@ final class DeviceBridge: ObservableObject {
             "wifiConfigure": true,
             "screenshotGet": true,
             "geoLocationGet": true,
+            "arPositionStart": ARPositionBridge.isSupported(),
+            "arPositionStop": true,
+            "arPositionSupported": ARPositionBridge.isSupported(),
+            "arGuidedMeasurementStart": ARGuidedMeasurementBridge.isSupported(),
+            "arGuidedMeasurementSetAnchors": ARGuidedMeasurementBridge.isSupported(),
+            "arGuidedMeasurementStop": true,
+            "arGuidedMeasurementSupported": ARGuidedMeasurementBridge.isSupported(),
+            "roomPlanScanStart": RoomPlanBridge.isSupported(),
+            "roomPlanScanStop": RoomPlanBridge.isSupported(),
+            "roomPlanScanExport": true,
+            "roomPlanSupported": RoomPlanBridge.isSupported(),
             "screenStreamStart": true,
             "screenStreamFormats": ["jpeg"],
             "soundPlay": true,
+            "notificationPermissionGet": true,
+            "notificationPermissionRequest": true,
+            "notificationShow": true,
+            "notificationSchedule": true,
+            "notificationCancel": true,
+            "notificationCancelAll": true,
+            "notificationList": true,
             "idleTimerStart": true,
             "sensorStreamStart": true,
             "nfcTagRead": NFCTagReaderSession.readingAvailable,
