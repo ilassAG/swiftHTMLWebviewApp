@@ -357,11 +357,14 @@ private func normalize(room: CapturedRoom) -> [String: Any] {
         + room.openings.map { normalizedOpening($0, type: "opening") }
     let objects = room.objects.map { normalizedObject($0) }
     let bounds = normalizedBounds(walls: walls, openings: openings, objects: objects)
+    let vertical = normalizedVerticalMetrics(surfaces: walls)
 
     return [
         "coordinateSystem": "roomplan-local-meter",
         "roomIdentifier": room.identifier.uuidString,
         "bounds": bounds,
+        "floorY": vertical["floorY"] ?? 0,
+        "vertical": vertical,
         "walls": walls,
         "openings": openings,
         "objects": objects
@@ -466,6 +469,54 @@ private func appendNumber(_ value: Any?, to target: inout [Double]) {
     } else if let number = value as? NSNumber {
         target.append(number.doubleValue)
     }
+}
+
+private func normalizedVerticalMetrics(surfaces: [[String: Any]]) -> [String: Double] {
+    let floors = surfaces.compactMap(surfaceFloorY)
+    let ceilings = surfaces.compactMap(surfaceCeilingY)
+    guard let floorY = median(floors), let ceilingY = median(ceilings) else {
+        return ["floorY": 0]
+    }
+    return [
+        "floorY": rounded(floorY),
+        "ceilingY": rounded(ceilingY),
+        "height": rounded(max(0, ceilingY - floorY))
+    ]
+}
+
+private func surfaceFloorY(_ surface: [String: Any]) -> Double? {
+    guard let centerY = transformTranslationY(surface["transform"]) else { return nil }
+    let height = number(surface["height"])
+    guard height > 0.2 else { return nil }
+    return centerY - height / 2.0
+}
+
+private func surfaceCeilingY(_ surface: [String: Any]) -> Double? {
+    guard let centerY = transformTranslationY(surface["transform"]) else { return nil }
+    let height = number(surface["height"])
+    guard height > 0.2 else { return nil }
+    return centerY + height / 2.0
+}
+
+private func transformTranslationY(_ value: Any?) -> Double? {
+    if let matrix = value as? [Double], matrix.count > 13 {
+        return matrix[13]
+    }
+    if let matrix = value as? [NSNumber], matrix.count > 13 {
+        return matrix[13].doubleValue
+    }
+    guard let matrix = value as? [Any], matrix.count > 13 else { return nil }
+    return doubleValue(matrix[13])
+}
+
+private func median(_ values: [Double]) -> Double? {
+    guard !values.isEmpty else { return nil }
+    let sorted = values.sorted()
+    let mid = sorted.count / 2
+    if sorted.count.isMultiple(of: 2) {
+        return (sorted[mid - 1] + sorted[mid]) / 2.0
+    }
+    return sorted[mid]
 }
 
 @available(iOS 16.0, *)

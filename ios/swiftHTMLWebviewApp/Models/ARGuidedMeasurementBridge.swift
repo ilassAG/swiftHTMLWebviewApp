@@ -1007,7 +1007,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         if initialWorldMap != nil, let startAnchor = bridge?.startAnchorPayload() {
             let x = Float(doubleValue(startAnchor["planX"]) ?? 0)
             let z = Float(doubleValue(startAnchor["planY"]) ?? 0)
-            return SIMD3<Float>(x, workingHeightMeters(startAnchor: startAnchor), z)
+            return SIMD3<Float>(x, roomPlanFloorY() + workingHeightMeters(startAnchor: startAnchor), z)
         }
         let cameraTransform = frame.camera.transform
         let cameraPosition = cameraTransform.columns.3
@@ -1029,6 +1029,49 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private func workingHeightMeters(startAnchor: [String: Any]) -> Float {
         let planZ = Float(doubleValue(startAnchor["planZ"]) ?? 0)
         return planZ > 0.2 ? planZ : 1.4
+    }
+
+    private func roomPlanFloorY() -> Float {
+        guard let plan = bridge?.floorPlanPlanPayload() else { return 0 }
+        if let vertical = plan["vertical"] as? [String: Any],
+           let floorY = doubleValue(vertical["floorY"]) {
+            return Float(floorY)
+        }
+        if let floorY = doubleValue(plan["floorY"]) {
+            return Float(floorY)
+        }
+        let walls = plan["walls"] as? [[String: Any]] ?? []
+        let floors = walls.compactMap(surfaceFloorY)
+        return median(floors) ?? 0
+    }
+
+    private func surfaceFloorY(_ surface: [String: Any]) -> Float? {
+        guard let centerY = transformTranslationY(surface["transform"]) else { return nil }
+        let height = Float(doubleValue(surface["height"]) ?? 0)
+        guard height > 0.2 else { return nil }
+        return centerY - height / 2
+    }
+
+    private func transformTranslationY(_ value: Any?) -> Float? {
+        if let matrix = value as? [Double], matrix.count > 13 {
+            return Float(matrix[13])
+        }
+        if let matrix = value as? [NSNumber], matrix.count > 13 {
+            return matrix[13].floatValue
+        }
+        guard let matrix = value as? [Any], matrix.count > 13,
+              let y = doubleValue(matrix[13]) else { return nil }
+        return Float(y)
+    }
+
+    private func median(_ values: [Float]) -> Float? {
+        guard !values.isEmpty else { return nil }
+        let sorted = values.sorted()
+        let mid = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[mid - 1] + sorted[mid]) / 2
+        }
+        return sorted[mid]
     }
 
     private func cameraPosition(_ frame: ARFrame) -> SIMD3<Float> {
@@ -1090,7 +1133,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
         let overlay = SCNNode()
         overlay.name = "roomPlanOverlay"
-        let y = cameraPosition(frame).y - 0.32
+        let y = roomPlanFloorY() + 0.025
         for wall in walls {
             guard let line = worldMapRoomPlanWallLineNode(wall: wall, y: y) else { continue }
             overlay.addChildNode(line)
