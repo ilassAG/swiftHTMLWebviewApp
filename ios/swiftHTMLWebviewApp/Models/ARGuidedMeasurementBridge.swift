@@ -25,6 +25,7 @@ final class ARGuidedMeasurementBridge: ObservableObject {
     private var streamToken = UUID()
     private var confirmed = false
     fileprivate weak var controller: ARGuidedMeasurementViewController?
+    fileprivate var startConfirmed: Bool { confirmed }
 
     nonisolated static func isSupported() -> Bool {
         ARWorldTrackingConfiguration.isSupported
@@ -91,6 +92,18 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         return response
     }
 
+    func closeFromController() {
+        if confirmed {
+            var response = baseResponse(request: latestRequest, action: "arGuidedMeasurementStop")
+            response["success"] = true
+            response["source"] = "arkit-guided"
+            eventHandler?(response)
+        } else {
+            eventHandler?(errorResponse(request: latestRequest, action: "arGuidedError", error: "AR Start abgebrochen."))
+        }
+        stopInternal(hideView: true)
+    }
+
     func shutdown() {
         stopInternal(hideView: true)
     }
@@ -115,15 +128,18 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         eventHandler?(positionResponse(frame: frame, action: "arGuidedPosition"))
     }
 
-    func confirmStart(frame: ARFrame) {
-        guard !confirmed else { return }
+    @discardableResult
+    func confirmStart(frame: ARFrame, source: String = "tap") -> Bool {
+        guard !confirmed else { return false }
         confirmed = true
         var response = positionResponse(frame: frame, action: "arGuidedStartAnchorConfirmed")
         response["startAnchor"] = startAnchorPayload()
         response["anchor"] = startAnchorPayload()
         response["anchorId"] = stringValue(startAnchorPayload()?["id"])
         response["startAnchorId"] = stringValue(startAnchorPayload()?["id"])
+        response["confirmationSource"] = source
         eventHandler?(response)
+        return true
     }
 
     func captureAnchor(frame: ARFrame, label: String = "AR Messpunkt") {
@@ -275,51 +291,8 @@ struct ARGuidedMeasurementSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack(alignment: .top) {
-            ARGuidedMeasurementRepresentable(bridge: bridge)
-                .ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button("Schliessen") {
-                        _ = bridge.stop(request: ["action": "arGuidedMeasurementStop"])
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-
-                    Spacer()
-
-                    Text("Startpfeil antippen")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(.black.opacity(0.58), in: Capsule())
-
-                    Spacer()
-
-                    Button("Messpunkt") {
-                        if let frame = bridge.controller?.currentFrame {
-                            bridge.captureAnchor(frame: frame)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-
-                Text("Stell dich auf die Admin-Position, halte das iPhone in Pfeilrichtung und tippe den Pfeil.")
-                    .font(.subheadline.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white.opacity(0.86))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.horizontal, 18)
-            }
-        }
+        ARGuidedMeasurementRepresentable(bridge: bridge)
+            .ignoresSafeArea()
         .onChange(of: bridge.viewVisible) { _, visible in
             if !visible {
                 dismiss()
@@ -344,9 +317,25 @@ private struct ARGuidedMeasurementRepresentable: UIViewControllerRepresentable {
 
 final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelegate {
     private let sceneView = ARSCNView(frame: .zero)
+    private let overlayView = UIView(frame: .zero)
+    private let statusLabel = UILabel(frame: .zero)
+    private let detailLabel = UILabel(frame: .zero)
+    private let confirmButton = UIButton(type: .system)
+    private let closeButton = UIButton(type: .system)
+    private let pointButton = UIButton(type: .system)
     private weak var bridge: ARGuidedMeasurementBridge?
     private var arrowNode: SCNNode?
     private var arrowPlacedInWorld = false
+    private var alignmentStartTime: TimeInterval?
+    private var lastAlignmentStatusTime: TimeInterval = 0
+
+    private enum AlignmentThresholds {
+        static let horizontalDistanceMeters: Float = 0.36
+        static let yawRadians: Float = 0.44
+        static let requiredStableSeconds: TimeInterval = 0.7
+        static let statusIntervalSeconds: TimeInterval = 0.35
+    }
+
     var currentFrame: ARFrame? {
         sceneView.session.currentFrame
     }
@@ -376,7 +365,9 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             sceneView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tap.cancelsTouchesInView = false
         sceneView.addGestureRecognizer(tap)
+        configureOverlay()
         refreshStartArrow()
     }
 
@@ -410,6 +401,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     func refreshStartArrow(resetPlacement: Bool = false) {
         if resetPlacement {
             arrowPlacedInWorld = false
+            alignmentStartTime = nil
             arrowNode?.removeFromParentNode()
             arrowNode = nil
         }
@@ -426,6 +418,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         Task { @MainActor in
             self.placeStartArrowInWorldIfNeeded(frame: frame)
+            self.evaluateStartAlignment(frame: frame)
             self.bridge?.emitPosition(frame: frame)
         }
     }
@@ -455,10 +448,162 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             }
             return false
         }
-        guard tappedArrow || hits.isEmpty else { return }
-        if let frame = sceneView.session.currentFrame {
-            bridge?.confirmStart(frame: frame)
+        guard tappedArrow || isTapNearStartArrow(point) || hits.isEmpty else { return }
+        confirmCurrentFrame(source: tappedArrow ? "arrowTap" : "sceneTap")
+    }
+
+    @objc private func confirmButtonPressed() {
+        confirmCurrentFrame(source: "button")
+    }
+
+    @objc private func closeButtonPressed() {
+        bridge?.closeFromController()
+    }
+
+    @objc private func pointButtonPressed() {
+        guard let frame = sceneView.session.currentFrame else { return }
+        bridge?.captureAnchor(frame: frame)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showRunningStatus("Messpunkt gespeichert.")
+    }
+
+    private func confirmCurrentFrame(source: String) {
+        guard let frame = sceneView.session.currentFrame else { return }
+        if bridge?.confirmStart(frame: frame, source: source) == true {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
+        showConfirmedStatus()
+    }
+
+    private func showConfirmedStatus() {
+        statusLabel.text = "Messung läuft"
+        detailLabel.text = "Startposition bestätigt. ARKit zeichnet die Messpunkte weiter auf."
+        confirmButton.isEnabled = false
+        confirmButton.alpha = 0.55
+        var configuration = confirmButton.configuration
+        configuration?.title = "Start bestätigt"
+        confirmButton.configuration = configuration
+        pointButton.isEnabled = true
+        pointButton.alpha = 1
+    }
+
+    private func showRunningStatus(_ detail: String) {
+        statusLabel.text = bridge?.startConfirmed == true ? "Messung läuft" : "Startpfeil"
+        detailLabel.text = detail
+    }
+
+    private func configureOverlay() {
+        overlayView.translatesAutoresizingMaskIntoConstraints = false
+        overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        overlayView.layer.cornerRadius = 18
+        overlayView.layer.cornerCurve = .continuous
+        overlayView.isUserInteractionEnabled = true
+
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.text = "Startpfeil"
+        statusLabel.textColor = .white
+        statusLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        statusLabel.numberOfLines = 1
+
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        detailLabel.text = "Zum Pfeil gehen, in Pfeilrichtung schauen oder Start bestätigen antippen."
+        detailLabel.textColor = UIColor.white.withAlphaComponent(0.86)
+        detailLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        detailLabel.numberOfLines = 2
+
+        configureButton(confirmButton, title: "Start bestätigen", color: .systemGreen, action: #selector(confirmButtonPressed))
+        configureButton(closeButton, title: "Schliessen", color: .systemRed, action: #selector(closeButtonPressed))
+        configureButton(pointButton, title: "Messpunkt", color: .systemBlue, action: #selector(pointButtonPressed))
+        pointButton.isEnabled = false
+        pointButton.alpha = 0.55
+
+        let textStack = UIStackView(arrangedSubviews: [statusLabel, detailLabel])
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.axis = .vertical
+        textStack.spacing = 4
+
+        let buttonStack = UIStackView(arrangedSubviews: [closeButton, confirmButton, pointButton])
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 8
+        buttonStack.distribution = .fillEqually
+
+        overlayView.addSubview(textStack)
+        overlayView.addSubview(buttonStack)
+        view.addSubview(overlayView)
+        view.bringSubviewToFront(overlayView)
+
+        NSLayoutConstraint.activate([
+            overlayView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            overlayView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            overlayView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+
+            textStack.leadingAnchor.constraint(equalTo: overlayView.leadingAnchor, constant: 14),
+            textStack.trailingAnchor.constraint(equalTo: overlayView.trailingAnchor, constant: -14),
+            textStack.topAnchor.constraint(equalTo: overlayView.topAnchor, constant: 12),
+
+            buttonStack.leadingAnchor.constraint(equalTo: overlayView.leadingAnchor, constant: 10),
+            buttonStack.trailingAnchor.constraint(equalTo: overlayView.trailingAnchor, constant: -10),
+            buttonStack.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: 10),
+            buttonStack.bottomAnchor.constraint(equalTo: overlayView.bottomAnchor, constant: -10),
+            buttonStack.heightAnchor.constraint(equalToConstant: 44)
+        ])
+    }
+
+    private func configureButton(_ button: UIButton, title: String, color: UIColor, action: Selector) {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = title
+        configuration.baseBackgroundColor = color
+        configuration.baseForegroundColor = .black
+        configuration.cornerStyle = .medium
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 14, weight: .bold)
+            return outgoing
+        }
+        button.configuration = configuration
+        button.addTarget(self, action: action, for: .touchUpInside)
+    }
+
+    private func evaluateStartAlignment(frame: ARFrame) {
+        guard bridge?.startConfirmed != true, arrowPlacedInWorld, let arrowNode else { return }
+
+        let distance = horizontalDistance(from: cameraPosition(frame), to: arrowNode.simdWorldPosition)
+        let yawDelta = abs(normalizedAngle(frame.camera.eulerAngles.y - desiredCameraYaw(for: arrowNode)))
+        let aligned = distance <= AlignmentThresholds.horizontalDistanceMeters && yawDelta <= AlignmentThresholds.yawRadians
+
+        if aligned {
+            if alignmentStartTime == nil {
+                alignmentStartTime = frame.timestamp
+            }
+            let stableSeconds = frame.timestamp - (alignmentStartTime ?? frame.timestamp)
+            if stableSeconds >= AlignmentThresholds.requiredStableSeconds {
+                confirmCurrentFrame(source: "autoAlignment")
+                return
+            }
+            updateAlignmentStatus(frame: frame, distance: distance, yawDelta: yawDelta, prefix: "Position erkannt")
+        } else {
+            alignmentStartTime = nil
+            updateAlignmentStatus(frame: frame, distance: distance, yawDelta: yawDelta, prefix: "Zum Pfeil ausrichten")
+        }
+    }
+
+    private func updateAlignmentStatus(frame: ARFrame, distance: Float, yawDelta: Float, prefix: String) {
+        guard frame.timestamp - lastAlignmentStatusTime >= AlignmentThresholds.statusIntervalSeconds else { return }
+        lastAlignmentStatusTime = frame.timestamp
+        let centimeters = max(0, Int(distance * 100))
+        let degrees = max(0, Int(yawDelta * 180 / .pi))
+        detailLabel.text = "\(prefix): \(centimeters) cm / \(degrees) Grad. Antippen bestätigt sofort."
+    }
+
+    private func isTapNearStartArrow(_ point: CGPoint) -> Bool {
+        guard let arrowNode, !arrowNode.isHidden else { return false }
+        let projected = sceneView.projectPoint(arrowNode.worldPosition)
+        guard projected.z >= 0, projected.z <= 1 else { return false }
+        let center = CGPoint(x: CGFloat(projected.x), y: CGFloat(projected.y))
+        let dx = center.x - point.x
+        let dy = center.y - point.y
+        return sqrt(dx * dx + dy * dy) <= 70
     }
 
     private func placeStartArrowInWorldIfNeeded(frame: ARFrame) {
@@ -481,6 +626,23 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private func startArrowWorldYaw(frame: ARFrame) -> Float {
         let anchorYaw = Float(doubleValue(bridge?.startAnchorPayload()?["yawRadians"]) ?? 0)
         return frame.camera.eulerAngles.y + Float.pi / 2 + anchorYaw
+    }
+
+    private func cameraPosition(_ frame: ARFrame) -> SIMD3<Float> {
+        let position = frame.camera.transform.columns.3
+        return SIMD3<Float>(position.x, position.y, position.z)
+    }
+
+    private func horizontalDistance(from first: SIMD3<Float>, to second: SIMD3<Float>) -> Float {
+        simd_length(SIMD2<Float>(first.x - second.x, first.z - second.z))
+    }
+
+    private func desiredCameraYaw(for arrowNode: SCNNode) -> Float {
+        arrowNode.eulerAngles.y - Float.pi / 2
+    }
+
+    private func normalizedAngle(_ angle: Float) -> Float {
+        atan2(sin(angle), cos(angle))
     }
 
     private func horizontalForwardVector(_ transform: simd_float4x4) -> SIMD3<Float> {
