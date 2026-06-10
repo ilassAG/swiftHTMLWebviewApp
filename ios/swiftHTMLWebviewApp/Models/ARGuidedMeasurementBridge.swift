@@ -208,6 +208,7 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         response["orientation"] = [
             "pitch": Double(frame.camera.eulerAngles.x),
             "yaw": Double(frame.camera.eulerAngles.y),
+            "headingYaw": Double(arHeadingYaw(frame: frame)),
             "roll": Double(frame.camera.eulerAngles.z),
             "unit": "radians"
         ]
@@ -287,6 +288,19 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         ]
     }
 
+    private func horizontalForwardVector(_ transform: simd_float4x4) -> SIMD3<Float> {
+        let rawForward = -SIMD3<Float>(transform.columns.2.x, 0, transform.columns.2.z)
+        if simd_length(rawForward) > 0.001 {
+            return simd_normalize(rawForward)
+        }
+        return SIMD3<Float>(0, 0, -1)
+    }
+
+    private func arHeadingYaw(frame: ARFrame) -> Float {
+        let forward = horizontalForwardVector(frame.camera.transform)
+        return atan2(forward.z, forward.x)
+    }
+
     private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
         var response: [String: Any] = [
             "platform": "ios",
@@ -360,7 +374,7 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private var statsHeightConstraint: NSLayoutConstraint?
 
     private enum AlignmentThresholds {
-        static let horizontalDistanceMeters: Float = 0.65
+        static let horizontalDistanceMeters: Float = 0.16
         static let yawRadians: Float = 0.35
         static let requiredStableSeconds: TimeInterval = 0.85
         static let statusIntervalSeconds: TimeInterval = 0.35
@@ -523,7 +537,16 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
     private func confirmCurrentFrame(source: String) {
         guard let frame = sceneView.session.currentFrame else { return }
+        guard let arrowNode else { return }
+        let alignment = startAlignment(frame: frame, arrowNode: arrowNode)
+        guard alignment.aligned else {
+            alignmentStartTime = nil
+            updateAlignmentStatus(frame: frame, distance: alignment.distance, yawDelta: alignment.yawDelta, prefix: "Noch nicht am Pfeil")
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         if bridge?.confirmStart(frame: frame, source: source) == true {
+            placeRoomPlanOverlay(forConfirmedFrame: frame)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
         showConfirmedStatus()
@@ -699,11 +722,9 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
     private func evaluateStartAlignment(frame: ARFrame) {
         guard bridge?.startConfirmed != true, arrowPlacedInWorld, let arrowNode else { return }
 
-        let distance = horizontalDistance(from: cameraPosition(frame), to: arrowNode.simdWorldPosition)
-        let yawDelta = abs(normalizedAngle(frame.camera.eulerAngles.y - desiredCameraYaw(for: arrowNode)))
-        let aligned = distance <= AlignmentThresholds.horizontalDistanceMeters && yawDelta <= AlignmentThresholds.yawRadians
+        let alignment = startAlignment(frame: frame, arrowNode: arrowNode)
 
-        if aligned {
+        if alignment.aligned {
             if alignmentStartTime == nil {
                 alignmentStartTime = frame.timestamp
             }
@@ -712,11 +733,21 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
                 confirmCurrentFrame(source: "autoAlignment")
                 return
             }
-            updateAlignmentStatus(frame: frame, distance: distance, yawDelta: yawDelta, prefix: "Position erkannt")
+            updateAlignmentStatus(frame: frame, distance: alignment.distance, yawDelta: alignment.yawDelta, prefix: "Position erkannt")
         } else {
             alignmentStartTime = nil
-            updateAlignmentStatus(frame: frame, distance: distance, yawDelta: yawDelta, prefix: "Zum Pfeil ausrichten")
+            updateAlignmentStatus(frame: frame, distance: alignment.distance, yawDelta: alignment.yawDelta, prefix: "Zum Pfeil ausrichten")
         }
+    }
+
+    private func startAlignment(frame: ARFrame, arrowNode: SCNNode) -> (aligned: Bool, distance: Float, yawDelta: Float) {
+        let distance = horizontalDistance(from: cameraPosition(frame), to: arrowNode.simdWorldPosition)
+        let yawDelta = abs(normalizedAngle(frame.camera.eulerAngles.y - desiredCameraYaw(for: arrowNode)))
+        return (
+            distance <= AlignmentThresholds.horizontalDistanceMeters && yawDelta <= AlignmentThresholds.yawRadians,
+            distance,
+            yawDelta
+        )
     }
 
     private func updateAlignmentStatus(frame: ARFrame, distance: Float, yawDelta: Float, prefix: String) {
@@ -743,7 +774,6 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         arrowNode.eulerAngles = SCNVector3(0, startArrowWorldYaw(frame: frame), 0)
         arrowNode.isHidden = false
         arrowPlacedInWorld = true
-        placeRoomPlanOverlayIfNeeded()
     }
 
     // The start arrow is a working-height direction marker, not the physical
@@ -777,9 +807,8 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         atan2(sin(angle), cos(angle))
     }
 
-    private func placeRoomPlanOverlayIfNeeded() {
+    private func placeRoomPlanOverlay(forConfirmedFrame frame: ARFrame) {
         guard roomPlanNode == nil,
-              let arrowNode,
               let plan = bridge?.floorPlanPlanPayload(),
               let startAnchor = bridge?.startAnchorPayload() else { return }
         let walls = plan["walls"] as? [[String: Any]] ?? []
@@ -787,8 +816,8 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
 
         let startPlanX = Float(doubleValue(startAnchor["planX"]) ?? 0)
         let startPlanY = Float(doubleValue(startAnchor["planY"]) ?? 0)
-        let axes = planWorldAxes(for: arrowNode)
-        let base = arrowNode.simdWorldPosition
+        let axes = planWorldAxes(frame: frame, startAnchor: startAnchor)
+        let base = cameraPosition(frame)
         let overlay = SCNNode()
         overlay.name = "roomPlanOverlay"
 
@@ -803,15 +832,13 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
         roomPlanNode = overlay
     }
 
-    private func planWorldAxes(for arrowNode: SCNNode) -> (xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) {
-        let transform = arrowNode.simdWorldTransform
-        var xAxis = SIMD3<Float>(transform.columns.0.x, 0, transform.columns.0.z)
-        if simd_length(xAxis) <= 0.001 {
-            xAxis = SIMD3<Float>(1, 0, 0)
-        } else {
-            xAxis = simd_normalize(xAxis)
-        }
-        let yAxis = simd_normalize(SIMD3<Float>(-xAxis.z, 0, xAxis.x))
+    private func planWorldAxes(frame: ARFrame, startAnchor: [String: Any]) -> (xAxis: SIMD3<Float>, yAxis: SIMD3<Float>) {
+        let planYaw = Float(doubleValue(startAnchor["yawRadians"]) ?? 0)
+        let rotation = planYaw - arHeadingYaw(frame: frame)
+        let cosine = cos(rotation)
+        let sine = sin(rotation)
+        let xAxis = simd_normalize(SIMD3<Float>(cosine, 0, -sine))
+        let yAxis = simd_normalize(SIMD3<Float>(sine, 0, cosine))
         return (xAxis, yAxis)
     }
 
@@ -892,6 +919,11 @@ final class ARGuidedMeasurementViewController: UIViewController, ARSessionDelega
             return simd_normalize(rawForward)
         }
         return SIMD3<Float>(0, 0, -1)
+    }
+
+    private func arHeadingYaw(frame: ARFrame) -> Float {
+        let forward = horizontalForwardVector(frame.camera.transform)
+        return atan2(forward.z, forward.x)
     }
 
     private func makeArrowNode() -> SCNNode {

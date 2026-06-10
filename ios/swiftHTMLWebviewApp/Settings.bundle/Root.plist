@@ -19,7 +19,7 @@
             <key>Key</key>
             <string>server_url_preference</string>
             <key>DefaultValue</key>
-            <string>http://10.10.10.249:18080/mobile/?sessionId=sess_089eb32cdd6d64aa&amp;v=20260609-roomplan1</string>
+            <string>http://10.10.10.249:18080/mobile/?link=link_24d13638414f568d&amp;v=20260610-planvector3</string>
             <key>IsSecure</key>
             <false/>
             <key>KeyboardType</key>

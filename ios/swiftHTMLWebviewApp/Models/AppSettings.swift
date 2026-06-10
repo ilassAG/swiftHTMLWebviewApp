@@ -14,7 +14,7 @@ class AppSettings {
 
     private let userDefaults = UserDefaults.standard
     private let serverUrlKey = "server_url_preference"
-    private let defaultServerUrl = "http://10.10.10.249:18080/mobile/?sessionId=sess_089eb32cdd6d64aa&v=20260609-roomplan1"
+    private let defaultServerUrl = "http://10.10.10.249:18080/mobile/?link=link_24d13638414f568d&v=20260610-planvector3"
     private let securityTokenKey = "security_token_preference"
     private let defaultSecurityToken = "change-me-before-production"
     private let highAvailabilityEnabledKey = "ha_enabled"
