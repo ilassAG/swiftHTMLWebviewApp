@@ -17,7 +17,7 @@
 "error.dataScanner.startFailed" = "スキャナーを開始できませんでした: %@";
 "status.barcodeRecognized" = "バーコード認識: %@ (フォーマット: %@)";
 "status.securityToken.match" = "セキュリティトークンが一致しました。サーバーURLを %@ に更新しています。";
-"error.securityToken.mismatch" = "セキュリティトークンが一致しません。スキャンされたもの: %@, 保存されているもの: %@";
+"error.securityToken.mismatch" = "セキュリティトークンが一致しません。";
 "error.qr.jsonParseFailed" = "QRコードからJSONを解析できませんでした: %@";
 "warning.barcode.noStringValue" = "認識されたバーコードに文字列値がありません。";
 "warning.dataScanner.unrecognizedItem" = "認識されないアイテムタイプが検出されました。";

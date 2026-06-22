@@ -22,7 +22,7 @@ final class DeviceBridge: ObservableObject {
     @MainActor
     func deviceInfo(request: [String: Any]) -> [String: Any] {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        var response = baseResponse(request: request, action: "deviceInfoGet")
+        var response = DeviceBridgePayload.baseResponse(request: request, action: "deviceInfoGet")
         response["success"] = true
         response["name"] = UIDevice.current.name
         response["configuredDeviceName"] = AppSettings.shared.deviceName
@@ -49,41 +49,40 @@ final class DeviceBridge: ObservableObject {
 
     @MainActor
     func wifiStatus(request: [String: Any], completion: @escaping ([String: Any]) -> Void) {
-        let requestId = request["requestId"].map { stringValue($0) }.flatMap { $0.isEmpty ? nil : $0 }
+        let requestId = DeviceBridgePayload.requestId(from: request)
         NEHotspotNetwork.fetchCurrent { currentNetwork in
-            var response = DeviceBridge.baseResponse(requestId: requestId, action: "wifiStatusGet")
-            response["success"] = true
-            response["wifi"] = DeviceBridge.networkInfo(currentNetwork: currentNetwork)
-            completion(response)
+            completion(DeviceBridgePayload.wifiStatusResponse(
+                requestId: requestId,
+                wifi: DeviceBridge.networkInfo(currentNetwork: currentNetwork)
+            ))
         }
     }
 
     @MainActor
     func configureWifi(request: [String: Any], completion: @escaping ([String: Any]) -> Void) {
-        let ssid = stringValue(request["ssid"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let passphrase = (stringValue(request["passphrase"]).isEmpty ? stringValue(request["password"]) : stringValue(request["passphrase"]))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let requestId = request["requestId"].map { stringValue($0) }.flatMap { $0.isEmpty ? nil : $0 }
-        guard !ssid.isEmpty else {
-            completion(errorResponse(request: request, action: "wifiConfigure", error: "ssid is required."))
+        let wifiRequest = DeviceBridgePayload.wifiConfigureRequest(from: request)
+        let persistedServerURL = persistServerURLIfPresent(in: request)
+        guard !wifiRequest.ssid.isEmpty else {
+            completion(DeviceBridgePayload.errorResponse(request: request, action: "wifiConfigure", error: "ssid is required."))
             return
         }
 
         let configuration: NEHotspotConfiguration
-        if passphrase.isEmpty {
-            configuration = NEHotspotConfiguration(ssid: ssid)
+        if wifiRequest.passphrase.isEmpty {
+            configuration = NEHotspotConfiguration(ssid: wifiRequest.ssid)
         } else {
-            configuration = NEHotspotConfiguration(ssid: ssid, passphrase: passphrase, isWEP: false)
+            configuration = NEHotspotConfiguration(ssid: wifiRequest.ssid, passphrase: wifiRequest.passphrase, isWEP: false)
         }
-        let joinOnce = boolValue(request["joinOnce"]) ?? false
-        configuration.joinOnce = joinOnce
+        configuration.joinOnce = wifiRequest.joinOnce
 
         NEHotspotConfigurationManager.shared.apply(configuration) { error in
-            var response = DeviceBridge.baseResponse(requestId: requestId, action: "wifiConfigure")
+            var response = DeviceBridgePayload.wifiConfigureResponse(
+                requestId: wifiRequest.requestId,
+                ssid: wifiRequest.ssid,
+                joinOnce: wifiRequest.joinOnce,
+                persistedServerURL: persistedServerURL
+            )
             response["success"] = error == nil
-            response["method"] = "NEHotspotConfiguration"
-            response["ssid"] = ssid
-            response["joinOnce"] = joinOnce
             if let error = error as NSError? {
                 response["nativeErrorDomain"] = error.domain
                 response["nativeErrorCode"] = error.code
@@ -102,6 +101,53 @@ final class DeviceBridge: ObservableObject {
         }
     }
 
+    private func persistServerURLIfPresent(in request: [String: Any]) -> String? {
+        let directValue = firstNonEmptyString(in: request, keys: [
+            "serverURL",
+            "serverUrl",
+            "defaultServerURL",
+            "defaultServerUrl",
+            "mobileURL",
+            "mobileUrl",
+            "url"
+        ])
+        let backendValue = firstNonEmptyString(in: request, keys: [
+            "backendURL",
+            "backendUrl"
+        ])
+
+        let serverURL = directValue ?? mobileURL(fromBackendURL: backendValue, linkId: stringValue(request["linkId"]))
+        guard let serverURL, !serverURL.isEmpty else {
+            return nil
+        }
+
+        let snapshot = AppSettings.shared.applyConfiguration(["serverURL": serverURL])
+        return snapshot["serverURL"] as? String ?? serverURL
+    }
+
+    private func firstNonEmptyString(in request: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            let value = stringValue(request[key]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func mobileURL(fromBackendURL backendURL: String?, linkId: String) -> String? {
+        guard let backendURL, var components = URLComponents(string: backendURL) else {
+            return nil
+        }
+
+        components.path = "/mobile/"
+        components.queryItems = linkId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : [URLQueryItem(name: "link", value: linkId)]
+        components.fragment = nil
+        return components.url?.absoluteString
+    }
+
     @MainActor
     func screenshot(request: [String: Any], webView: WKWebView, completion: @escaping ([String: Any]) -> Void) {
         let maxWidth = max(240, min(2160, intValue(request["maxWidth"]) ?? 1080))
@@ -110,19 +156,19 @@ final class DeviceBridge: ObservableObject {
         config.rect = webView.bounds
         webView.takeSnapshot(with: config) { image, error in
             if let error {
-                completion(self.errorResponse(request: request, action: "screenshotGet", error: error.localizedDescription))
+                completion(DeviceBridgePayload.errorResponse(request: request, action: "screenshotGet", error: error.localizedDescription))
                 return
             }
             guard let image else {
-                completion(self.errorResponse(request: request, action: "screenshotGet", error: "No screenshot image was produced."))
+                completion(DeviceBridgePayload.errorResponse(request: request, action: "screenshotGet", error: "No screenshot image was produced."))
                 return
             }
             let output = self.scale(image: image, maxWidth: CGFloat(maxWidth))
             guard let data = output.jpegData(compressionQuality: quality) else {
-                completion(self.errorResponse(request: request, action: "screenshotGet", error: "JPEG encoding failed."))
+                completion(DeviceBridgePayload.errorResponse(request: request, action: "screenshotGet", error: "JPEG encoding failed."))
                 return
             }
-            var response = self.baseResponse(request: request, action: "screenshotGet")
+            var response = DeviceBridgePayload.baseResponse(request: request, action: "screenshotGet")
             response["success"] = true
             response["format"] = "jpeg"
             response["width"] = output.cgImage?.width ?? Int(output.size.width * output.scale)
@@ -134,65 +180,29 @@ final class DeviceBridge: ObservableObject {
 
     @MainActor
     func playSound(request: [String: Any]) -> [String: Any] {
-        let frequencyHz = max(80, min(4000, intValue(request["frequencyHz"]) ?? 880))
-        let durationMs = max(40, min(5000, intValue(request["durationMs"]) ?? 240))
-        let volume = max(0.0, min(1.0, doubleValue(request["volume"]) ?? 0.85))
+        let sound = DeviceBridgePayload.soundRequest(from: request)
 
         do {
-            let data = try wavToneData(frequencyHz: frequencyHz, durationMs: durationMs, volume: volume)
+            let data = try wavToneData(frequencyHz: sound.frequencyHz, durationMs: sound.durationMs, volume: sound.volume)
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             player.play()
             audioPlayer = player
-            var response = baseResponse(request: request, action: "soundPlay")
-            response["success"] = true
-            response["frequencyHz"] = frequencyHz
-            response["durationMs"] = durationMs
-            response["volume"] = volume
-            return response
+            return DeviceBridgePayload.soundResponse(request: request, sound: sound)
         } catch {
-            return errorResponse(request: request, action: "soundPlay", error: error.localizedDescription)
+            return DeviceBridgePayload.errorResponse(request: request, action: "soundPlay", error: error.localizedDescription)
         }
     }
 
     private func capabilities() -> [String: Any] {
-        [
-            "deviceInfoGet": true,
-            "settingsGet": true,
-            "settingsSet": true,
-            "screenOrientationSet": true,
-            "wifiConfigure": true,
-            "screenshotGet": true,
-            "geoLocationGet": true,
-            "arPositionStart": ARPositionBridge.isSupported(),
-            "arPositionStop": true,
-            "arPositionSupported": ARPositionBridge.isSupported(),
-            "arGuidedMeasurementStart": ARGuidedMeasurementBridge.isSupported(),
-            "arGuidedMeasurementSetAnchors": ARGuidedMeasurementBridge.isSupported(),
-            "arGuidedMeasurementUpdateStats": ARGuidedMeasurementBridge.isSupported(),
-            "arGuidedMeasurementStop": true,
-            "arGuidedMeasurementSupported": ARGuidedMeasurementBridge.isSupported(),
-            "roomPlanScanStart": RoomPlanBridge.isSupported(),
-            "roomPlanScanStop": RoomPlanBridge.isSupported(),
-            "roomPlanScanExport": true,
-            "roomPlanSupported": RoomPlanBridge.isSupported(),
-            "screenStreamStart": true,
-            "screenStreamFormats": ["jpeg"],
-            "soundPlay": true,
-            "notificationPermissionGet": true,
-            "notificationPermissionRequest": true,
-            "notificationShow": true,
-            "notificationSchedule": true,
-            "notificationCancel": true,
-            "notificationCancelAll": true,
-            "notificationList": true,
-            "idleTimerStart": true,
-            "sensorStreamStart": true,
-            "nfcTagRead": NFCTagReaderSession.readingAvailable,
-            "beaconAdvertiseStart": BeaconAdvertiserBridge.isSupported(),
-            "beaconAdvertiseStop": true,
-            "beaconAdvertiseSupported": CBPeripheralManager.authorization != .denied
-        ]
+        DeviceBridgePayload.capabilities(
+            arPositionSupported: ARPositionBridge.isSupported(),
+            arGuidedMeasurementSupported: ARGuidedMeasurementBridge.isSupported(),
+            arOverlaySupported: AROverlayBridge.isSupported(),
+            roomPlanSupported: RoomPlanBridge.isSupported(),
+            nfcTagReadAvailable: NFCTagReaderSession.readingAvailable,
+            beaconAdvertiseSupported: CBPeripheralManager.authorization != .denied
+        )
     }
 
     private static func applyWifiErrorDetails(_ error: NSError, response: inout [String: Any]) {
@@ -201,28 +211,11 @@ final class DeviceBridge: ObservableObject {
             return
         }
 
-        response["capabilityRequired"] = "Hotspot Configuration"
-
-        switch error.code {
-        case NEHotspotConfigurationError.userDenied.rawValue:
-            response["error"] = "The user cancelled the Wi-Fi join request."
-        case NEHotspotConfigurationError.invalidSSID.rawValue:
-            response["error"] = "The SSID is invalid."
-        case NEHotspotConfigurationError.invalidWPAPassphrase.rawValue,
-            NEHotspotConfigurationError.invalidWEPPassphrase.rawValue:
-            response["error"] = "The Wi-Fi password is invalid for the selected security mode."
-        case NEHotspotConfigurationError.pending.rawValue:
-            response["error"] = "A Wi-Fi configuration request is already pending."
-        case NEHotspotConfigurationError.applicationIsNotInForeground.rawValue:
-            response["error"] = "The app must be in the foreground to configure Wi-Fi."
-        default:
-            let nativeMessage = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-            if nativeMessage.lowercased().contains("internal") {
-                response["error"] = "NEHotspotConfiguration returned an internal error. The app is probably not signed with the Hotspot Configuration capability/entitlement."
-            } else {
-                response["error"] = nativeMessage.isEmpty ? "Wi-Fi configuration failed." : nativeMessage
-            }
-        }
+        DeviceBridgePayload.applyWifiErrorDetails(
+            kind: wifiErrorKind(for: error.code),
+            message: error.localizedDescription,
+            response: &response
+        )
     }
 
     private func batteryInfo() -> [String: Any] {
@@ -259,24 +252,17 @@ final class DeviceBridge: ObservableObject {
     }
 
     private static func networkInfo(currentNetwork: NEHotspotNetwork? = nil) -> [String: Any] {
-        var info: [String: Any] = [
-            "ipAddresses": ipAddresses(),
-            "wifiIpAddresses": ipAddresses(interfaceName: "en0")
-        ]
-
-        guard let currentNetwork else {
-            info["ssid"] = "unavailable"
-            info["ssidAvailable"] = false
-            info["unavailableReason"] = "No current Wi-Fi details returned by iOS. The app needs the Access WiFi Information entitlement and either precise location authorization, a current network configured through NEHotspotConfiguration, an active VPN configuration, or an active DNS settings configuration."
-            return info
-        }
-
-        info["ssidAvailable"] = true
-        info["ssid"] = currentNetwork.ssid
-        info["bssid"] = currentNetwork.bssid
-        info["securityType"] = hotspotSecurityTypeName(rawValue: currentNetwork.securityType.rawValue)
-        info["securityTypeRawValue"] = currentNetwork.securityType.rawValue
-        return info
+        DeviceBridgePayload.wifiInfo(
+            ipAddresses: ipAddresses(),
+            wifiIpAddresses: ipAddresses(interfaceName: "en0"),
+            currentNetwork: currentNetwork.map {
+                DeviceBridgePayload.CurrentWiFi(
+                    ssid: $0.ssid,
+                    bssid: $0.bssid,
+                    securityTypeRawValue: $0.securityType.rawValue
+                )
+            }
+        )
     }
 
     private func cameraInfo() -> [[String: Any]] {
@@ -329,16 +315,6 @@ final class DeviceBridge: ObservableObject {
             }
         }
         return result
-    }
-
-    private static func hotspotSecurityTypeName(rawValue: Int) -> String {
-        switch rawValue {
-        case 0: return "open"
-        case 1: return "wep"
-        case 2: return "personal"
-        case 3: return "enterprise"
-        default: return "unknown"
-        }
     }
 
     private func utsMachine() -> String {
@@ -402,33 +378,23 @@ final class DeviceBridge: ObservableObject {
         return data
     }
 
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
+    private static func wifiErrorKind(for code: Int) -> DeviceBridgePayload.WifiErrorKind {
+        switch code {
+        case NEHotspotConfigurationError.userDenied.rawValue:
+            return .userDenied
+        case NEHotspotConfigurationError.invalidSSID.rawValue:
+            return .invalidSSID
+        case NEHotspotConfigurationError.invalidWPAPassphrase.rawValue:
+            return .invalidWPAPassphrase
+        case NEHotspotConfigurationError.invalidWEPPassphrase.rawValue:
+            return .invalidWEPPassphrase
+        case NEHotspotConfigurationError.pending.rawValue:
+            return .pending
+        case NEHotspotConfigurationError.applicationIsNotInForeground.rawValue:
+            return .applicationIsNotInForeground
+        default:
+            return .other
         }
-        return response
-    }
-
-    private static func baseResponse(requestId: String?, action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
-    private func errorResponse(request: [String: Any], action: String, error: String) -> [String: Any] {
-        var response = baseResponse(request: request, action: action)
-        response["success"] = false
-        response["error"] = error
-        return response
     }
 }
 

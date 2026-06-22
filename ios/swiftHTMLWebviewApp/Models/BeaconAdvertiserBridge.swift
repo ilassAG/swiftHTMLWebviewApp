@@ -11,14 +11,14 @@ import Foundation
 
 final class BeaconAdvertiserBridge: NSObject, ObservableObject {
     private var peripheralManager: CBPeripheralManager?
-    private var activeConfig: BeaconAdvertiseConfig?
+    private var activeConfig: BeaconPayload.AdvertiseConfig?
     private var pendingRequest: [String: Any]?
     private var eventHandler: (([String: Any]) -> Void)?
     private var advertising = false
 
     func start(request: [String: Any], onEvent: @escaping ([String: Any]) -> Void) -> [String: Any] {
-        guard let config = BeaconAdvertiseConfig(request: request) else {
-            return errorResponse(
+        guard let config = BeaconPayload.advertiseConfig(from: request, defaultUUID: AppSettings.shared.beaconUUID) else {
+            return BeaconPayload.errorResponse(
                 request: request,
                 action: "beaconAdvertiseStart",
                 error: "Invalid iBeacon parameters. uuid must be a UUID and major/minor must be between 0 and 65535."
@@ -39,20 +39,13 @@ final class BeaconAdvertiserBridge: NSObject, ObservableObject {
             startAdvertisingIfReady()
         }
 
-        var response = config.response(base: baseResponse(request: request, action: "beaconAdvertiseStart"))
-        response["success"] = true
-        response["provider"] = "ios_corebluetooth"
-        response["state"] = peripheralManager?.state == .poweredOn ? "starting" : "waitingForBluetooth"
-        return response
+        let state = peripheralManager?.state == .poweredOn ? "starting" : "waitingForBluetooth"
+        return BeaconPayload.advertiseStartResponse(request: request, config: config, state: state)
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         stopAdvertising()
-        var response = baseResponse(request: request, action: "beaconAdvertiseStop")
-        response["success"] = true
-        response["provider"] = "ios_corebluetooth"
-        response["state"] = "stopped"
-        return response
+        return BeaconPayload.advertiseStopResponse(request: request)
     }
 
     func shutdown() {
@@ -73,8 +66,8 @@ final class BeaconAdvertiserBridge: NSObject, ObservableObject {
         case .poweredOn:
             let region = CLBeaconRegion(
                 uuid: config.uuid,
-                major: config.major,
-                minor: config.minor,
+                major: CLBeaconMajorValue(config.major),
+                minor: CLBeaconMinorValue(config.minor),
                 identifier: "SwiftHTMLWebviewAppAdvertiser"
             )
             let advertisement = region.peripheralData(withMeasuredPower: config.measuredPower.map(NSNumber.init(value:)))
@@ -107,33 +100,14 @@ final class BeaconAdvertiserBridge: NSObject, ObservableObject {
 
     private func emitState(success: Bool, state: String, error: String? = nil) {
         guard let config = activeConfig else { return }
-        var response = config.response(base: baseResponse(request: pendingRequest ?? [:], action: "beaconAdvertiseStart"))
-        response["success"] = success
-        response["provider"] = "ios_corebluetooth"
-        response["state"] = state
-        response["advertising"] = advertising
-        if let error {
-            response["error"] = error
-        }
-        eventHandler?(response)
-    }
-
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
-    private func errorResponse(request: [String: Any], action: String, error: String) -> [String: Any] {
-        var response = baseResponse(request: request, action: action)
-        response["success"] = false
-        response["error"] = error
-        return response
+        eventHandler?(BeaconPayload.advertiseStateEvent(
+            request: pendingRequest ?? [:],
+            config: config,
+            success: success,
+            state: state,
+            advertising: advertising,
+            error: error
+        ))
     }
 
     private func bluetoothStateName(_ state: CBManagerState) -> String {
@@ -163,52 +137,5 @@ extension BeaconAdvertiserBridge: CBPeripheralManagerDelegate {
 
         advertising = true
         emitState(success: true, state: "advertising")
-    }
-}
-
-private struct BeaconAdvertiseConfig {
-    let uuid: UUID
-    let major: CLBeaconMajorValue
-    let minor: CLBeaconMinorValue
-    let measuredPower: Int?
-
-    init?(request: [String: Any]) {
-        let uuidString = stringValue(request["uuid"] ?? request["beaconUUID"] ?? request["beaconUuid"] ?? request["proximityUUID"])
-        if uuidString.isEmpty {
-            uuid = AppSettings.shared.beaconUUID
-        } else if let parsedUUID = UUID(uuidString: uuidString) {
-            uuid = parsedUUID
-        } else {
-            return nil
-        }
-
-        let majorValue = intValue(request["major"]) ?? 1
-        let minorValue = intValue(request["minor"]) ?? 1
-        guard (0...65535).contains(majorValue),
-              (0...65535).contains(minorValue) else {
-            return nil
-        }
-        major = CLBeaconMajorValue(majorValue)
-        minor = CLBeaconMinorValue(minorValue)
-
-        if let power = intValue(request["measuredPower"] ?? request["measuredPowerDbm"] ?? request["txPower"]) {
-            guard (-127...20).contains(power) else {
-                return nil
-            }
-            measuredPower = power
-        } else {
-            measuredPower = nil
-        }
-    }
-
-    func response(base: [String: Any]) -> [String: Any] {
-        var response = base
-        response["uuid"] = uuid.uuidString
-        response["major"] = Int(major)
-        response["minor"] = Int(minor)
-        if let measuredPower {
-            response["measuredPower"] = measuredPower
-        }
-        return response
     }
 }

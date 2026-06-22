@@ -1,6 +1,10 @@
 # swiftHTMLWebviewApp
 
-`swiftHTMLWebviewApp` is a native WebView app wrapper for HTML/JavaScript applications that need access to device features such as camera, barcode scanning, document scanning, PDF generation, confetti, and optional payment capabilities.
+`swiftHTMLWebviewApp` is a native WebView app wrapper for HTML/JavaScript
+applications that need access to device features such as camera capture,
+barcode scanning, document scanning, NFC, beacons, geolocation, sensors,
+notifications, AR, RoomPlan, printing, confetti, and optional payment
+capabilities.
 
 The project started as an iOS wrapper. The repository is now structured to support iOS and Android with a shared web-facing bridge contract.
 Printer smoke tests share a small Go core that can be bound into both mobile platforms.
@@ -33,7 +37,14 @@ swiftHTMLWebviewApp/
 - Embedded continuous QR/barcode scanning for web-app workflows.
 - Continuous iBeacon ranging events using the configured Proximity UUID.
 - Optional iBeacon advertising with configurable UUID, major, and minor values.
-- PDF generation.
+- Device information, settings, orientation, Wi-Fi, screenshot, sound, idle
+  timer, geolocation, and sensor bridge actions.
+- Screen streaming over WebSocket for diagnostics and remote viewing.
+- ARKit local position stream.
+- ARKit guided measurement with start-anchor confirmation, anchor capture,
+  relocalization events, and position updates.
+- Generic ARKit overlay/replay rendering with selectable items and lines.
+- RoomPlan/LiDAR room scan, result, export, and world-map payloads.
 - Native confetti burst from JavaScript.
 - Local notifications with permission, immediate, scheduled, cancel, and open
   event bridge actions.
@@ -49,15 +60,17 @@ swiftHTMLWebviewApp/
 
 Android support lives in `android/` as a native WebView wrapper with the same
 web-facing bridge shape. The implementation includes the WebView container,
-local smoke-test page, camera/scanner bridge features, local notifications, and
-structured bridge responses. The Go printer core is linked as a generated AAR
-for Epson network-printer smoke tests.
+local smoke-test page, camera/scanner bridge features, NFC tag reading,
+beacons, Wi-Fi provisioning helpers, geolocation, sensors, screen streaming,
+sound, idle timer, local notifications, config pairing, structured unavailable
+responses for iOS-only AR/RoomPlan actions, Sunmi internal printer payloads,
+and optional printer-core bindings for Epson network-printer smoke tests.
 
 ## Getting Started: iOS
 
 Prerequisites:
 
-- Xcode 15 or later
+- Xcode 16 or later
 - iOS 17.6+ for the base app
 - A real iPhone for Tap to Pay tests
 
@@ -90,42 +103,33 @@ window.handleNativeResult = function(result) {
 
 See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
 
-## Built-in Bridge Actions
+## Built-In Bridge Actions
 
-- `scanDocument`
-- `takePhoto`
-- `scanBarcode`
-- `nfcTagRead`
-- `continuousScanStart` / `continuousScanStop`
-- `dataScanStart` / `dataScanEnd` (Kassa-compatible aliases)
-- `loginScanStart` / `loginScanEnd` (Kassa-compatible aliases)
-- `previewBoxLocationUpdate`
-- `beaconsStart` / `beaconsStop`
-- `beaconAdvertiseStart` / `beaconAdvertiseStop`
-- `deviceInfoGet`
-- `settingsGet` / `settingsSet`
-- `screenOrientationGet` / `screenOrientationSet`
-- `wifiStatusGet` / `wifiConfigure`
-- `screenshotGet`
-- `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
-- `arPositionStart` / `arPositionStop` (iOS ARKit local position stream)
-- `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport` (iOS RoomPlan/LiDAR room scan)
-- `soundPlay`
-- `notificationPermissionGet` / `notificationPermissionRequest`
-- `notificationShow` / `notificationSchedule`
-- `notificationCancel` / `notificationCancelAll` / `notificationList`
-- `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
-- `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
-- `screenStreamStart` / `screenStreamStop`
-- `launchConfetti`
-- `tapToPayAvailability` (optional Stripe module)
-- `tapToPayCollect` (optional Stripe module)
-- `configPairingShow` / `configPairingStop`
-- `configPairingConnect` / `configPairingDisconnect`
-- `configPairingSend`
-- `printerDiscover` (optional Go printer core)
-- `printerHelloWorld` (routes to the selected discovered printer)
-- `printerEpsonHelloWorld` (optional Go printer core)
+- Capture and scanning: `scanDocument`, `takePhoto`, `scanBarcode`,
+  `nfcTagRead`, `continuousScanStart`, `continuousScanStop`, `dataScanStart`,
+  `dataScanEnd`, `loginScanStart`, `loginScanEnd`, `previewBoxLocationUpdate`.
+- Beacon and proximity: `beaconsStart`, `beaconsStop`,
+  `beaconAdvertiseStart`, `beaconAdvertiseStop`.
+- Device and runtime settings: `deviceInfoGet`, `settingsGet`, `settingsSet`,
+  `screenOrientationGet`, `screenOrientationSet`, `wifiStatusGet`,
+  `wifiConfigure`, `screenshotGet`, `reload`.
+- Location, sensors, and streaming: `geoLocationGet`, `geoLocationStart`,
+  `geoLocationStop`, `sensorCapabilitiesGet`, `sensorStreamStart`,
+  `sensorStreamStop`, `screenStreamStart`, `screenStreamStop`.
+- ARKit and RoomPlan: `arPositionStart`, `arPositionStop`,
+  `arGuidedMeasurementStart`, `arGuidedMeasurementSetAnchors`,
+  `arGuidedMeasurementUpdateStats`, `arGuidedMeasurementStop`,
+  `arOverlayOpen`, `arOverlayClose`, `arReplayOpen`, `arReplayClose`,
+  `roomPlanScanStart`, `roomPlanScanStop`, `roomPlanScanExport`.
+- Notifications and foreground behavior: `notificationPermissionGet`,
+  `notificationPermissionRequest`, `notificationShow`, `notificationSchedule`,
+  `notificationCancel`, `notificationCancelAll`, `notificationList`,
+  `idleTimerStart`, `idleTimerReset`, `idleTimerStop`, `soundPlay`.
+- External setup and pairing: `configPairingShow`, `configPairingStop`,
+  `configPairingConnect`, `configPairingDisconnect`, `configPairingSend`.
+- Effects, payment, and printing: `launchConfetti`, `tapToPayAvailability`,
+  `tapToPayCollect`, `printerDiscover`, `printerHelloWorld`, `printerPrint`,
+  `printerEpsonHelloWorld`.
 
 ## Printer Core Smoke Test
 
@@ -198,6 +202,35 @@ Important behavior:
 
 See [docs/stripe-tap-to-pay.md](docs/stripe-tap-to-pay.md) for setup, entitlements, backend requirements, and JS payload examples.
 
+## Private Product Variants
+
+This repository should stay a reusable open-source wrapper. Product-specific
+app names, bundle IDs, Android application IDs, icons, splash/loading assets,
+startup URLs, signing references, store metadata, and release decisions belong
+in the private product repositories.
+
+The wrapper provides the shared bridge contract, optional native modules,
+sanitized examples, and tooling for private native variants. From a private
+product repository, the intended pre-Phase-4 flow is:
+
+```sh
+WRAPPER_ROOT=/path/to/swiftHTMLWebviewApp
+node "$WRAPPER_ROOT/tools/variant_manifest_check.js" \
+  --file native/variant.json
+node "$WRAPPER_ROOT/tools/generate_variant_workspace.js" \
+  --variant native/variant.json \
+  --output native/generated
+node "$WRAPPER_ROOT/tools/phase4_stop_gate_check.js" \
+  --generated native/generated
+```
+
+Copy `native/generated/PHASE4_DECISION_RECORD_TEMPLATE.md` to a private-product-owned
+path such as `native/phase4-migration-decision.md` before recording target
+repository, CI, parity-test, or hardware-smoke evidence. Do not edit
+`native/generated/` by hand. Before product data moves or wrapper cleanup
+starts, run the stop-gate checker again with `--decision-record` and
+`--require-filled-decision-record`.
+
 ## Platform Docs
 
 Start with the bridge contract, then open the platform-specific notes for build,
@@ -207,6 +240,17 @@ capability, and deployment details:
 - [iOS wrapper notes](docs/ios.md)
 - [Android wrapper notes](docs/android.md)
 - [Stripe Tap to Pay setup](docs/stripe-tap-to-pay.md)
+- [Testing](docs/testing.md)
+- [Wrapper variant architecture](docs/wrapper-variant-architecture.md)
+- [Open-source wrapper migration plan](docs/open-source-wrapper-migration-plan.md)
+- [Private product migration inventory](docs/private-product-migration-inventory.md)
+- [Pre-Phase-4 readiness audit](docs/pre-phase4-readiness-audit.md)
+- [Phase 4 private product migration brief](docs/phase4-private-product-migration-brief.md)
+- [Phase 4 target repository candidates](docs/phase4-target-repo-candidates.md)
+- [Private product footprint allowlist](docs/private-product-footprint-allowlist.json)
+- [Private product native integration template](docs/private-product-native-integration-template.md)
+- [Private variant manifest schema](docs/variant-manifest.schema.json)
+- [Private variant manifest example](docs/variant-manifest.example.json)
 - [Printer core README](printercore/README.md)
 - [Screenstream viewer README](tools/screenstreamviewer/README.md)
 - [Basic web example](examples/basic/README.md)
@@ -214,16 +258,33 @@ capability, and deployment details:
 
 ## Configuration via QR Code
 
-The app can update its server URL and security token by scanning a QR code containing:
+The app can update its server URL, app-private configuration values, Wi-Fi
+credentials, and security token by scanning a QR code containing JSON:
 
 ```json
 {
   "toolmode": "changeConfig",
-  "defaultServerUrl": "https://your.server.url/",
+  "defaultServerUrl": "https://example.invalid/app/",
   "securityToken": "YOUR_TOKEN",
-  "deviceName": "Kasse AP03",
-  "deviceLocation": "Zelt A / Eingang"
+  "deviceName": "Demo Tablet 03",
+  "deviceLocation": "Hall A / Entrance",
+  "appConfig": {
+    "siteKey": "Demo Site"
+  },
+  "wifi": {
+    "ssid": "Demo WLAN",
+    "password": "demo-password"
+  }
 }
+```
+
+The same values can be encoded as short URL/query parameters. Known setting
+names update native settings. `store[...]` or `appConfig[...]` entries are
+merged into the persistent `appConfig` object returned by `settingsGet`.
+`wifi[...]` entries trigger `wifiConfigure` after the settings are stored:
+
+```text
+swifthtml-config://set?token=YOUR_TOKEN&serverURL=https%3A%2F%2Fexample.invalid%2Fapp%2F&store%5BsiteKey%5D=Demo%20Site&wifi%5Bssid%5D=Demo%20WLAN&wifi%5Bpw%5D=demo-password
 ```
 
 The iOS Settings app also supports a local page mode (`local`), an optional
@@ -231,7 +292,7 @@ high-availability URL list (`ha_enabled`, `ha_timeout`, `ha_url2`, `ha_url3`,
 `ha_url4`), an iBeacon Proximity UUID (`beacon_uuid`), and device identity
 fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
 generated on first start if it is empty. The HA keys are kept compatible with
-the existing Kassa iOS naming so deployments can reuse the same configuration
+the existing legacy iOS naming so deployments can reuse the same configuration
 model.
 
 Optional token rotation:
@@ -239,7 +300,7 @@ Optional token rotation:
 ```json
 {
   "toolmode": "changeConfig",
-  "defaultServerUrl": "https://your.server.url/",
+  "defaultServerUrl": "https://example.invalid/app/",
   "securityToken": "CURRENT_TOKEN",
   "newSecurityToken": "NEW_TOKEN"
 }

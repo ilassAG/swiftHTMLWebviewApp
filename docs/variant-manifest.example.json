@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "demo-wrapper",
+  "name": "Demo Wrapper",
+  "wrapperVersion": "v1.0.0",
+  "releaseChannel": "development",
+  "platforms": ["ios", "android"],
+  "ios": {
+    "bundleIdentifier": "invalid.example.demowrapper",
+    "productName": "Demo Wrapper",
+    "displayName": "Demo Wrapper"
+  },
+  "android": {
+    "gradleModule": ":demo-wrapper",
+    "applicationId": "invalid.example.demowrapper",
+    "namespace": "invalid.example.demowrapper",
+    "label": "Demo Wrapper"
+  },
+  "startup": {
+    "mode": "fixed-url",
+    "serverURL": "https://example.invalid/mobile/",
+    "securityTokenPolicy": "qr-provisioned"
+  },
+  "branding": {
+    "iconSource": "native/assets/icon.png",
+    "loadingImageSource": "native/assets/splash.png",
+    "loadingImageName": "splash",
+    "recoveryShortMark": "DW",
+    "recoveryTitle": "Demo Wrapper",
+    "recoveryBody": "Server nicht erreichbar. Bitte QR-Code erneut scannen.",
+    "recoveryQRCodeDetectedMessage": "QR-Code erkannt. Verbindung wird geprueft...",
+    "recoveryInvalidQRMessage": "Der QR-Code enthaelt keine gueltige Server-URL."
+  },
+  "features": {
+    "requiredCapabilities": ["scanBarcode"],
+    "optionalModules": [],
+    "excludedCapabilities": []
+  },
+  "bridgeProfile": {
+    "ios": {
+      "enabledOptionalModules": [],
+      "unavailableActions": ["printerPrint"]
+    },
+    "android": {
+      "enabledOptionalModules": [],
+      "unavailableActions": [
+        "arGuidedMeasurementSetAnchors",
+        "arGuidedMeasurementStart",
+        "arGuidedMeasurementStop",
+        "arGuidedMeasurementUpdateStats",
+        "arOverlayClose",
+        "arOverlayOpen",
+        "arPositionStart",
+        "arPositionStop",
+        "arReplayClose",
+        "arReplayOpen",
+        "roomPlanScanExport",
+        "roomPlanScanStart",
+        "roomPlanScanStop"
+      ]
+    }
+  },
+  "verification": {
+    "iosBuildCommand": "xcodebuild -project ios/swiftHTMLWebviewApp.xcodeproj -scheme DemoWrapper -destination 'generic/platform=iOS Simulator' build",
+    "iosTestCommand": "xcodebuild -project ios/swiftHTMLWebviewApp.xcodeproj -scheme DemoWrapper -destination 'platform=iOS Simulator,name=iPhone 17' test",
+    "androidBuildCommand": "cd android && ./gradlew :demo-wrapper:assembleDebug",
+    "androidTestCommand": "cd android && ./gradlew :demo-wrapper:testDebugUnitTest",
+    "variantBoundaryTests": [
+      {
+        "file": "native/generated/tests/DemoWrapperVariantTest",
+        "contains": "identity matches manifest"
+      }
+    ]
+  }
+}

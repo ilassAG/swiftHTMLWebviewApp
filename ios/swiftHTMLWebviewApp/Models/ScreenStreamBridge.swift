@@ -17,7 +17,13 @@ final class ScreenStreamBridge: ObservableObject {
     private var running = false
     private var captureInFlight = false
     private var request: [String: Any] = [:]
-    private var targetUrl = ""
+    private var streamRequest = ScreenStreamPayload.StreamRequest(
+        targetUrl: "",
+        format: "jpeg",
+        fps: 2,
+        quality: 0.65,
+        maxWidth: 720
+    )
     private var fps = 2
     private var quality = 0.65
     private var maxWidth: CGFloat = 720
@@ -33,20 +39,28 @@ final class ScreenStreamBridge: ObservableObject {
         self.webView = webView
         self.eventHandler = eventHandler
 
-        targetUrl = stringValue(request["targetUrl"]).isEmpty ? stringValue(request["url"]) : stringValue(request["targetUrl"])
-        guard let url = URL(string: targetUrl), !targetUrl.isEmpty else {
-            return errorResponse(action: "screenStreamStart", error: "targetUrl is required.")
+        streamRequest = ScreenStreamPayload.streamRequest(from: request)
+        guard streamRequest.hasTargetUrl, let url = URL(string: streamRequest.targetUrl) else {
+            return ScreenStreamPayload.response(
+                request: request,
+                action: "screenStreamStart",
+                success: false,
+                error: "targetUrl is required."
+            )
         }
 
-        let format = stringValue(request["format"]).isEmpty ? "jpeg" : stringValue(request["format"]).lowercased()
-        guard format == "jpeg" || format == "jpg" else {
-            return errorResponse(action: "screenStreamStart", error: "Only jpeg is implemented in this iOS build.")
+        guard streamRequest.isJpeg else {
+            return ScreenStreamPayload.response(
+                request: request,
+                action: "screenStreamStart",
+                success: false,
+                error: "Only jpeg is implemented in this iOS build."
+            )
         }
 
-        fps = max(1, min(10, intValue(request["fps"]) ?? 2))
-        let qualityInput = doubleValue(request["quality"]) ?? 65.0
-        quality = max(0.25, min(0.95, qualityInput > 1 ? qualityInput / 100.0 : qualityInput))
-        maxWidth = CGFloat(max(240, min(1920, intValue(request["maxWidth"]) ?? 720)))
+        fps = streamRequest.fps
+        quality = streamRequest.quality
+        maxWidth = CGFloat(streamRequest.maxWidth)
         framesSent = 0
         bytesSent = 0
         startedAt = Date()
@@ -58,25 +72,13 @@ final class ScreenStreamBridge: ObservableObject {
         sendTextMeta()
         scheduleTimer()
 
-        var response = baseResponse(action: "screenStreamStart")
-        response["success"] = true
-        response["targetUrl"] = targetUrl
-        response["transport"] = "websocket"
-        response["format"] = "jpeg"
-        response["fps"] = fps
-        response["quality"] = quality
-        response["maxWidth"] = Int(maxWidth)
-        return response
+        return ScreenStreamPayload.startAck(request: request, streamRequest: streamRequest)
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         self.request = request
         stopInternal(closeSocket: true)
-        var response = baseResponse(action: "screenStreamStop")
-        response["success"] = true
-        response["frames"] = framesSent
-        response["bytes"] = bytesSent
-        return response
+        return ScreenStreamPayload.stopAck(request: request, framesSent: framesSent, bytesSent: bytesSent)
     }
 
     func shutdown() {
@@ -128,14 +130,7 @@ final class ScreenStreamBridge: ObservableObject {
     }
 
     private func sendTextMeta() {
-        let meta: [String: Any] = [
-            "type": "screenStreamMeta",
-            "platform": "ios",
-            "format": "jpeg",
-            "fps": fps,
-            "quality": quality,
-            "maxWidth": Int(maxWidth)
-        ]
+        let meta = ScreenStreamPayload.meta(streamRequest: streamRequest)
         guard let data = try? JSONSerialization.data(withJSONObject: meta),
               let string = String(data: data, encoding: .utf8) else {
             return
@@ -153,20 +148,17 @@ final class ScreenStreamBridge: ObservableObject {
         let now = Date()
         guard now.timeIntervalSince(lastStatsAt) >= 2 else { return }
         lastStatsAt = now
-        var event = baseEvent(action: "screenStreamStats", success: true)
-        event["frames"] = framesSent
-        event["bytes"] = bytesSent
-        event["lastFrameBytes"] = lastFrameBytes
-        event["durationSeconds"] = max(0.001, now.timeIntervalSince(startedAt))
-        eventHandler?(event)
+        eventHandler?(ScreenStreamPayload.stats(
+            framesSent: framesSent,
+            bytesSent: bytesSent,
+            lastFrameBytes: lastFrameBytes,
+            startedAt: startedAt,
+            now: now
+        ))
     }
 
     private func emit(action: String, success: Bool, message: String?) {
-        var event = baseEvent(action: action, success: success)
-        if let message, !message.isEmpty {
-            event[success ? "message" : "error"] = message
-        }
-        eventHandler?(event)
+        eventHandler?(ScreenStreamPayload.event(action: action, success: success, message: message))
     }
 
     private func stopInternal(closeSocket: Bool) {
@@ -195,29 +187,4 @@ final class ScreenStreamBridge: ObservableObject {
         }
     }
 
-    private func baseResponse(action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
-    private func baseEvent(action: String, success: Bool) -> [String: Any] {
-        [
-            "platform": "ios",
-            "action": action,
-            "success": success
-        ]
-    }
-
-    private func errorResponse(action: String, error: String) -> [String: Any] {
-        var response = baseResponse(action: action)
-        response["success"] = false
-        response["error"] = error
-        return response
-    }
 }

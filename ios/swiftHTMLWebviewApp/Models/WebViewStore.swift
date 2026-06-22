@@ -24,11 +24,13 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
     private var lastAttemptedURLString: String?
     private var isSwitchingURL: Bool = false
     private var hasReloadedFromOrigin: Bool = false
-    private var loadCandidates: [String] = []
-    private var candidateIndex = 0
+    private var startupLoadCoordinator = StartupLoadCoordinator()
     private var currentCandidateSignature = ""
     private var failoverTimeoutWorkItem: DispatchWorkItem?
     private var hasStartedInitialLoad = false
+    private var availabilityProbeTask: Task<Void, Never>?
+    private var loadGeneration = UUID()
+    private let recoveryDisplayName = "Server nicht erreichbar"
 
     override init() {
         self.webView = WKWebView()
@@ -59,23 +61,33 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func beginLoading(candidates: [String]) {
         cancelFailoverTimeout()
-        let normalizedCandidates = candidates.isEmpty ? [Configuration.localHTMLPathValue] : candidates
-        loadCandidates = normalizedCandidates
-        candidateIndex = 0
-        currentCandidateSignature = candidateSignature(normalizedCandidates)
+        availabilityProbeTask?.cancel()
+        _ = startupLoadCoordinator.start(
+            candidates: candidates,
+            highAvailabilityEnabled: AppSettings.shared.highAvailabilityEnabled
+        )
+        currentCandidateSignature = startupLoadCoordinator.currentSignature
         internalLoadAttempts = 0
         lastAttemptedURLString = nil
-        loadCandidate(at: candidateIndex)
+        isLoading = true
+        currentURLString = startupLoadCoordinator.firstDisplayName
+
+        let generation = UUID()
+        loadGeneration = generation
+        availabilityProbeTask = Task { [weak self] in
+            await self?.loadFirstReachableCandidate(generation: generation)
+        }
     }
 
     private func loadCandidate(at index: Int) {
-        guard loadCandidates.indices.contains(index) else {
-            switchToDefaultURLAndLoad(reason: "No load candidate is available.")
-            return
-        }
+        applyStartupLoadCommand(startupLoadCoordinator.selectCandidate(
+            at: index,
+            fallbackServerURL: AppSettings.shared.serverURL
+        ))
+    }
 
-        let candidate = loadCandidates[index]
-        currentURLString = displayName(for: candidate)
+    private func loadCandidate(urlString candidate: String, scheduleTimeout: Bool) {
+        currentURLString = startupLoadCoordinator.displayName(for: candidate)
         internalLoadAttempts = 0
         isSwitchingURL = true
         hasReloadedFromOrigin = false
@@ -95,7 +107,9 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         print(String(format: NSLocalizedString("status.url.loadingAttempt", comment: "Attempting to load URL status format"), url.absoluteString, internalLoadAttempts + 1))
         isLoading = true
         webView.stopLoading()
-        scheduleFailoverTimeout(for: candidate)
+        if scheduleTimeout {
+            scheduleFailoverTimeout(for: candidate)
+        }
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: requestTimeoutInterval)
         webView.load(request)
     }
@@ -120,8 +134,7 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func switchToDefaultURLAndLoad(reason: String) {
         print(String(format: NSLocalizedString("error.url.switchToDefault.reason", comment: "Switching to default URL reason format"), reason))
-        AppSettings.shared.resetToDefaultURL()
-        beginLoading(candidates: [AppSettings.shared.serverURL])
+        applyStartupLoadCommand(startupLoadCoordinator.recover(reason: reason, fallbackServerURL: AppSettings.shared.serverURL))
     }
 
     func reloadCurrentOrNewURL() {
@@ -131,11 +144,20 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         }
 
         let newCandidates = AppSettings.shared.serverURLCandidates()
-        let newSignature = candidateSignature(newCandidates)
+        let newSignature = startupLoadCoordinator.signature(for: newCandidates)
         let newUrlString = newCandidates.first ?? AppSettings.shared.serverURL
 
+        if startupLoadCoordinator.isShowingRecovery {
+            print("Recovery page is visible. Rechecking configured URLs: \(newCandidates)")
+            beginLoading(candidates: newCandidates)
+            return
+        }
+
         if Configuration.isLocalHTMLPath(newUrlString) && newSignature == currentCandidateSignature {
-            let isCurrentLocal = Configuration.isLocalHTMLPath(webView.url?.absoluteString) || webView.url?.isFileURL == true
+            let isCurrentLocal = startupLoadCoordinator.isCurrentLocalPage(
+                urlString: webView.url?.absoluteString,
+                isFileURL: webView.url?.isFileURL == true
+            )
             currentURLString = Configuration.localHTMLPathValue
             if isCurrentLocal {
                 return
@@ -162,6 +184,7 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         }
 
         isLoading = true
+        startupLoadCoordinator.clearRecovery()
         currentURLString = Configuration.localHTMLPathValue
         lastAttemptedURLString = url.absoluteString
         webView.stopLoading()
@@ -169,20 +192,116 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         print(String(format: NSLocalizedString("status.webView.loadingLocalHTML", comment: "Loading local HTML fallback status format"), url.absoluteString))
     }
 
-    private func scheduleFailoverTimeout(for urlString: String) {
-        cancelFailoverTimeout()
+    private func loadFirstReachableCandidate(generation: UUID) async {
+        var failedCandidates: [String] = []
 
-        guard AppSettings.shared.highAvailabilityEnabled, hasRemainingCandidates else {
+        for index in startupLoadCoordinator.candidates.indices {
+            guard !Task.isCancelled, generation == loadGeneration else {
+                return
+            }
+
+            guard let candidate = startupLoadCoordinator.candidate(at: index) else {
+                continue
+            }
+            currentURLString = startupLoadCoordinator.displayName(for: candidate)
+
+            if Configuration.isLocalHTMLPath(candidate) {
+                loadCandidate(at: index)
+                return
+            }
+
+            guard URL(string: candidate)?.scheme != nil else {
+                print(String(format: NSLocalizedString("error.url.invalid", comment: "Invalid URL string error format"), candidate))
+                failedCandidates.append(candidate)
+                continue
+            }
+
+            if await serverIsReachable(candidate) {
+                guard !Task.isCancelled, generation == loadGeneration else {
+                    return
+                }
+                loadCandidate(at: index)
+                return
+            }
+
+            failedCandidates.append(candidate)
+        }
+
+        guard !Task.isCancelled, generation == loadGeneration else {
             return
         }
 
-        let timeout = DispatchTimeInterval.seconds(max(AppSettings.shared.highAvailabilityTimeoutSeconds, 1))
+        applyStartupLoadCommand(startupLoadCoordinator.recover(
+            reason: "No configured server URL is reachable.",
+            fallbackServerURL: AppSettings.shared.serverURL,
+            failedCandidates: failedCandidates.isEmpty ? startupLoadCoordinator.candidates : failedCandidates
+        ))
+    }
+
+    private func serverIsReachable(_ candidate: String) async -> Bool {
+        let timeout = StartupReachabilityPolicy.probeTimeout(seconds: AppSettings.shared.highAvailabilityTimeoutSeconds)
+        for url in StartupReachabilityPolicy.probeURLs(for: candidate) {
+            if await requestSucceeds(url: url, timeout: timeout) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func requestSucceeds(url: URL, timeout: TimeInterval) async -> Bool {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return true
+            }
+            return (200..<500).contains(httpResponse.statusCode)
+        } catch {
+            print("Availability probe failed for \(url.absoluteString): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func loadRecoveryHTML(failedCandidates: [String], reason: String) {
+        cancelFailoverTimeout()
+        availabilityProbeTask?.cancel()
+        isSwitchingURL = false
+        hasReloadedFromOrigin = false
+        internalLoadAttempts = 0
+        lastAttemptedURLString = nil
+        currentURLString = recoveryDisplayName
+        isLoading = true
+
+        let html = RecoveryPageBuilder.html(config: RecoveryPageBuilder.Config(
+            failedCandidates: failedCandidates,
+            reason: reason,
+            shortMark: AppSettings.shared.recoveryShortMark,
+            title: AppSettings.shared.recoveryTitle,
+            body: AppSettings.shared.recoveryBody,
+            qrDetectedMessage: AppSettings.shared.recoveryQRCodeDetectedMessage
+        ))
+
+        webView.stopLoading()
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    private func scheduleFailoverTimeout(for urlString: String) {
+        cancelFailoverTimeout()
+
+        guard startupLoadCoordinator.hasRemainingCandidates else {
+            return
+        }
+
+        let timeout = StartupReachabilityPolicy.failoverDelay(seconds: AppSettings.shared.highAvailabilityTimeoutSeconds)
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             guard self.isLoading, self.lastAttemptedURLString == urlString else { return }
 
             print("High availability timeout reached for \(urlString). Trying next configured URL.")
-            self.loadNextCandidateOrDefault(reason: "High availability timeout reached.")
+            self.applyStartupLoadCommand(self.startupLoadCoordinator.timeout(fallbackServerURL: AppSettings.shared.serverURL))
         }
 
         failoverTimeoutWorkItem = workItem
@@ -194,34 +313,30 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         failoverTimeoutWorkItem = nil
     }
 
-    private var hasRemainingCandidates: Bool {
-        AppSettings.shared.highAvailabilityEnabled && candidateIndex + 1 < loadCandidates.count
-    }
-
     private func loadNextCandidateOrDefault(reason: String) {
         cancelFailoverTimeout()
+        applyStartupLoadCommand(startupLoadCoordinator.mainFrameFailed(
+            reason: reason,
+            fallbackServerURL: AppSettings.shared.serverURL
+        ))
+    }
 
-        if hasRemainingCandidates {
-            candidateIndex += 1
-            loadCandidate(at: candidateIndex)
+    private func applyStartupLoadCommand(_ command: StartupLoadCoordinator.Command) {
+        switch command {
+        case let .load(urlString, _, scheduleTimeout):
+            loadCandidate(urlString: urlString, scheduleTimeout: scheduleTimeout)
+        case let .showRecovery(reason, failedCandidates):
+            loadRecoveryHTML(failedCandidates: failedCandidates, reason: reason)
+        case .none:
             return
         }
-
-        switchToDefaultURLAndLoad(reason: reason)
-    }
-
-    private func candidateSignature(_ candidates: [String]) -> String {
-        candidates.map { displayName(for: $0) }.joined(separator: "\u{1F}")
-    }
-
-    private func displayName(for urlString: String) -> String {
-        Configuration.isLocalHTMLPath(urlString) ? Configuration.localHTMLPathValue : urlString
     }
 
     private var requestTimeoutInterval: TimeInterval {
-        AppSettings.shared.highAvailabilityEnabled
-            ? TimeInterval(max(AppSettings.shared.highAvailabilityTimeoutSeconds, 1))
-            : 60
+        StartupReachabilityPolicy.loadTimeout(
+            seconds: AppSettings.shared.highAvailabilityTimeoutSeconds,
+            highAvailabilityEnabled: AppSettings.shared.highAvailabilityEnabled
+        )
     }
 
     private func markFinishedLoad(for webView: WKWebView) {
@@ -229,11 +344,16 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         isLoading = false
         internalLoadAttempts = 0
 
+        if startupLoadCoordinator.isShowingRecovery {
+            currentURLString = recoveryDisplayName
+            return
+        }
+
         let activeURL = webView.url?.isFileURL == true
             ? Configuration.localHTMLPathValue
             : (webView.url?.absoluteString ?? currentURLString ?? AppSettings.shared.serverURL)
 
-        currentURLString = displayName(for: activeURL)
+        currentURLString = startupLoadCoordinator.displayName(for: activeURL)
         AppSettings.shared.markActiveServerURL(currentURLString ?? activeURL)
     }
 
@@ -305,7 +425,7 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         internalLoadAttempts += 1
         print("Load attempt \(internalLoadAttempts) failed for \(currentAttemptUrl). Error: \(error.localizedDescription)")
 
-        if hasRemainingCandidates {
+        if startupLoadCoordinator.hasRemainingCandidates {
             loadNextCandidateOrDefault(reason: error.localizedDescription)
             return
         }
@@ -326,38 +446,15 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func sendErrorToWebView(action: String?, error: Error) {
-        let appError: AppError
-        if let knownError = error as? AppError {
-            appError = knownError
-        } else {
-            appError = .internalError(error.localizedDescription)
-        }
-
-
-        var errorDict: [String: Any] = ["error": appError.localizedDescription]
-        if let action = action {
-            errorDict["action"] = action
-        }
-        sendDataToWebView(data: errorDict)
+        sendDataToWebView(data: WebViewErrorPayload.response(action: action, error: error))
     }
 
     func sendDataToWebView(data: [String: Any]) {
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
+        let scriptResult = BridgeScriptBuilder.nativeResultScript(payload: data)
+        if scriptResult.kind == .fallback {
             print(String(format: NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to serialize to JSON string error"), String(describing: data)))
-
-
-            let fallbackErrorMessage = AppError.internalError(NSLocalizedString("error.internalError.jsonResponseFailed", comment: "Failed to create JSON response fallback message")).localizedDescription
-            let fallbackError: [String: Any] = ["error": fallbackErrorMessage]
-
-            let fallbackJson = try? JSONSerialization.data(withJSONObject: fallbackError)
-            let fallbackString = String(data: fallbackJson ?? Data(), encoding: .utf8) ?? "{ \"error\": \"\(NSLocalizedString("error.internalError.criticalFailure", comment: "Critical internal Swift error fallback"))\" }"
-            evaluateJavaScript(script: "window.handleNativeResult(\(fallbackString));")
-            return
         }
-
-        let javascript = "window.handleNativeResult(\(jsonString));"
-        evaluateJavaScript(script: javascript)
+        evaluateJavaScript(script: scriptResult.script)
     }
 
     func evaluateJavaScript(script: String) {

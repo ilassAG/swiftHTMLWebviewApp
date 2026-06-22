@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.ilass.wifimeister'
+    namespace 'com.ilass.swifthtmlwebviewapp'
     compileSdk 35
 
     buildFeatures {
@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.ilass.wifimeister'
+        applicationId 'com.ilass.swifthtmlwebviewapp'
         minSdk 23
         targetSdk 35
         versionCode 1
@@ -37,4 +37,7 @@ dependencies {
     if (printercoreAar.exists()) {
         implementation files(printercoreAar)
     }
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

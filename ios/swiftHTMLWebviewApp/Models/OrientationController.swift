@@ -17,7 +17,16 @@ final class OrientationController {
 
     @MainActor
     func setMode(_ requestedMode: String) -> [String: Any] {
-        let normalized = requestedMode.lowercased()
+        setMode(OrientationPayload.mode(from: requestedMode), request: [:])
+    }
+
+    @MainActor
+    func setPayload(request: [String: Any]) -> [String: Any] {
+        setMode(OrientationPayload.mode(from: request), request: request)
+    }
+
+    @MainActor
+    private func setMode(_ normalized: String, request: [String: Any]) -> [String: Any] {
         let nextMask: UIInterfaceOrientationMask
         let orientation: UIInterfaceOrientation?
         let nextMode: String
@@ -60,23 +69,21 @@ final class OrientationController {
             }
         }
 
-        return [
-            "platform": "ios",
-            "action": "screenOrientationSet",
-            "success": true,
-            "mode": nextMode,
-            "mask": maskName(nextMask)
-        ]
+        return OrientationPayload.setResponse(
+            request: request,
+            mode: nextMode,
+            mask: maskName(nextMask)
+        )
     }
 
     @MainActor
     func statusPayload(request: [String: Any]) -> [String: Any] {
-        var response = baseResponse(request: request, action: "screenOrientationGet")
-        response["success"] = true
-        response["mode"] = mode
-        response["mask"] = maskName(mask)
-        response["currentOrientation"] = orientationName(activeInterfaceOrientation())
-        return response
+        OrientationPayload.statusResponse(
+            request: request,
+            mode: mode,
+            mask: maskName(mask),
+            currentOrientation: orientationName(activeInterfaceOrientation())
+        )
     }
 
     @MainActor
@@ -126,16 +133,6 @@ final class OrientationController {
         }
     }
 
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {

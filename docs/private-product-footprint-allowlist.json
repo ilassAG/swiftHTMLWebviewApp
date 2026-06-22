@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "description": "Guardrails for product-specific footprint in the open-source wrapper. The wrapper may contain generic examples, sanitized fixtures, and compatibility names that are part of the public bridge contract. Real private product identity, URLs, assets, signing data, and release metadata must stay outside this repository.",
+  "blockedPatterns": [
+    {
+      "id": "old-product-demo-fixtures",
+      "regex": "Product AP03|Venue A / Entrance|Demo Product|demo-product|DemoProduct|demo_product|Product Entrance|Product Front|Sunmi Product|https://product\\.example\\.invalid",
+      "reason": "Generic demo fixtures must stay neutral and must not look like a concrete private product."
+    },
+    {
+      "id": "live-secret-markers",
+      "regex": "sk_live_[A-Za-z0-9_]{8,}|pk_live_[A-Za-z0-9_]{8,}|pi_[A-Za-z0-9_]{8,}_secret_[A-Za-z0-9_]{8,}|pst_[A-Za-z0-9]{16,}|tml_[A-Za-z0-9]{16,}|Bearer\\s+(?:sk|pk|rk)_[A-Za-z0-9_]{8,}|api_key=[A-Za-z0-9_\\-]{8,}",
+      "reason": "Live Stripe, bearer, API-key, and terminal secrets must never be committed to the wrapper."
+    }
+  ],
+  "allowedPatterns": [
+    {
+      "id": "legacy-lan-startup-urls",
+      "regex": "(?:https?|wss?)://(?:10\\.|192\\.168\\.|172\\.(?:1[6-9]|2[0-9]|3[0-1])\\.|127\\.|localhost)[^\\\"'\\s<)]*",
+      "reason": "LAN startup URLs are local demo defaults or negative validation fixtures; no production URL should be introduced here.",
+      "allowedPaths": [
+        "docs/app-variants.json",
+        "ios/swiftHTMLWebviewApp/Models/AppVariant.swift",
+        "ios/swiftHTMLWebviewApp/Settings.bundle/Root.plist",
+        "ios/swiftHTMLWebviewAppTests/AppVariantTests.swift",
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
+        "tools/validate_contracts.js"
+      ]
+    },
+    {
+      "id": "legacy-pos-bridge-compatibility-identifiers",
+      "regex": "\\blegacy\\b|legacy-pos|legacyPos|legacy[A-Za-z0-9_]*",
+      "reason": "Legacy POS bridge wording is generic public API compatibility, not private product identity.",
+      "allowedPaths": [
+        "README.md",
+        "docs/*.md",
+        "docs/*.json",
+        "ios/swiftHTMLWebviewApp/Models/*.swift",
+        "ios/swiftHTMLWebviewAppTests/*.swift",
+        "android/app/src/main/java/com/ilass/swifthtmlwebviewapp/*.java",
+        "android/app/src/test/**/*.java",
+        "printercore/printercore.go",
+        "tools/*.js"
+      ]
+    }
+  ],
+  "ignoredPaths": [
+    ".git/**",
+    "RUNNING_URLS.md",
+    "docs/private-product-footprint-allowlist.json",
+    ".gradle/**",
+    "build/**",
+    "DerivedData/**",
+    "ios/DerivedData/**",
+    "ios/Frameworks/**",
+    "android/app/libs/**",
+    "android/**/build/**",
+    "node_modules/**",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.webp",
+    "**/*.gif",
+    "**/*.xcuserstate"
+  ]
+}

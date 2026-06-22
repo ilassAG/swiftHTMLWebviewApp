@@ -6,6 +6,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const scanDocPngBtn = document.getElementById('scanDocPngBtn');
     const takePhotoFrontBtn = document.getElementById('takePhotoFrontBtn');
     const takePhotoBackBtn = document.getElementById('takePhotoBackBtn');
+    const portraitCaptureBtn = document.getElementById('portraitCaptureBtn');
+    const portraitCameraSelect = document.getElementById('portraitCameraSelect');
+    const portraitFacesInput = document.getElementById('portraitFacesInput');
+    const portraitCountdownInput = document.getElementById('portraitCountdownInput');
+    const portraitVariationInput = document.getElementById('portraitVariationInput');
+    const portraitIntervalInput = document.getElementById('portraitIntervalInput');
+    const portraitOutputTypeSelect = document.getElementById('portraitOutputTypeSelect');
+    const portraitCropSelect = document.getElementById('portraitCropSelect');
+    const portraitRemoveBackgroundCheckbox = document.getElementById('portraitRemoveBackgroundCheckbox');
+    const portraitBackgroundMode = document.getElementById('portraitBackgroundMode');
+    const portraitBackgroundColor = document.getElementById('portraitBackgroundColor');
+    const portraitCropTransparentCheckbox = document.getElementById('portraitCropTransparentCheckbox');
     const removeBackgroundCheckbox = document.getElementById('removeBackgroundCheckbox');
     const photoBackgroundMode = document.getElementById('photoBackgroundMode');
     const photoBackgroundColor = document.getElementById('photoBackgroundColor');
@@ -182,6 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     takePhotoBackBtn.addEventListener('click', () => {
         sendBridgeMessage(createPhotoRequest("back"));
+    });
+
+    portraitCaptureBtn?.addEventListener('click', () => {
+        sendBridgeMessage(createPortraitCaptureRequest());
     });
 
     confettiBtn?.addEventListener('click', () => {
@@ -489,6 +505,9 @@ document.addEventListener('DOMContentLoaded', () => {
     removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
     photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
     cropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    portraitRemoveBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    portraitBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
+    portraitCropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
     updatePhotoOptionControls();
 
     // --- Funktionen ---
@@ -508,6 +527,30 @@ document.addEventListener('DOMContentLoaded', () => {
             background,
             backgroundColor,
             cropTransparent
+        };
+    }
+
+    function createPortraitCaptureRequest() {
+        const shouldRemoveBackground = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+        const background = portraitBackgroundMode?.value || "transparent";
+        const backgroundColor = normalizeHexColor(portraitBackgroundColor?.value || "#ffffff");
+        const cropTransparent = Boolean(portraitCropTransparentCheckbox?.checked);
+        const requestedOutputType = portraitOutputTypeSelect?.value === "jpeg" ? "jpeg" : "png";
+        const outputType = (shouldRemoveBackground && background === "transparent") ? "png" : requestedOutputType;
+
+        return {
+            action: "portraitCapture",
+            camera: portraitCameraSelect?.value === "back" ? "back" : "front",
+            requiredFaces: numericInputInt(portraitFacesInput, 1, 1, 8),
+            countdownSeconds: numericInputRange(portraitCountdownInput, 3, 0, 15),
+            variationCount: numericInputInt(portraitVariationInput, 4, 1, 8),
+            captureIntervalMs: numericInputInt(portraitIntervalInput, 200, 50, 2000),
+            outputType,
+            removeBackground: shouldRemoveBackground,
+            background,
+            backgroundColor,
+            cropTransparent,
+            crop: portraitCropSelect?.value === "none" ? "none" : "squareFaceCentered"
         };
     }
 
@@ -601,6 +644,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function numericInputValue(input, fallback) {
         const raw = Number(input?.value);
         return Number.isFinite(raw) ? raw : fallback;
+    }
+
+    function numericInputRange(input, fallback, min, max) {
+        const value = numericInputValue(input, fallback);
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function numericInputInt(input, fallback, min, max) {
+        return Math.round(numericInputRange(input, fallback, min, max));
     }
 
     function pairingPayloadFromInput() {
@@ -722,19 +774,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePhotoOptionControls() {
-        if (!photoBackgroundMode || !photoBackgroundColor || !cropTransparentCheckbox) {
-            return;
+        if (photoBackgroundMode && photoBackgroundColor && cropTransparentCheckbox) {
+            const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+            const backgroundMode = photoBackgroundMode.value || "transparent";
+            const cropEnabled = removeChecked && backgroundMode === "transparent";
+
+            photoBackgroundMode.disabled = !removeChecked;
+            photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+            cropTransparentCheckbox.disabled = !cropEnabled;
+            if (!cropEnabled && !removeChecked) {
+                cropTransparentCheckbox.checked = false;
+            }
         }
 
-        const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
-        const backgroundMode = photoBackgroundMode.value || "transparent";
-        const cropEnabled = removeChecked && backgroundMode === "transparent";
+        if (portraitBackgroundMode && portraitBackgroundColor && portraitCropTransparentCheckbox) {
+            const removeChecked = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+            const backgroundMode = portraitBackgroundMode.value || "transparent";
+            const cropEnabled = removeChecked && backgroundMode === "transparent";
 
-        photoBackgroundMode.disabled = !removeChecked;
-        photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
-        cropTransparentCheckbox.disabled = !cropEnabled;
-        if (!cropEnabled && !removeChecked) {
-            cropTransparentCheckbox.checked = false;
+            portraitBackgroundMode.disabled = !removeChecked;
+            portraitBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+            portraitCropTransparentCheckbox.disabled = !cropEnabled;
+            if (!cropEnabled && !removeChecked) {
+                portraitCropTransparentCheckbox.checked = false;
+            }
         }
     }
 
@@ -786,6 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayDocumentResult(result);
                 break;
             case "takePhoto":
+            case "portraitCapture":
                 displayPhotoResult(result);
                 break;
             case "launchConfetti":
@@ -1296,6 +1360,22 @@ document.addEventListener('DOMContentLoaded', () => {
              cropTransparentCheckbox.disabled = disabled || !cropEnabled;
              if (!cropEnabled && !removeChecked) {
                  cropTransparentCheckbox.checked = false;
+             }
+         }
+
+         if (portraitRemoveBackgroundCheckbox) {
+             portraitRemoveBackgroundCheckbox.disabled = disabled;
+         }
+
+         if (portraitBackgroundMode && portraitBackgroundColor && portraitCropTransparentCheckbox) {
+             const removeChecked = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+             const isColorMode = (portraitBackgroundMode.value || "transparent") === "color";
+             const cropEnabled = removeChecked && !isColorMode;
+             portraitBackgroundMode.disabled = disabled || !removeChecked;
+             portraitBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
+             portraitCropTransparentCheckbox.disabled = disabled || !cropEnabled;
+             if (!cropEnabled && !removeChecked) {
+                 portraitCropTransparentCheckbox.checked = false;
              }
          }
 

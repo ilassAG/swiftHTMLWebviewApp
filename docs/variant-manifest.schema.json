@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/swift-html-webview-app/variant-manifest.schema.json",
+  "title": "swiftHTMLWebviewApp private variant manifest",
+  "description": "Schema for private product native/variant.json files consumed by the open-source wrapper tooling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "wrapperVersion",
+    "releaseChannel",
+    "platforms",
+    "startup",
+    "branding",
+    "features",
+    "bridgeProfile",
+    "verification"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "wrapperVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "releaseChannel": {
+      "enum": ["development", "staging", "production"]
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["ios", "android"]
+      }
+    },
+    "ios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleIdentifier", "productName", "displayName"],
+      "properties": {
+        "bundleIdentifier": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scheme": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "android": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gradleModule", "applicationId", "namespace", "label"],
+      "properties": {
+        "gradleModule": {
+          "type": "string",
+          "pattern": "^:[a-z0-9][a-z0-9-]*(?::[a-z0-9][a-z0-9-]*)*$"
+        },
+        "applicationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "startup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "serverURL", "securityTokenPolicy"],
+      "properties": {
+        "mode": {
+          "enum": ["fixed-url", "local-bundled", "qr-provisioned", "high-availability"]
+        },
+        "serverURL": {
+          "type": "string",
+          "minLength": 1
+        },
+        "securityTokenPolicy": {
+          "enum": ["none", "ci-secret", "qr-provisioned", "ci-secret-or-qr-provisioned", "runtime-only"]
+        },
+        "highAvailability": {
+          "type": ["object", "array", "string", "boolean", "null"]
+        }
+      }
+    },
+    "branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "iconSource",
+        "loadingImageSource",
+        "loadingImageName",
+        "recoveryShortMark",
+        "recoveryTitle",
+        "recoveryBody",
+        "recoveryQRCodeDetectedMessage",
+        "recoveryInvalidQRMessage"
+      ],
+      "properties": {
+        "iconSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loadingImageSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loadingImageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recoveryShortMark": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recoveryTitle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recoveryBody": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recoveryQRCodeDetectedMessage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recoveryInvalidQRMessage": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredCapabilities", "optionalModules", "excludedCapabilities"],
+      "properties": {
+        "requiredCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "optionalModules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "excludedCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "bridgeProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ios": {
+          "$ref": "#/$defs/platformBridgeProfile"
+        },
+        "android": {
+          "$ref": "#/$defs/platformBridgeProfile"
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variantBoundaryTests"],
+      "properties": {
+        "iosBuildCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "iosTestCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "androidBuildCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "androidTestCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variantBoundaryTests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "contains"],
+            "properties": {
+              "file": {
+                "type": "string",
+                "minLength": 1
+              },
+              "contains": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "store": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "platformBridgeProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabledOptionalModules", "unavailableActions"],
+      "properties": {
+        "enabledOptionalModules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "unavailableActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "platforms": {
+            "contains": {
+              "const": "ios"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["ios"],
+        "properties": {
+          "verification": {
+            "required": ["iosBuildCommand", "iosTestCommand"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platforms": {
+            "contains": {
+              "const": "android"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["android"],
+        "properties": {
+          "verification": {
+            "required": ["androidBuildCommand", "androidTestCommand"]
+          }
+        }
+      }
+    }
+  ]
+}

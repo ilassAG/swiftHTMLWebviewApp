@@ -12,11 +12,11 @@ import Foundation
 class AppSettings {
     static let shared = AppSettings()
 
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
+    private let variant: AppVariant
+    private let startupURLResolver: StartupURLResolver
     private let serverUrlKey = "server_url_preference"
-    private let defaultServerUrl = "http://10.10.10.249:18080/mobile/?link=link_24d13638414f568d&v=20260610-worldmap1"
     private let securityTokenKey = "security_token_preference"
-    private let defaultSecurityToken = "change-me-before-production"
     private let highAvailabilityEnabledKey = "ha_enabled"
     private let highAvailabilityTimeoutKey = "ha_timeout"
     private let highAvailabilityUrl2Key = "ha_url2"
@@ -28,12 +28,21 @@ class AppSettings {
     private let deviceNameKey = "device_name"
     private let deviceUUIDKey = "device_uuid"
     private let deviceLocationKey = "device_location"
-    private let defaultHighAvailabilityTimeoutSeconds = 5
-    private let defaultBeaconUUID = "7763A937-B779-4D31-A20C-49E83047048F"
+    private let appConfigKey = "app_config_json"
+
+    init(
+        userDefaults: UserDefaults = .standard,
+        variant: AppVariant = .demo,
+        startupURLResolver: StartupURLResolver = StartupURLResolver()
+    ) {
+        self.userDefaults = userDefaults
+        self.variant = variant
+        self.startupURLResolver = startupURLResolver
+    }
 
     var serverURL: String {
         get {
-            normalizedSettingValue(userDefaults.string(forKey: serverUrlKey), fallback: defaultServerUrl)
+            normalizedSettingValue(userDefaults.string(forKey: serverUrlKey), fallback: variant.defaults.serverURL)
         }
         set {
             userDefaults.set(newValue, forKey: serverUrlKey)
@@ -42,7 +51,7 @@ class AppSettings {
 
     var securityToken: String {
         get {
-            userDefaults.string(forKey: securityTokenKey) ?? defaultSecurityToken
+            userDefaults.string(forKey: securityTokenKey) ?? variant.defaults.securityToken
         }
         set {
             userDefaults.set(newValue, forKey: securityTokenKey)
@@ -71,7 +80,7 @@ class AppSettings {
             default:
                 configuredValue = 0
             }
-            return configuredValue > 0 ? configuredValue : defaultHighAvailabilityTimeoutSeconds
+            return configuredValue > 0 ? configuredValue : variant.defaults.highAvailabilityTimeoutSeconds
         }
         set {
             userDefaults.set(max(1, newValue), forKey: highAvailabilityTimeoutKey)
@@ -80,7 +89,7 @@ class AppSettings {
 
     var beaconUUIDString: String {
         get {
-            normalizedSettingValue(userDefaults.string(forKey: beaconUUIDKey), fallback: defaultBeaconUUID)
+            normalizedSettingValue(userDefaults.string(forKey: beaconUUIDKey), fallback: variant.defaults.beaconUUID)
         }
         set {
             userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: beaconUUIDKey)
@@ -88,7 +97,7 @@ class AppSettings {
     }
 
     var beaconUUID: UUID {
-        UUID(uuidString: beaconUUIDString) ?? UUID(uuidString: defaultBeaconUUID)!
+        UUID(uuidString: beaconUUIDString) ?? UUID(uuidString: variant.defaults.beaconUUID)!
     }
 
     var deviceName: String {
@@ -111,6 +120,11 @@ class AppSettings {
     var deviceLocation: String {
         get { normalizedOptionalValue(userDefaults.string(forKey: deviceLocationKey)) ?? "" }
         set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: deviceLocationKey) }
+    }
+
+    var appConfig: [String: Any] {
+        get { storedJSONObject(forKey: appConfigKey) }
+        set { storeJSONObject(newValue, forKey: appConfigKey) }
     }
 
     var highAvailabilityURL2: String {
@@ -136,57 +150,73 @@ class AppSettings {
         normalizedOptionalValue(userDefaults.string(forKey: lastServerUrlKey))
     }
 
+    var loadingImageName: String {
+        variant.defaults.loadingImageName
+    }
+
+    var recoveryShortMark: String {
+        variant.defaults.recoveryShortMark
+    }
+
+    var recoveryTitle: String {
+        variant.defaults.recoveryTitle
+    }
+
+    var recoveryBody: String {
+        variant.defaults.recoveryBody
+    }
+
+    var recoveryQRCodeDetectedMessage: String {
+        variant.defaults.recoveryQRCodeDetectedMessage
+    }
+
+    var recoveryInvalidQRMessage: String {
+        variant.defaults.recoveryInvalidQRMessage
+    }
+
     func registerDefaults() {
         userDefaults.register(defaults: [
-            serverUrlKey: defaultServerUrl,
-            securityTokenKey: defaultSecurityToken,
+            serverUrlKey: variant.defaults.serverURL,
+            securityTokenKey: variant.defaults.securityToken,
             highAvailabilityEnabledKey: false,
-            highAvailabilityTimeoutKey: defaultHighAvailabilityTimeoutSeconds,
+            highAvailabilityTimeoutKey: variant.defaults.highAvailabilityTimeoutSeconds,
             highAvailabilityUrl2Key: "",
             highAvailabilityUrl3Key: "",
             highAvailabilityUrl4Key: "",
             activeServerUrlKey: "",
             lastServerUrlKey: "",
-            beaconUUIDKey: defaultBeaconUUID,
+            beaconUUIDKey: variant.defaults.beaconUUID,
             deviceNameKey: "",
             deviceUUIDKey: "",
-            deviceLocationKey: ""
+            deviceLocationKey: "",
+            appConfigKey: "{}"
         ])
         ensureDeviceUUID()
     }
 
     func resetToDefaultURL() {
-        serverURL = defaultServerUrl
+        serverURL = variant.defaults.serverURL
     }
 
     func resetToDefaultSecurityToken() {
-        securityToken = defaultSecurityToken
+        securityToken = variant.defaults.securityToken
     }
 
     func serverURLCandidates(primaryOverride: String? = nil) -> [String] {
-        var candidates = [normalizedSettingValue(primaryOverride, fallback: serverURL)]
-
-        if highAvailabilityEnabled {
-            candidates.append(contentsOf: [
+        startupURLResolver.candidates(
+            primary: primaryOverride,
+            fallback: serverURL,
+            highAvailabilityEnabled: highAvailabilityEnabled,
+            failoverURLs: [
                 userDefaults.string(forKey: highAvailabilityUrl2Key),
                 userDefaults.string(forKey: highAvailabilityUrl3Key),
                 userDefaults.string(forKey: highAvailabilityUrl4Key)
-            ].compactMap { normalizedOptionalValue($0) })
-        }
-
-        return candidates.reduce(into: [String]()) { uniqueCandidates, candidate in
-            let normalizedCandidate = normalizedURLIdentity(candidate)
-            let alreadyExists = uniqueCandidates.contains {
-                normalizedURLIdentity($0) == normalizedCandidate
-            }
-            if !alreadyExists {
-                uniqueCandidates.append(candidate)
-            }
-        }
+            ]
+        )
     }
 
     func markActiveServerURL(_ urlString: String) {
-        let normalizedValue = normalizedSettingValue(urlString, fallback: defaultServerUrl)
+        let normalizedValue = normalizedSettingValue(urlString, fallback: variant.defaults.serverURL)
         userDefaults.set(normalizedValue, forKey: activeServerUrlKey)
         userDefaults.set(normalizedValue, forKey: lastServerUrlKey)
     }
@@ -204,7 +234,8 @@ class AppSettings {
             "beaconUUID": beaconUUIDString,
             "deviceName": deviceName,
             "deviceUUID": deviceUUIDString,
-            "deviceLocation": deviceLocation
+            "deviceLocation": deviceLocation,
+            "appConfig": appConfig
         ]
 
         if includeSensitive {
@@ -218,7 +249,15 @@ class AppSettings {
 
     @discardableResult
     func applyConfiguration(_ values: [String: Any]) -> [String: Any] {
-        if let value = settingString(values["serverURL"] ?? values["serverUrl"] ?? values["url"]) {
+        if let value = firstSettingString(values, keys: [
+            "serverURL",
+            "serverUrl",
+            "defaultServerURL",
+            "defaultServerUrl",
+            "mobileURL",
+            "mobileUrl",
+            "url"
+        ]) {
             serverURL = value
         }
         if let value = settingBool(values["highAvailabilityEnabled"] ?? values["haEnabled"] ?? values["ha_enabled"]) {
@@ -251,6 +290,7 @@ class AppSettings {
         if let value = settingString(values["newSecurityToken"] ?? values["securityToken"]) {
             securityToken = value
         }
+        mergeAppConfig(values["appConfig"] ?? values["app_config"] ?? values["store"])
 
         userDefaults.synchronize()
         return configurationSnapshot()
@@ -273,14 +313,6 @@ class AppSettings {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func normalizedURLIdentity(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if Configuration.isLocalHTMLPath(trimmed) {
-            return Configuration.localHTMLPathValue
-        }
-        return trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
-    }
-
     private func settingString(_ value: Any?) -> String? {
         guard let value else { return nil }
         if value is NSNull {
@@ -291,6 +323,82 @@ class AppSettings {
         }
         if let numberValue = value as? NSNumber {
             return numberValue.stringValue
+        }
+        return nil
+    }
+
+    private func storedJSONObject(forKey key: String) -> [String: Any] {
+        guard let rawValue = userDefaults.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty,
+              let data = rawValue.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+            return [:]
+        }
+        return object
+    }
+
+    private func storeJSONObject(_ object: [String: Any], forKey key: String) {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let rawValue = String(data: data, encoding: .utf8) else {
+            return
+        }
+        userDefaults.set(rawValue, forKey: key)
+    }
+
+    private func mergeAppConfig(_ value: Any?) {
+        guard let incoming = jsonDictionary(value), !incoming.isEmpty else {
+            return
+        }
+        var merged = appConfig
+        for (key, item) in incoming {
+            merged[key] = item
+        }
+        appConfig = merged
+    }
+
+    private func jsonDictionary(_ value: Any?) -> [String: Any]? {
+        switch value {
+        case let dictionary as [String: Any]:
+            return sanitizeJSONObject(dictionary) as? [String: Any]
+        case let stringValue as String:
+            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let data = trimmed.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                return nil
+            }
+            return sanitizeJSONObject(object) as? [String: Any]
+        default:
+            return nil
+        }
+    }
+
+    private func sanitizeJSONObject(_ value: Any) -> Any? {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number
+        case let dictionary as [String: Any]:
+            var result: [String: Any] = [:]
+            for (key, item) in dictionary {
+                if let sanitized = sanitizeJSONObject(item) {
+                    result[key] = sanitized
+                }
+            }
+            return result
+        case let array as [Any]:
+            return array.compactMap { sanitizeJSONObject($0) }
+        default:
+            return nil
+        }
+    }
+
+    private func firstSettingString(_ values: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            if let value = settingString(values[key]), !value.isEmpty {
+                return value
+            }
         }
         return nil
     }

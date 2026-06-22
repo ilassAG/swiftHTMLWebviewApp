@@ -21,23 +21,25 @@ printercore/scripts/build_mobile.sh
 
 ## Default configuration
 
-The iOS app loads its startup URL from the Settings bundle. The value `local`
-loads the bundled demo page from `ios/swiftHTMLWebviewApp/HTML/`.
+The iOS app loads its startup URL from the Settings bundle. The demo wrapper
+defaults to `https://example.invalid/mobile/` so the recovery/configuration
+flow is visible in a clean checkout. The value `local` loads the bundled demo
+page from `ios/swiftHTMLWebviewApp/HTML/`.
 
 Runtime settings:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `server_url_preference` | `local` | Primary web app URL. `local`, `bundle`, an empty value, and `about:local` all load the bundled HTML. |
-| `security_token_preference` | `change-me-before-production` | Optional token made available to native code that needs protected configuration updates. |
-| `ha_enabled` | `false` | Enables Kassa-compatible startup URL failover. |
+| `server_url_preference` | `https://example.invalid/mobile/` | Primary web app URL. `local`, `bundle`, an empty value, and `about:local` all load the bundled HTML. |
+| `security_token_preference` | empty | Optional token made available to native code that needs protected configuration updates. Protected writes require a non-empty stored token and matching request token. |
+| `ha_enabled` | `false` | Enables legacy-compatible startup URL failover. |
 | `ha_timeout` | `5` | Seconds to wait for a remote URL before the next candidate is tried. |
 | `ha_url2` | empty | First fallback URL. |
 | `ha_url3` | empty | Second fallback URL. |
 | `ha_url4` | empty | Third fallback URL. |
 | `active_server_url` | empty | Internal value updated after a successful load. |
 | `last_server_url` | empty | Internal value updated with the last successful URL. |
-| `beacon_uuid` | `7763A937-B779-4D31-A20C-49E83047048F` | iBeacon Proximity UUID used by the continuous beacon bridge. |
+| `beacon_uuid` | `00000000-0000-0000-0000-000000000000` | iBeacon Proximity UUID used by the continuous beacon bridge. |
 | `device_name` | empty | Deployment-specific display name for this wrapper install. |
 | `device_uuid` | generated on first start | Persistent per-install identifier exposed through settings APIs. |
 | `device_location` | empty | Deployment-specific physical/logical location label. |
@@ -87,7 +89,8 @@ The source contains `TapToPayBridge.swift`, but it is guarded with `#if canImpor
 That means:
 
 - The app builds without StripeTerminal.
-- Web content can still call `tapToPayAvailability` and gets `available: false`.
+- Web content can still call `tapToPayAvailability` and gets a normal bridge
+  envelope with `success: true` and `available: false`.
 - Adding StripeTerminal to the Xcode project enables the native Tap to Pay implementation.
 
 See `docs/stripe-tap-to-pay.md`.
@@ -119,6 +122,7 @@ iOS implements the shared runtime bridge actions:
 - `screenshotGet`
 - `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
 - `arPositionStart` / `arPositionStop`
+- `arOverlayOpen` / `arOverlayClose`
 - `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport`
 - `soundPlay`
 - `notificationPermissionGet` / `notificationPermissionRequest`
@@ -169,3 +173,10 @@ Writable target commands require the current
 `security_token_preference`. `wifiConfigure` still uses
 `NEHotspotConfigurationManager`, so the target device shows Apple's system join
 confirmation and needs the Hotspot Configuration capability.
+
+Config QR codes can also set the same runtime settings directly. JSON payloads
+accept `appConfig` or `store` objects; URL/query payloads accept
+`store[key]=value` / `appConfig[key]=value` and `wifi[ssid]` plus
+`wifi[pw]` / `wifi[password]` / `wifi[passphrase]`. `appConfig` is stored as a
+persistent non-sensitive JSON object in `UserDefaults` and is returned by
+`settingsGet`.

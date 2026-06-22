@@ -35,13 +35,18 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         stopInternal(hideView: false)
         latestRequest = request
         self.eventHandler = eventHandler
-        intervalSeconds = max(0.1, min(2.0, (doubleValue(request["intervalMs"]) ?? 500) / 1000.0))
+        intervalSeconds = Double(ARGuidedMeasurementPayload.intervalMs(from: request)) / 1000.0
         confirmed = false
         let token = UUID()
         streamToken = token
 
         guard Self.isSupported() else {
-            return errorResponse(request: request, action: "arGuidedMeasurementStart", error: "ARKit world tracking is not supported on this device.")
+            return ARGuidedMeasurementPayload.errorResponse(
+                request: request,
+                action: "arGuidedMeasurementStart",
+                error: "ARKit world tracking is not supported on this device.",
+                supported: Self.isSupported()
+            )
         }
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -56,58 +61,64 @@ final class ARGuidedMeasurementBridge: ObservableObject {
                         self.viewVisible = true
                         self.eventHandler?(self.readyResponse(request: request, action: "arGuidedReady"))
                     } else {
-                        self.eventHandler?(self.errorResponse(request: request, action: "arGuidedError", error: "Camera permission was denied."))
+                        self.eventHandler?(ARGuidedMeasurementPayload.errorResponse(
+                            request: request,
+                            action: "arGuidedError",
+                            error: "Camera permission was denied.",
+                            supported: Self.isSupported()
+                        ))
                     }
                 }
             }
-            var response = baseResponse(request: request, action: "arGuidedMeasurementStart")
-            response["success"] = false
-            response["pendingPermission"] = true
-            response["supported"] = true
-            response["source"] = "arkit-guided"
-            response["coordinateSystem"] = "arkit-gravity-local"
-            response["intervalMs"] = Int(intervalSeconds * 1000)
-            return response
+            return ARGuidedMeasurementPayload.pendingPermissionResponse(
+                request: request,
+                intervalMs: Int(intervalSeconds * 1000),
+                startAnchor: startAnchorPayload(),
+                worldMapAvailable: requestedWorldMapAvailable()
+            )
         case .denied, .restricted:
-            return errorResponse(request: request, action: "arGuidedMeasurementStart", error: "Camera permission is required for ARKit tracking.")
+            return ARGuidedMeasurementPayload.errorResponse(
+                request: request,
+                action: "arGuidedMeasurementStart",
+                error: "Camera permission is required for ARKit tracking.",
+                supported: Self.isSupported()
+            )
         @unknown default:
-            return errorResponse(request: request, action: "arGuidedMeasurementStart", error: "Unknown camera authorization state.")
+            return ARGuidedMeasurementPayload.errorResponse(
+                request: request,
+                action: "arGuidedMeasurementStart",
+                error: "Unknown camera authorization state.",
+                supported: Self.isSupported()
+            )
         }
     }
 
     func setAnchors(request: [String: Any]) -> [String: Any] {
         latestRequest = mergeAnchors(into: latestRequest, from: request)
         controller?.refreshStartArrow(resetPlacement: true)
-        var response = baseResponse(request: request, action: "arGuidedMeasurementSetAnchors")
-        response["success"] = true
-        response["source"] = "arkit-guided"
-        return response
+        return ARGuidedMeasurementPayload.acknowledgementResponse(request: request, action: "arGuidedMeasurementSetAnchors")
     }
 
     func updateStats(request: [String: Any]) -> [String: Any] {
         controller?.updateMeasurementStats(request)
-        var response = baseResponse(request: request, action: "arGuidedMeasurementUpdateStats")
-        response["success"] = true
-        response["source"] = "arkit-guided"
-        return response
+        return ARGuidedMeasurementPayload.acknowledgementResponse(request: request, action: "arGuidedMeasurementUpdateStats")
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         stopInternal(hideView: true)
-        var response = baseResponse(request: request, action: "arGuidedMeasurementStop")
-        response["success"] = true
-        response["source"] = "arkit-guided"
-        return response
+        return ARGuidedMeasurementPayload.acknowledgementResponse(request: request, action: "arGuidedMeasurementStop")
     }
 
     func closeFromController() {
         if confirmed {
-            var response = baseResponse(request: latestRequest, action: "arGuidedMeasurementStop")
-            response["success"] = true
-            response["source"] = "arkit-guided"
-            eventHandler?(response)
+            eventHandler?(ARGuidedMeasurementPayload.acknowledgementResponse(request: latestRequest, action: "arGuidedMeasurementStop"))
         } else {
-            eventHandler?(errorResponse(request: latestRequest, action: "arGuidedError", error: "AR Start abgebrochen."))
+            eventHandler?(ARGuidedMeasurementPayload.errorResponse(
+                request: latestRequest,
+                action: "arGuidedError",
+                error: "AR Start abgebrochen.",
+                supported: Self.isSupported()
+            ))
         }
         stopInternal(hideView: true)
     }
@@ -125,7 +136,12 @@ final class ARGuidedMeasurementBridge: ObservableObject {
     }
 
     func emitError(_ message: String) {
-        eventHandler?(errorResponse(request: latestRequest, action: "arGuidedError", error: message))
+        eventHandler?(ARGuidedMeasurementPayload.errorResponse(
+            request: latestRequest,
+            action: "arGuidedError",
+            error: message,
+            supported: Self.isSupported()
+        ))
     }
 
     func emitPosition(frame: ARFrame) {
@@ -140,134 +156,94 @@ final class ARGuidedMeasurementBridge: ObservableObject {
     func confirmStart(frame: ARFrame, source: String = "tap") -> Bool {
         guard !confirmed else { return false }
         confirmed = true
-        var response = positionResponse(frame: frame, action: "arGuidedStartAnchorConfirmed")
-        response["startAnchor"] = startAnchorPayload()
-        response["anchor"] = startAnchorPayload()
-        response["anchorId"] = stringValue(startAnchorPayload()?["id"])
-        response["startAnchorId"] = stringValue(startAnchorPayload()?["id"])
-        response["confirmationSource"] = source
-        eventHandler?(response)
+        eventHandler?(ARGuidedMeasurementPayload.startAnchorConfirmedEvent(
+            request: latestRequest,
+            timestampMs: Int(Date().timeIntervalSince1970 * 1000),
+            elapsedSeconds: Date().timeIntervalSince(startedAt),
+            snapshot: frameSnapshot(frame),
+            startAnchor: startAnchorPayload(),
+            worldMapAvailable: requestedWorldMapAvailable(),
+            confirmationSource: source
+        ))
         return true
     }
 
     func captureAnchor(frame: ARFrame, label: String = "AR Messpunkt") {
-        var response = positionResponse(frame: frame, action: "arGuidedAnchorCaptured")
-        response["label"] = label
-        response["startAnchorId"] = stringValue(startAnchorPayload()?["id"])
-        eventHandler?(response)
+        eventHandler?(ARGuidedMeasurementPayload.anchorCapturedEvent(
+            request: latestRequest,
+            timestampMs: Int(Date().timeIntervalSince1970 * 1000),
+            elapsedSeconds: Date().timeIntervalSince(startedAt),
+            snapshot: frameSnapshot(frame),
+            startAnchor: startAnchorPayload(),
+            worldMapAvailable: requestedWorldMapAvailable(),
+            label: label
+        ))
     }
 
     func startAnchorPayload() -> [String: Any]? {
-        if let anchor = latestRequest["startAnchor"] as? [String: Any] {
-            return anchor
-        }
-        if let anchors = latestRequest["anchors"] as? [[String: Any]] {
-            return anchors.first { stringValue($0["kind"]) == "start" }
-        }
-        return nil
+        ARGuidedMeasurementPayload.startAnchor(in: latestRequest)
     }
 
     func floorPlanPlanPayload() -> [String: Any]? {
-        if let plan = latestRequest["floorPlanPlanJson"] as? [String: Any] {
-            return plan
-        }
-        if let plan = latestRequest["normalizedPlan"] as? [String: Any] {
-            return plan
-        }
-        if let floorPlan = latestRequest["floorPlan"] as? [String: Any],
-           let plan = floorPlan["planJson"] as? [String: Any] {
-            return plan
-        }
-        return nil
+        ARGuidedMeasurementPayload.floorPlanPlan(in: latestRequest)
     }
 
     func requestedWorldMapBase64() -> String {
-        stringValue(latestRequest["worldMapBase64"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        ARGuidedMeasurementPayload.worldMapBase64(from: latestRequest)
     }
 
     func requestedWorldMapURL() -> URL? {
-        let raw = stringValue(latestRequest["worldMapUrl"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty else { return nil }
-        return URL(string: raw)
+        ARGuidedMeasurementPayload.worldMapURL(from: latestRequest)
     }
 
     func requestedWorldMapAvailable() -> Bool {
-        if boolValue(latestRequest["worldMapAvailable"]) == true {
-            return true
-        }
-        return !requestedWorldMapBase64().isEmpty || requestedWorldMapURL() != nil
+        ARGuidedMeasurementPayload.worldMapAvailable(in: latestRequest)
     }
 
     func emitRelocalizationState(action: String, state: String, message: String, frame: ARFrame? = nil) {
-        var response = baseResponse(request: latestRequest, action: action)
-        response["success"] = true
-        response["source"] = "arkit-guided"
-        response["state"] = state
-        response["message"] = message
-        response["worldMapAvailable"] = requestedWorldMapAvailable()
+        let tracking: (state: String, reason: String)?
+        let worldMappingStatus: String?
         if let frame {
-            let tracking = trackingStatePayload(frame.camera.trackingState)
-            response["trackingState"] = tracking.state
-            if !tracking.reason.isEmpty {
-                response["trackingReason"] = tracking.reason
-            }
-            response["worldMappingStatus"] = worldMappingStatusName(frame.worldMappingStatus)
+            tracking = trackingStatePayload(frame.camera.trackingState)
+            worldMappingStatus = worldMappingStatusName(frame.worldMappingStatus)
+        } else {
+            tracking = nil
+            worldMappingStatus = nil
         }
-        eventHandler?(response)
+        eventHandler?(ARGuidedMeasurementPayload.relocalizationEvent(
+            request: latestRequest,
+            action: action,
+            state: state,
+            message: message,
+            worldMapAvailable: requestedWorldMapAvailable(),
+            trackingState: tracking?.state,
+            trackingReason: tracking?.reason,
+            worldMappingStatus: worldMappingStatus
+        ))
     }
 
     private func positionResponse(frame: ARFrame, action: String) -> [String: Any] {
-        var response = baseResponse(request: latestRequest, action: action)
-        response["success"] = true
-        response["source"] = "arkit-guided"
-        response["coordinateSystem"] = "arkit-gravity-local"
-        response["timestampMs"] = Int(Date().timeIntervalSince1970 * 1000)
-        response["arTimestampSeconds"] = frame.timestamp
-        response["elapsedSeconds"] = Date().timeIntervalSince(startedAt)
-        response["supported"] = true
-        response["worldMapAvailable"] = requestedWorldMapAvailable()
-
-        let tracking = trackingStatePayload(frame.camera.trackingState)
-        response["trackingState"] = tracking.state
-        if !tracking.reason.isEmpty {
-            response["trackingReason"] = tracking.reason
-        }
-        response["worldMappingStatus"] = worldMappingStatusName(frame.worldMappingStatus)
-
-        let transform = frame.camera.transform
-        let position = transform.columns.3
-        response["position"] = [
-            "x": Double(position.x),
-            "y": Double(position.y),
-            "z": Double(position.z),
-            "unit": "meters"
-        ]
-        response["orientation"] = [
-            "pitch": Double(frame.camera.eulerAngles.x),
-            "yaw": Double(frame.camera.eulerAngles.y),
-            "headingYaw": Double(arHeadingYaw(frame: frame)),
-            "roll": Double(frame.camera.eulerAngles.z),
-            "unit": "radians"
-        ]
-        response["transform"] = transformPayload(transform)
-        if let anchor = startAnchorPayload() {
-            response["startAnchorId"] = stringValue(anchor["id"])
-        }
-        return response
+        ARGuidedMeasurementPayload.positionEvent(
+            request: latestRequest,
+            action: action,
+            timestampMs: Int(Date().timeIntervalSince1970 * 1000),
+            elapsedSeconds: Date().timeIntervalSince(startedAt),
+            snapshot: frameSnapshot(frame),
+            startAnchorId: stringValue(startAnchorPayload()?["id"]),
+            worldMapAvailable: requestedWorldMapAvailable()
+        )
     }
 
     private func readyResponse(request: [String: Any], action: String) -> [String: Any] {
         startedAt = Date()
         lastEmitTime = 0
-        var response = baseResponse(request: request, action: action)
-        response["success"] = true
-        response["supported"] = true
-        response["source"] = "arkit-guided"
-        response["coordinateSystem"] = "arkit-gravity-local"
-        response["intervalMs"] = Int(intervalSeconds * 1000)
-        response["startAnchor"] = startAnchorPayload()
-        response["worldMapAvailable"] = requestedWorldMapAvailable()
-        return response
+        return ARGuidedMeasurementPayload.readyResponse(
+            request: request,
+            action: action,
+            intervalMs: Int(intervalSeconds * 1000),
+            startAnchor: startAnchorPayload(),
+            worldMapAvailable: requestedWorldMapAvailable()
+        )
     }
 
     private func stopInternal(hideView: Bool) {
@@ -282,17 +258,7 @@ final class ARGuidedMeasurementBridge: ObservableObject {
     }
 
     private func mergeAnchors(into current: [String: Any], from request: [String: Any]) -> [String: Any] {
-        var next = current
-        if let startAnchor = request["startAnchor"] {
-            next["startAnchor"] = startAnchor
-        }
-        if let anchors = request["anchors"] {
-            next["anchors"] = anchors
-        }
-        if let bounds = request["bounds"] {
-            next["bounds"] = bounds
-        }
-        return next
+        ARGuidedMeasurementPayload.mergedAnchors(current: current, update: request)
     }
 
     private func trackingStatePayload(_ trackingState: ARCamera.TrackingState) -> (state: String, reason: String) {
@@ -339,24 +305,28 @@ final class ARGuidedMeasurementBridge: ObservableObject {
         return atan2(forward.z, forward.x)
     }
 
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
-    private func errorResponse(request: [String: Any], action: String, error: String) -> [String: Any] {
-        var response = baseResponse(request: request, action: action)
-        response["success"] = false
-        response["supported"] = Self.isSupported()
-        response["source"] = "arkit-guided"
-        response["error"] = error
-        return response
+    private func frameSnapshot(_ frame: ARFrame) -> ARGuidedMeasurementPayload.FrameSnapshot {
+        let tracking = trackingStatePayload(frame.camera.trackingState)
+        let transform = frame.camera.transform
+        let position = transform.columns.3
+        return ARGuidedMeasurementPayload.FrameSnapshot(
+            arTimestampSeconds: frame.timestamp,
+            trackingState: tracking.state,
+            trackingReason: tracking.reason,
+            worldMappingStatus: worldMappingStatusName(frame.worldMappingStatus),
+            position: .init(
+                x: Double(position.x),
+                y: Double(position.y),
+                z: Double(position.z)
+            ),
+            orientation: .init(
+                pitch: Double(frame.camera.eulerAngles.x),
+                yaw: Double(frame.camera.eulerAngles.y),
+                headingYaw: Double(arHeadingYaw(frame: frame)),
+                roll: Double(frame.camera.eulerAngles.z)
+            ),
+            transform: transformPayload(transform)
+        )
     }
 }
 

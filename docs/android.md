@@ -25,7 +25,8 @@ Implemented:
   `beaconAdvertiseStop` when the device supports BLE advertising.
 - Google ML Kit Document Scanner UI for `scanDocument`, returning JPEG image data URLs or PDF data URLs.
 - Go `printercore` AAR bridge for `printerDiscover`, `printerHelloWorld`, and
-  `printerEpsonHelloWorld`.
+  `printerEpsonHelloWorld`, plus Android/Sunmi `printerPrint` for generic
+  text/QR payloads.
 - Sunmi internal-printer discovery and Hello World printing when
   `woyou.aidlservice.jiuiv5` is visible.
 - Android supplies the active IPv4 `/24` network as a discovery hint before
@@ -38,7 +39,7 @@ Implemented:
   default notification channel creation, Android 13+ `POST_NOTIFICATIONS`
   permission, and `AlarmManager` time-based scheduling. Android 12 and older do
   not show a runtime notification prompt and are reported as authorized.
-- Native SharedPreferences-backed startup URL settings with Kassa-compatible
+- Native SharedPreferences-backed startup URL settings with legacy-compatible
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
   `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity
   fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
@@ -53,8 +54,10 @@ Implemented:
 
 Not implemented yet:
 
-- Android Stripe Terminal / Tap to Pay.
-- iOS-style background removal options for `takePhoto`.
+- ARKit-based `arOverlayOpen` / `arOverlayClose` and `arReplayOpen` / `arReplayClose` overlays. Android returns a structured unavailable response for those iOS-only actions.
+- Background removal for `takePhoto` is available as an Android experimental
+  ML Kit Selfie Segmentation path and should be treated as optional until a
+  private variant validates it on target hardware.
 - OCR text extraction for document scans.
 - Full system-screen streaming through MediaProjection/foreground service. The
   current `screenStreamStart` bridge streams the app surface only.
@@ -87,7 +90,7 @@ JAVA_HOME=/path/to/jdk17 ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assemb
 ```sh
 cd android
 ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew installDebug
-adb shell am start -n com.ilass.swifthtmlwebviewapp/.MainActivity
+adb shell am start -n com.ilass.swifthtmlwebviewapp/com.ilass.swifthtmlwebviewapp.MainActivity
 ```
 
 If the device shows as `unauthorized`, unlock it and approve the USB debugging prompt.
@@ -115,6 +118,29 @@ values in app-private SharedPreferences; expose editable controls in the app,
 use Config Pairing, or use Android Enterprise managed configurations for MDM
 fleets.
 
+The same SharedPreferences-backed runtime settings can be updated by Config QR
+codes. JSON payloads accept `appConfig` or `store` objects; URL/query payloads
+accept `store[key]=value` / `appConfig[key]=value` and `wifi[ssid]` plus
+`wifi[pw]` / `wifi[password]` / `wifi[passphrase]`. `appConfig` is stored as a
+persistent non-sensitive JSON object and returned by `settingsGet`.
+
+The first-run defaults for `server_url_preference`,
+`security_token_preference`, and `beacon_uuid` are variant metadata on the
+Android `<application>` element:
+
+```xml
+<meta-data
+    android:name="com.ilass.DEFAULT_SERVER_URL"
+    android:value="https://example.invalid/mobile/" />
+```
+
+Use the same pattern for `com.ilass.DEFAULT_SECURITY_TOKEN` and
+`com.ilass.DEFAULT_BEACON_UUID` when a variant needs app-specific defaults.
+Recovery-page branding and copy can also be variant metadata:
+`com.ilass.RECOVERY_SHORT_MARK`, `com.ilass.RECOVERY_TITLE`,
+`com.ilass.RECOVERY_BODY`, `com.ilass.RECOVERY_SUCCESS_MESSAGE`, and
+`com.ilass.RECOVERY_INVALID_QR_MESSAGE`.
+
 ## Bridge behavior
 
 Android must keep the same public action names as iOS. Unsupported features should return a structured error or availability payload.
@@ -126,8 +152,9 @@ Example unsupported Tap to Pay availability response:
   "platform": "android",
   "action": "tapToPayAvailability",
   "requestId": "...",
+  "success": true,
   "available": false,
-  "readerType": "android",
+  "readerType": "android_tap_to_pay",
   "reason": "Android Tap to Pay bridge is not implemented in this wrapper build yet."
 }
 ```

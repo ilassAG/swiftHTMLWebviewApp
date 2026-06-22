@@ -1,0 +1,945 @@
+{
+  "schemaVersion": 1,
+  "description": "Known app variants that consume the shared WebView wrapper core.",
+  "plannedVariantDecisionCatalog": {
+    "identity": {
+      "description": "Bundle/application identifiers plus platform module, target, namespace, and product names.",
+      "question": "Which iOS bundle identifier, Android applicationId/namespace, module name, product name, and store identity should this app use?",
+      "targetArtifacts": [
+        "docs/app-variants.json",
+        "ios project target or xcconfig",
+        "android/<variant>/build.gradle",
+        "android/settings.gradle"
+      ],
+      "answerFields": [
+        {
+          "id": "bundleIdentifier",
+          "label": "iOS bundle identifier",
+          "platforms": [
+            "ios"
+          ],
+          "required": true
+        },
+        {
+          "id": "productName",
+          "label": "iOS product name",
+          "platforms": [
+            "ios"
+          ],
+          "required": true
+        },
+        {
+          "id": "displayName",
+          "label": "iOS display name",
+          "platforms": [
+            "ios"
+          ],
+          "required": true
+        },
+        {
+          "id": "gradleModule",
+          "label": "Android Gradle module",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "applicationId",
+          "label": "Android applicationId",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "namespace",
+          "label": "Android namespace",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "label",
+          "label": "Android app label",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "storeIdentity",
+          "label": "Store/app listing identity",
+          "required": false
+        }
+      ]
+    },
+    "branding": {
+      "description": "Display labels, icon source assets, loading image, and recovery-page copy.",
+      "question": "Which display label, icon source, loading image, recovery title/body, and QR scan messages should the app ship with?",
+      "targetArtifacts": [
+        "ios/Variants/<variant>/",
+        "ios asset catalog",
+        "android/<variant>/src/main/res/",
+        "platform manifests"
+      ],
+      "answerFields": [
+        {
+          "id": "iconSource",
+          "label": "Icon source asset",
+          "required": true
+        },
+        {
+          "id": "loadingImageSource",
+          "label": "Loading image source asset",
+          "required": true
+        },
+        {
+          "id": "loadingImageName",
+          "label": "Loading image asset name",
+          "required": true
+        },
+        {
+          "id": "recoveryShortMark",
+          "label": "Recovery page short mark",
+          "required": true
+        },
+        {
+          "id": "recoveryTitle",
+          "label": "Recovery page title",
+          "required": true
+        },
+        {
+          "id": "recoveryBody",
+          "label": "Recovery page body copy",
+          "required": true
+        },
+        {
+          "id": "recoveryQRCodeDetectedMessage",
+          "label": "QR-code detected message",
+          "required": true
+        },
+        {
+          "id": "recoveryInvalidQRMessage",
+          "label": "Invalid QR-code message",
+          "required": true
+        }
+      ]
+    },
+    "startup-provisioning": {
+      "description": "Initial startup URL, QR provisioning behavior, security token policy, and HA defaults.",
+      "question": "Should the app start from a fixed URL, local bundled page, QR provisioning flow, HA URL list, or a combination?",
+      "targetArtifacts": [
+        "docs/app-variants.json runtimeDefaults",
+        "iOS Settings.bundle or variant config",
+        "Android manifest metadata"
+      ],
+      "answerFields": [
+        {
+          "id": "startupMode",
+          "label": "Startup mode",
+          "required": true,
+          "allowedValues": [
+            "fixed-url",
+            "local-bundled",
+            "qr-provisioned",
+            "high-availability"
+          ]
+        },
+        {
+          "id": "serverURL",
+          "label": "Default server URL or local marker",
+          "required": true
+        },
+        {
+          "id": "securityTokenPolicy",
+          "label": "Security-token policy",
+          "required": true
+        },
+        {
+          "id": "highAvailability",
+          "label": "High-availability defaults",
+          "required": false
+        }
+      ]
+    },
+    "native-capabilities": {
+      "description": "Required native bridge capabilities and optional modules for the product.",
+      "question": "Which native bridge capabilities and optional modules are required: printer core, Tap to Pay, beacons, config pairing, scanner, notifications, AR, RoomPlan, or secure documents?",
+      "targetArtifacts": [
+        "docs/bridge-contract.json",
+        "docs/app-variants.json bridgeProfile",
+        "optional module build files"
+      ],
+      "answerFields": [
+        {
+          "id": "requiredCapabilities",
+          "label": "Required bridge capabilities",
+          "required": true
+        },
+        {
+          "id": "optionalModules",
+          "label": "Enabled optional native modules",
+          "required": true
+        },
+        {
+          "id": "excludedCapabilities",
+          "label": "Explicitly excluded capabilities",
+          "required": false
+        }
+      ]
+    },
+    "bridge-profile": {
+      "description": "Enabled optional modules plus expected platform-unavailable bridge actions.",
+      "question": "Which platform-specific unavailable actions and enabled optional modules should be part of the bridge profile?",
+      "targetArtifacts": [
+        "docs/app-variants.json bridgeProfile",
+        "tools/validate_contracts.js"
+      ],
+      "answerFields": [
+        {
+          "id": "contractPlatform",
+          "label": "Contract platform",
+          "required": true,
+          "allowedValues": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "id": "enabledOptionalModules",
+          "label": "Enabled optional modules in bridge profile",
+          "required": true
+        },
+        {
+          "id": "unavailableActions",
+          "label": "Platform-unavailable bridge actions",
+          "required": true
+        },
+        {
+          "id": "platformProfiles",
+          "label": "Per-platform bridge profiles for cross-platform variants",
+          "required": false
+        }
+      ]
+    },
+    "verification": {
+      "description": "Build/test commands and variant-boundary tests proving the app identity and optional-module choices.",
+      "question": "Which build/test commands and variant-boundary tests should prove this app's identity, defaults, and optional-module wiring?",
+      "targetArtifacts": [
+        "docs/app-variants.json verification",
+        "ios/swiftHTMLWebviewAppTests/",
+        "android/<variant>/src/test/"
+      ],
+      "answerFields": [
+        {
+          "id": "iosBuildCommand",
+          "label": "iOS build command",
+          "platforms": [
+            "ios"
+          ],
+          "required": true
+        },
+        {
+          "id": "iosTestCommand",
+          "label": "iOS test command",
+          "platforms": [
+            "ios"
+          ],
+          "required": true
+        },
+        {
+          "id": "androidBuildCommand",
+          "label": "Android build command",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "androidTestCommand",
+          "label": "Android test command",
+          "platforms": [
+            "android"
+          ],
+          "required": true
+        },
+        {
+          "id": "variantBoundaryTests",
+          "label": "Variant boundary tests",
+          "required": true
+        }
+      ]
+    }
+  },
+  "optionalModuleCatalog": {
+    "stripe-terminal-tap-to-pay": {
+      "platforms": [
+        "ios",
+        "android"
+      ],
+      "actions": [
+        "tapToPayAvailability",
+        "tapToPayCollect"
+      ],
+      "androidDependencies": [
+        "com.stripe:stripeterminal-taptopay",
+        "com.stripe:stripeterminal-core"
+      ]
+    },
+    "go-printer-core": {
+      "platforms": [
+        "ios",
+        "android"
+      ],
+      "actions": [
+        "printerDiscover",
+        "printerHelloWorld",
+        "printerEpsonHelloWorld"
+      ],
+      "generatedArtifacts": [
+        "ios/Frameworks/Printercore.xcframework",
+        "android/app/libs/printercore.aar"
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "demo-ios",
+      "status": "implemented",
+      "platform": "ios",
+      "name": "WebView Demo",
+      "releaseChannel": "development",
+      "xcodeProject": "ios/swiftHTMLWebviewApp.xcodeproj",
+      "scheme": "swiftHTMLWebviewApp",
+      "bundleIdentifier": "org.example.swifthtmlwebviewapp.demo",
+      "productName": "swiftHTMLWebviewApp",
+      "displayName": "WebView Demo",
+      "bridgeProfile": {
+        "contractPlatform": "ios",
+        "enabledOptionalModules": [],
+        "unavailableActions": [
+          "printerPrint"
+        ]
+      },
+      "runtimeDefaults": {
+        "serverURL": "local",
+        "securityToken": "",
+        "highAvailabilityTimeoutSeconds": 5,
+        "beaconUUID": "00000000-0000-0000-0000-000000000000",
+        "loadingImageName": "512",
+        "appIconName": "AppIcon",
+        "recoveryShortMark": "WV",
+        "recoveryTitle": "WebView Demo",
+        "recoveryBody": "Die konfigurierte Demo-Adresse antwortet nicht. Scanne einen Konfigurations-QR-Code oder setze eine gueltige URL in den App-Einstellungen.",
+        "recoveryQRCodeDetectedMessage": "QR-Code erkannt. Verbindung wird geprueft...",
+        "recoveryInvalidQRMessage": "Der QR-Code enthaelt keine gueltige Server-URL."
+      },
+      "verification": {
+        "build": "xcodebuild -project ios/swiftHTMLWebviewApp.xcodeproj -scheme swiftHTMLWebviewApp -destination 'generic/platform=iOS Simulator' build",
+        "test": "xcodebuild -project ios/swiftHTMLWebviewApp.xcodeproj -scheme swiftHTMLWebviewApp -destination 'platform=iOS Simulator,name=iPhone 17' test"
+      },
+      "testCoverage": [
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/AppVariantTests.swift",
+          "contains": "testDemoIdentityMatchesCurrentProduct"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/RecoveryConfigParserTests.swift",
+          "contains": "testParsesDirectServerURLFromJSONAndAddsLink"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/RecoveryPageBuilderTests.swift",
+          "contains": "testHTMLUsesVariantBrandingAndEscapesText"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupReachabilityPolicyTests.swift",
+          "contains": "testProbeURLsUseHealthEndpointThenOriginalURL"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupReachabilityPolicyTests.swift",
+          "contains": "testProbeTimeoutClampsToShortAvailabilityWindow"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupLoadStateTests.swift",
+          "contains": "testAdvanceRequiresHighAvailabilityAndRemainingCandidate"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupLoadStateTests.swift",
+          "contains": "testRecoveryCandidatesUseFallbackBeforeResetAndConfiguredListAfterReset"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupLoadCoordinatorTests.swift",
+          "contains": "testMainFrameFailureAdvancesToNextHighAvailabilityCandidate"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/StartupLoadCoordinatorTests.swift",
+          "contains": "testLastFailureShowsRecoveryWithOriginalCandidateList"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/BridgeScriptBuilderTests.swift",
+          "contains": "testNativeResultScriptWrapsSerializablePayload"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/BridgeScriptBuilderTests.swift",
+          "contains": "testNativeResultScriptFallsBackForInvalidJSONPayload"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/BridgeActionCatalogTests.swift",
+          "contains": "testRegisteredActionsMatchCurrentIOSBridgeSurface"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/WebViewErrorPayloadTests.swift",
+          "contains": "testResponseUsesSharedBridgeErrorShapeForAppErrors"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/WebViewErrorPayloadTests.swift",
+          "contains": "testResponseWrapsGenericErrorsAsInternalErrors"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/CaptureResponseBuilderTests.swift",
+          "contains": "testDocumentPdfResponseUsesPdfDataField"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/CaptureRequestTests.swift",
+          "contains": "testPhotoRequestForcesPngForTransparentBackgroundRemoval"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/BarcodeResponseBuilderTests.swift",
+          "contains": "testBarcodeResponseUsesLegacyScannerFields"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/NativeCommandPayloadTests.swift",
+          "contains": "testLaunchConfettiResponseUsesNativeCommandEnvelopeAndMetadata"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/TapToPayPayloadTests.swift",
+          "contains": "testAvailabilityUnavailableUsesContractEnvelope"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ContinuousScannerResponseBuilderTests.swift",
+          "contains": "testLoginScanDefaultsToLoginModeAndFrontCamera"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ContinuousScannerEventBuilderTests.swift",
+          "contains": "testDataEventUsesBarcodeDataAndSourceAction"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ARPositionPayloadTests.swift",
+          "contains": "testPositionEventUsesCatalogedPayloadShape"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ARGuidedMeasurementPayloadTests.swift",
+          "contains": "testPositionAndRelocalizationEventsUseCatalogedPayloadShape"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/RoomPlanPayloadTests.swift",
+          "contains": "testResultEventUsesCatalogedPayloadShapeAndWorldMapFallback"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/AROverlayPayloadTests.swift",
+          "contains": "testFloorPlanAndDemoOverlayCreateSceneItemsAndLines"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/DeviceBridgePayloadTests.swift",
+          "contains": "testCapabilitiesReflectInjectedRuntimeSupport"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/BeaconPayloadTests.swift",
+          "contains": "testBeaconEventUsesCatalogedPayloadShape"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/IdleTimerPayloadTests.swift",
+          "contains": "testTickAndTimeoutEventsUseCatalogedPayloadShape"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/NotificationPayloadTests.swift",
+          "contains": "testNotificationPayloadNormalizesFallbacksAndData"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ScreenStreamPayloadTests.swift",
+          "contains": "testStreamRequestNormalizesAliasesAndClampsValues"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/ConfigPairingPayloadTests.swift",
+          "contains": "testPairingPayloadRoundTripsIdentityFields"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/NFCPayloadTests.swift",
+          "contains": "testTextRecordDecodesLanguageAndUtf8Text"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/SensorPayloadTests.swift",
+          "contains": "testSensorDataEventUsesCatalogedPayloadShape"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/LocationPayloadTests.swift",
+          "contains": "testResponseWrapsLocationInCommonBridgeEnvelope"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/OrientationPayloadTests.swift",
+          "contains": "testModePrefersModeOverOrientationAndNormalizesAliases"
+        },
+        {
+          "file": "ios/swiftHTMLWebviewAppTests/PrinterPayloadTests.swift",
+          "contains": "testSelectedPrinterKindUsesDirectNestedAndDefaultEpson"
+        }
+      ],
+      "source": "generic open-source demo"
+    },
+    {
+      "id": "demo-android",
+      "status": "implemented",
+      "platform": "android",
+      "name": "WebView Demo",
+      "releaseChannel": "development",
+      "gradleModule": ":app",
+      "buildFile": "android/app/build.gradle",
+      "manifest": "android/app/src/main/AndroidManifest.xml",
+      "applicationId": "com.ilass.swifthtmlwebviewapp",
+      "namespace": "com.ilass.swifthtmlwebviewapp",
+      "label": "swiftHTMLWebviewApp",
+      "labelResource": "android/app/src/main/res/values/strings.xml",
+      "bridgeProfile": {
+        "contractPlatform": "android",
+        "enabledOptionalModules": [],
+        "unavailableActions": [
+          "arPositionStart",
+          "arPositionStop",
+          "arGuidedMeasurementStart",
+          "arGuidedMeasurementSetAnchors",
+          "arGuidedMeasurementUpdateStats",
+          "arGuidedMeasurementStop",
+          "arOverlayOpen",
+          "arOverlayClose",
+          "arReplayOpen",
+          "arReplayClose",
+          "roomPlanScanStart",
+          "roomPlanScanStop",
+          "roomPlanScanExport"
+        ]
+      },
+      "runtimeDefaults": {
+        "serverURL": "local",
+        "securityToken": "",
+        "beaconUUID": "00000000-0000-0000-0000-000000000000",
+        "recoveryShortMark": "WV",
+        "recoveryTitle": "WebView Demo Verbindung",
+        "recoveryBody": "Die konfigurierte Demo-Adresse kann in diesem Netzwerk nicht geladen werden. Scanne einen Konfigurations-QR-Code oder setze eine gueltige URL.",
+        "recoverySuccessMessage": "Neue Server-Adresse gespeichert. Lade WebView Demo...",
+        "recoveryInvalidQRMessage": "QR-Code erkannt, aber keine gueltige Server-Adresse gefunden.",
+        "mode": "fixed-url"
+      },
+      "verification": {
+        "build": "cd android && ./gradlew :app:assembleDebug",
+        "test": "cd android && ./gradlew :app:testDebugUnitTest"
+      },
+      "testCoverage": [
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
+          "contains": "appIdentityMatchesDemoVariant"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
+          "contains": "appVariantDoesNotPullStripeTerminal"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
+          "contains": "tapToPayHostErrorsUseSharedBridgeErrorEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidHostBridgePayloadTest.java",
+          "contains": "baseResponseUsesSharedBridgeEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidHostBridgePayloadTest.java",
+          "contains": "errorResponseDefaultsMissingInputs"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidHostBridgePayloadTest.java",
+          "contains": "errorResponseUsesSharedBridgeErrorEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidTapToPayPayloadTest.java",
+          "contains": "availabilityUnavailableUsesContractEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
+          "contains": "mainActivityDoesNotOwnPrivateErrorEnvelopeBuilder"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBridgeScriptBuilderTest.java",
+          "contains": "nativeResultScriptWrapsPayloadForHandleNativeResult"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBridgeScriptBuilderTest.java",
+          "contains": "nativeResultScriptUsesJsonEscapingForStringValues"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBridgeShimBuilderTest.java",
+          "contains": "bridgeShimInstallsIosCompatiblePostMessageFacade"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBridgeShimBuilderTest.java",
+          "contains": "idleActivityShimInstallsOnceAndPostsIdleActivity"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBridgeActionCatalogTest.java",
+          "contains": "registeredActionsMatchCurrentAndroidBridgeSurface"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidRecoveryConfigParserTest.java",
+          "contains": "parsesDirectServerUrlFromJsonAndAddsLink"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidRecoveryPageBuilderTest.java",
+          "contains": "htmlUsesVariantBrandingAndEscapesText"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidStartupLoadCoordinatorTest.java",
+          "contains": "mainFrameFailureAdvancesToNextHighAvailabilityCandidate"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidStartupLoadCoordinatorTest.java",
+          "contains": "lastFailureShowsRecoveryWithOriginalCandidateList"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidStartupLoadCoordinatorTest.java",
+          "contains": "reloadResetsCandidateIndexAndRecoveryState"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidCaptureResponseBuilderTest.java",
+          "contains": "documentPdfResponseUsesPdfDataField"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidCaptureResponseBuilderTest.java",
+          "contains": "documentImageResponseDerivesPageCountAndJpegFormat"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidCaptureResponseBuilderTest.java",
+          "contains": "photoFormatPrefersPngForBackgroundRemovalOrRequestedPng"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBarcodeResponseBuilderTest.java",
+          "contains": "successResponseUsesCurrentScannerFields"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBarcodeConfigHandlerTest.java",
+          "contains": "changeConfigRequiresSecurityTokenAndMapsDefaultServerUrl"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBarcodeConfigHandlerTest.java",
+          "contains": "recoverySourcePersistsServerUrlFromCode"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNativeCommandPayloadTest.java",
+          "contains": "launchConfettiResponseUsesNativeCommandEnvelopeAndMetadata"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidContinuousScannerConfigTest.java",
+          "contains": "loginScanDefaultsToLoginModeAndFrontCamera"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidContinuousScannerConfigTest.java",
+          "contains": "errorAndClosedByUserResponsesUseStreamControlShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidContinuousScannerEventBuilderTest.java",
+          "contains": "dataEventUsesBarcodeDataAndSourceAction"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceCapabilitiesTest.java",
+          "contains": "buildReflectsRuntimeOptionalModules"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPermissionPolicyTest.java",
+          "contains": "commonPermissionSetsStayCentralized"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPermissionPolicyTest.java",
+          "contains": "beaconScanPermissionsRequireLocationAndModernBluetoothScanRights"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPermissionPolicyTest.java",
+          "contains": "configPairingPermissionsMatchActionAndSdkRequirements"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "configPairingDeviceSummaryUsesStableRuntimeShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "batteryPayloadCalculatesPercentChargingAndPowerSource"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "screenPayloadUsesDisplayMetricsShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "memoryPayloadUsesRuntimeMemoryShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "cameraPayloadNormalizesLensFacingValues"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "sensorPayloadUsesStableDiagnosticsShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidDeviceInfoPayloadTest.java",
+          "contains": "responseUsesDiagnosticsEnvelopeAndRuntimeSnapshots"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSoundPayloadTest.java",
+          "contains": "responseUsesNativeCommandEnvelopeAndEchoesNormalizedValues"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidScreenshotPayloadTest.java",
+          "contains": "responseUsesDiagnosticsEnvelopeAndImageMetadata"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidBeaconPayloadTest.java",
+          "contains": "beaconEventUsesCatalogedPayloadShapeAndLegacyMap"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "discoveryOptionsAddsLocalCidrsOnlyWhenNoTargetsAreProvided"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "selectedPrinterKindUsesDirectNestedAndDefaultEpson"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "selectedPrinterLabelUsesNestedLabelOrFallback"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "epsonHelloWorldRequestTrimsAndDefaultsFields"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "discoveryUnavailableResponseUsesStablePrintercoreEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "discoveryResponseMergesCoreFieldsAndVersion"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "printercoreUnavailableResponseMarksKindAndAvailability"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "epsonJobResponseMergesCoreFieldsAndBackfillsError"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "sunmiJobResponseUsesAidlProviderMetadataAndOutcomeFields"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidPrinterPayloadTest.java",
+          "contains": "appendSunmiInternalPrinterAddsOnlyOneConfirmedLocalPrinter"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidScreenOrientationBridgeTest.java",
+          "contains": "orientationRequestMapsKnownModes"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidIdleTimerBridgeTest.java",
+          "contains": "tickEmitsIdleTickAndSingleTimeout"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidWifiBridgeTest.java",
+          "contains": "configureRequestFallsBackToPasswordAndMarksPersistedServerUrl"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidWifiBridgeTest.java",
+          "contains": "configureErrorResponseUsesCommonErrorShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidWifiBridgeTest.java",
+          "contains": "statusPayloadReportsMissingWifiServiceWithStableDefaults"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidWifiBridgeTest.java",
+          "contains": "statusPayloadRedactsSsidWhenPermissionIsMissing"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidWifiBridgeTest.java",
+          "contains": "statusPayloadExposesConnectedWifiDetailsAndSecurity"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSettingsBridgeTest.java",
+          "contains": "settingsSetAppliesNestedSettingsWhenTokenMatches"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSettingsBridgeTest.java",
+          "contains": "settingsSnapshotUsesPublicConfigShapeWithoutTokenValue"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSettingsStoreTest.java",
+          "contains": "applySettingsUsesAliasesAndNormalizesValues"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSettingsStoreTest.java",
+          "contains": "snapshotUsesDefaultsAndGeneratesMissingDeviceUuid"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidConfigPairingProtocolTest.java",
+          "contains": "pairingPayloadRoundTripsIdentityFields"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidConfigPairingProtocolTest.java",
+          "contains": "internalRequestUsesActionAndOptionalSource"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidConfigPairingProtocolTest.java",
+          "contains": "bridgeResponsesUseSharedEnvelopeAndTargetIdentity"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidConfigPairingProtocolTest.java",
+          "contains": "unknownActionResponseUsesSharedEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNotificationPayloadTest.java",
+          "contains": "notificationPayloadNormalizesFallbacksAndData"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNotificationPayloadTest.java",
+          "contains": "permissionResponsesUseCommonBridgeShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNotificationPayloadTest.java",
+          "contains": "commandResponsesUseCommonBridgeShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNotificationPayloadTest.java",
+          "contains": "listResponseWrapsPendingAndDeliveredArrays"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidLocationPayloadTest.java",
+          "contains": "responseWrapsLocationInCommonBridgeEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidLocationPayloadTest.java",
+          "contains": "startResponseUsesStreamControlEnvelopeAndOptionalLastLocation"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidLocationPayloadTest.java",
+          "contains": "errorResponseUsesCommonBridgeEnvelope"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidScreenStreamPayloadTest.java",
+          "contains": "metaEventsAndStatsUseCatalogedEventShapes"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidSensorPayloadTest.java",
+          "contains": "sensorDataEventUsesCatalogedPayloadShape"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNfcPayloadTest.java",
+          "contains": "textRecordDecodesLanguageAndUtf8Text"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNfcPayloadTest.java",
+          "contains": "tagPayloadNormalizesIdentifierAndTechnologies"
+        },
+        {
+          "file": "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/AndroidNfcPayloadTest.java",
+          "contains": "technologyDetailPayloadsUseStableFieldNames"
+        }
+      ],
+      "source": "generic open-source demo"
+    },
+    {
+      "id": "private-demo-app",
+      "status": "planned",
+      "platform": "cross-platform",
+      "name": "Private Demo App",
+      "source": "sanitized private product planning example",
+      "requiredDecisionIds": [
+        "identity",
+        "branding",
+        "startup-provisioning",
+        "native-capabilities",
+        "bridge-profile",
+        "verification"
+      ],
+      "requiredDecisions": [
+        "Bundle/application identifiers plus platform module, target, namespace, and product names.",
+        "Display labels, icon source assets, loading image, and recovery-page copy.",
+        "Initial startup URL, QR provisioning behavior, security token policy, and HA defaults.",
+        "Required native bridge capabilities and optional modules for the product.",
+        "Enabled optional modules plus expected platform-unavailable bridge actions.",
+        "Build/test commands and variant-boundary tests proving the app identity and optional-module choices."
+      ],
+      "decisionChecklist": [
+        {
+          "id": "identity",
+          "status": "needed",
+          "question": "Which iOS bundle identifier, Android applicationId/namespace, module name, product name, and store identity should this app use?",
+          "targetArtifacts": [
+            "docs/app-variants.json",
+            "ios project target or xcconfig",
+            "android/private-demo-app/build.gradle",
+            "android/settings.gradle"
+          ]
+        },
+        {
+          "id": "branding",
+          "status": "needed",
+          "question": "Which display label, icon source, loading image, recovery title/body, and QR scan messages should the app ship with?",
+          "targetArtifacts": [
+            "ios/Variants/private-demo-app/",
+            "ios asset catalog",
+            "android/private-demo-app/src/main/res/",
+            "platform manifests"
+          ]
+        },
+        {
+          "id": "startup-provisioning",
+          "status": "needed",
+          "question": "Should the app start from a fixed URL, local bundled page, QR provisioning flow, HA URL list, or a combination?",
+          "targetArtifacts": [
+            "docs/app-variants.json runtimeDefaults",
+            "iOS Settings.bundle or variant config",
+            "Android manifest metadata"
+          ]
+        },
+        {
+          "id": "native-capabilities",
+          "status": "needed",
+          "question": "Which native bridge capabilities and optional modules are required: printer core, Tap to Pay, beacons, config pairing, scanner, notifications, AR, RoomPlan, or secure documents?",
+          "targetArtifacts": [
+            "docs/bridge-contract.json",
+            "docs/app-variants.json bridgeProfile",
+            "optional module build files"
+          ]
+        },
+        {
+          "id": "bridge-profile",
+          "status": "needed",
+          "question": "Which platform-specific unavailable actions and enabled optional modules should be part of the bridge profile?",
+          "targetArtifacts": [
+            "docs/app-variants.json bridgeProfile",
+            "tools/validate_contracts.js"
+          ]
+        },
+        {
+          "id": "verification",
+          "status": "needed",
+          "question": "Which build/test commands and variant-boundary tests should prove this app's identity, defaults, and optional-module wiring?",
+          "targetArtifacts": [
+            "docs/app-variants.json verification",
+            "ios/swiftHTMLWebviewAppTests/",
+            "android/private-demo-app/src/test/"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "description": "Profile-level response examples for the native bridge contract. Use <action> as the action placeholder.",
+  "profileFixtures": {
+    "documentCapture": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-document-1",
+        "success": true,
+        "images": ["data:image/jpeg;base64,..."],
+        "pdfData": "data:application/pdf;base64,..."
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-document-1",
+        "success": false,
+        "error": "Document scan was cancelled."
+      }
+    },
+    "photoCapture": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-photo-1",
+        "success": true,
+        "imageData": "data:image/jpeg;base64,..."
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-photo-1",
+        "success": false,
+        "error": "Photo capture failed."
+      }
+    },
+    "scannerRead": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-scan-1",
+        "success": true,
+        "format": "qr",
+        "code": "example-code"
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-scan-1",
+        "success": false,
+        "error": "Scanner was cancelled."
+      }
+    },
+    "streamControl": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-stream-1",
+        "success": true,
+        "streaming": true
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-stream-1",
+        "success": false,
+        "error": "Stream could not be started."
+      }
+    },
+    "previewUpdate": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-preview-1",
+        "success": true,
+        "updated": true
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-preview-1",
+        "success": false,
+        "error": "Preview update failed."
+      }
+    },
+    "diagnosticsRead": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-diagnostics-1",
+        "success": true,
+        "supported": true
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-diagnostics-1",
+        "success": false,
+        "error": "Diagnostic value is unavailable."
+      }
+    },
+    "settingsRead": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-settings-read-1",
+        "success": true,
+        "settings": {
+          "serverURL": "https://example.invalid/mobile/"
+        }
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-settings-read-1",
+        "success": false,
+        "error": "Settings could not be read."
+      }
+    },
+    "settingsWrite": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-settings-write-1",
+        "success": true,
+        "updated": true
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-settings-write-1",
+        "success": false,
+        "error": "Security token is invalid."
+      }
+    },
+    "nativeCommand": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-command-1",
+        "success": true
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-command-1",
+        "success": false,
+        "error": "Command failed."
+      }
+    },
+    "arSession": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-ar-1",
+        "success": true,
+        "supported": true
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-ar-1",
+        "success": false,
+        "supported": false,
+        "error": "ARKit world tracking is unavailable."
+      }
+    },
+    "roomPlanSession": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-roomplan-1",
+        "success": true,
+        "supported": true
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-roomplan-1",
+        "success": false,
+        "supported": false,
+        "error": "RoomPlan is unavailable."
+      }
+    },
+    "notificationCommand": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-notification-1",
+        "success": true,
+        "authorized": true
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-notification-1",
+        "success": false,
+        "error": "Notification permission was denied."
+      }
+    },
+    "configPairing": {
+      "success": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-config-1",
+        "success": true,
+        "sessionId": "session-1"
+      },
+      "error": {
+        "platform": "ios",
+        "action": "<action>",
+        "requestId": "req-config-1",
+        "success": false,
+        "error": "Config pairing is not connected."
+      }
+    },
+    "tapToPayAvailability": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-tap-availability-1",
+        "success": true,
+        "available": true,
+        "readerType": "android_tap_to_pay"
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-tap-availability-1",
+        "success": false,
+        "available": false,
+        "error": "Tap to Pay is unavailable."
+      }
+    },
+    "tapToPayCollection": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-tap-collect-1",
+        "success": true,
+        "paymentId": "payment-1",
+        "status": "succeeded"
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-tap-collect-1",
+        "success": false,
+        "paymentId": "payment-1",
+        "error": "Payment collection failed."
+      }
+    },
+    "printerDiscovery": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-printer-discovery-1",
+        "success": true,
+        "printers": []
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-printer-discovery-1",
+        "success": false,
+        "error": "Printer discovery failed."
+      }
+    },
+    "printerJob": {
+      "success": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-printer-job-1",
+        "success": true,
+        "printed": true
+      },
+      "error": {
+        "platform": "android",
+        "action": "<action>",
+        "requestId": "req-printer-job-1",
+        "success": false,
+        "error": "Printer job failed."
+      }
+    }
+  }
+}

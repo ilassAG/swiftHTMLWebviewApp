@@ -34,50 +34,75 @@ final class ARPositionBridge: NSObject, ObservableObject, ARSessionDelegate {
         stopInternal()
         latestRequest = request
         self.eventHandler = eventHandler
-        intervalSeconds = max(0.1, min(2.0, (doubleValue(request["intervalMs"]) ?? 500) / 1000.0))
+        let intervalMs = ARPositionPayload.intervalMs(from: request)
+        intervalSeconds = Double(intervalMs) / 1000.0
         let token = UUID()
         streamToken = token
 
         guard Self.isSupported() else {
-            return errorResponse(request: request, action: "arPositionStart", error: "ARKit world tracking is not supported on this device.")
+            return ARPositionPayload.errorResponse(
+                request: request,
+                action: "arPositionStart",
+                error: "ARKit world tracking is not supported on this device.",
+                trackingSupported: Self.isSupported()
+            )
         }
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             runSession()
-            return startedResponse(request: request)
+            return ARPositionPayload.startResponse(
+                request: request,
+                intervalMs: intervalMs,
+                trackingSupported: true
+            )
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 Task { @MainActor in
                     guard let self, self.streamToken == token else { return }
                     if granted {
                         self.runSession()
-                        self.eventHandler?(self.startedResponse(request: request))
+                        self.eventHandler?(ARPositionPayload.startResponse(
+                            request: request,
+                            intervalMs: intervalMs,
+                            trackingSupported: true
+                        ))
                     } else {
-                        self.eventHandler?(self.errorResponse(request: request, action: "arPositionStart", error: "Camera permission was denied."))
+                        self.eventHandler?(ARPositionPayload.errorResponse(
+                            request: request,
+                            action: "arPositionStart",
+                            error: "Camera permission was denied.",
+                            trackingSupported: true
+                        ))
                     }
                 }
             }
-            var response = baseResponse(request: request, action: "arPositionStart")
-            response["success"] = false
-            response["pendingPermission"] = true
-            response["trackingSupported"] = true
-            response["source"] = "arkit"
-            response["intervalMs"] = Int(intervalSeconds * 1000)
-            response["coordinateSystem"] = "arkit-gravity-local"
-            return response
+            return ARPositionPayload.startResponse(
+                request: request,
+                intervalMs: intervalMs,
+                trackingSupported: true,
+                pendingPermission: true
+            )
         case .denied, .restricted:
-            return errorResponse(request: request, action: "arPositionStart", error: "Camera permission is required for ARKit tracking.")
+            return ARPositionPayload.errorResponse(
+                request: request,
+                action: "arPositionStart",
+                error: "Camera permission is required for ARKit tracking.",
+                trackingSupported: true
+            )
         @unknown default:
-            return errorResponse(request: request, action: "arPositionStart", error: "Unknown camera authorization state.")
+            return ARPositionPayload.errorResponse(
+                request: request,
+                action: "arPositionStart",
+                error: "Unknown camera authorization state.",
+                trackingSupported: true
+            )
         }
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         stopInternal()
-        var response = baseResponse(request: request, action: "arPositionStop")
-        response["success"] = true
-        return response
+        return ARPositionPayload.stopResponse(request: request)
     }
 
     func shutdown() {
@@ -93,18 +118,18 @@ final class ARPositionBridge: NSObject, ObservableObject, ARSessionDelegate {
     nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
         Task { @MainActor in
             let request = self.latestRequest
-            self.eventHandler?(self.errorResponse(request: request, action: "arPosition", error: error.localizedDescription))
+            self.eventHandler?(ARPositionPayload.errorResponse(
+                request: request,
+                action: "arPosition",
+                error: error.localizedDescription,
+                trackingSupported: Self.isSupported()
+            ))
         }
     }
 
     nonisolated func sessionWasInterrupted(_ session: ARSession) {
         Task { @MainActor in
-            var response = self.baseResponse(request: self.latestRequest, action: "arPosition")
-            response["success"] = false
-            response["source"] = "arkit"
-            response["interrupted"] = true
-            response["error"] = "AR session was interrupted."
-            self.eventHandler?(response)
+            self.eventHandler?(ARPositionPayload.interruptionEvent(request: self.latestRequest))
         }
     }
 
@@ -134,37 +159,24 @@ final class ARPositionBridge: NSObject, ObservableObject, ARSessionDelegate {
         }
         lastEmitTime = frame.timestamp
 
-        var response = baseResponse(request: latestRequest, action: "arPosition")
-        response["success"] = true
-        response["source"] = "arkit"
-        response["coordinateSystem"] = "arkit-gravity-local"
-        response["timestampMs"] = Int(Date().timeIntervalSince1970 * 1000)
-        response["arTimestampSeconds"] = frame.timestamp
-        response["elapsedSeconds"] = Date().timeIntervalSince(startedAt)
-        response["trackingSupported"] = true
-
         let tracking = trackingStatePayload(frame.camera.trackingState)
-        response["trackingState"] = tracking.state
-        if !tracking.reason.isEmpty {
-            response["trackingReason"] = tracking.reason
-        }
-
         let transform = frame.camera.transform
         let position = transform.columns.3
-        response["position"] = [
-            "x": Double(position.x),
-            "y": Double(position.y),
-            "z": Double(position.z),
-            "unit": "meters"
-        ]
-        response["orientation"] = [
-            "pitch": Double(frame.camera.eulerAngles.x),
-            "yaw": Double(frame.camera.eulerAngles.y),
-            "roll": Double(frame.camera.eulerAngles.z),
-            "unit": "radians"
-        ]
-        response["transform"] = transformPayload(transform)
-        eventHandler?(response)
+        eventHandler?(ARPositionPayload.positionEvent(
+            request: latestRequest,
+            timestampMs: Int(Date().timeIntervalSince1970 * 1000),
+            arTimestampSeconds: frame.timestamp,
+            elapsedSeconds: Date().timeIntervalSince(startedAt),
+            trackingState: tracking.state,
+            trackingReason: tracking.reason,
+            position: .init(x: Double(position.x), y: Double(position.y), z: Double(position.z)),
+            orientation: .init(
+                x: Double(frame.camera.eulerAngles.x),
+                y: Double(frame.camera.eulerAngles.y),
+                z: Double(frame.camera.eulerAngles.z)
+            ),
+            transform: transformPayload(transform)
+        ))
     }
 
     private func stopInternal() {
@@ -173,16 +185,6 @@ final class ARPositionBridge: NSObject, ObservableObject, ARSessionDelegate {
         lastEmitTime = 0
         streamToken = UUID()
         session.pause()
-    }
-
-    private func startedResponse(request: [String: Any]) -> [String: Any] {
-        var response = baseResponse(request: request, action: "arPositionStart")
-        response["success"] = true
-        response["source"] = "arkit"
-        response["intervalMs"] = Int(intervalSeconds * 1000)
-        response["coordinateSystem"] = "arkit-gravity-local"
-        response["trackingSupported"] = true
-        return response
     }
 
     private func trackingStatePayload(_ trackingState: ARCamera.TrackingState) -> (state: String, reason: String) {
@@ -216,23 +218,4 @@ final class ARPositionBridge: NSObject, ObservableObject, ARSessionDelegate {
         ]
     }
 
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
-    private func errorResponse(request: [String: Any], action: String, error: String) -> [String: Any] {
-        var response = baseResponse(request: request, action: action)
-        response["success"] = false
-        response["source"] = "arkit"
-        response["error"] = error
-        response["trackingSupported"] = Self.isSupported()
-        return response
-    }
 }

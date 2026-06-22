@@ -35,7 +35,7 @@ func CoreVersion() string {
 }
 
 // HelloWorldEposFragment returns an Epson ePOS-Print XML fragment. It is the
-// shape used by the existing Kassa templates before they are wrapped in
+// shape used by the existing legacy templates before they are wrapped in
 // <epos-print>.
 func HelloWorldEposFragment(title string, subtitle string, body string) string {
 	if strings.TrimSpace(title) == "" {

@@ -17,7 +17,7 @@
 "error.dataScanner.startFailed" = "Scanner konnte nicht gestartet werden: %@";
 "status.barcodeRecognized" = "Barcode erkannt: %@ (Format: %@)";
 "status.securityToken.match" = "Sicherheitstoken stimmt überein. Server-URL wird aktualisiert auf: %@";
-"error.securityToken.mismatch" = "Sicherheitstoken stimmt nicht überein. Gescannt: %@, Gespeichert: %@";
+"error.securityToken.mismatch" = "Sicherheitstoken stimmt nicht überein.";
 "error.qr.jsonParseFailed" = "JSON konnte nicht vom QR-Code gelesen werden: %@";
 "warning.barcode.noStringValue" = "Erkannter Barcode hat keinen Zeichenfolgenwert.";
 "warning.dataScanner.unrecognizedItem" = "Unbekannter Elementtyp erkannt.";

@@ -79,6 +79,7 @@ struct ContentView: View {
     @StateObject private var locationBridge = LocationBridge()
     @StateObject private var arPositionBridge = ARPositionBridge()
     @StateObject private var arGuidedMeasurementBridge = ARGuidedMeasurementBridge()
+    @StateObject private var arOverlayBridge = AROverlayBridge()
     @StateObject private var roomPlanBridge = RoomPlanBridge()
     @StateObject private var screenStreamBridge = ScreenStreamBridge()
     @StateObject private var sensorBridge = SensorBridge()
@@ -86,13 +87,20 @@ struct ContentView: View {
     @StateObject private var nfcTagReaderBridge = NFCTagReaderBridge()
     @StateObject private var notificationBridge = NotificationBridge.shared
     @Environment(\.scenePhase) private var scenePhase
+    private let settingsBridge = SettingsBridge()
+    private let recoveryBarcodeHandler = RecoveryBarcodeHandler(
+        invalidMessage: AppSettings.shared.recoveryInvalidQRMessage,
+        applyConfiguration: { values in AppSettings.shared.applyConfiguration(values) }
+    )
 
     @State private var showDocumentScanner = false
     @State private var showImagePicker = false
+    @State private var showPortraitCapture = false
     @State private var showBarcodeScanner = false
     @State private var currentRequest: [String: Any]? = nil
     @State private var tapToPayTransition = TapToPayTransitionState()
     @State private var continuousScannerConfig: ContinuousBarcodeScannerConfig?
+    @State private var bridgeRouter: BridgeRouter?
 
     var body: some View {
         ZStack {
@@ -112,7 +120,7 @@ struct ContentView: View {
             if webViewStore.isLoading {
                 VStack(spacing: 20) {
                     Spacer()
-                    Image("512")
+                    Image(AppSettings.shared.loadingImageName)
                         .resizable()
                         .scaledToFit()
                         .frame(width: 132, height: 132)
@@ -139,6 +147,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            installBridgeRouterIfNeeded()
             configureConfigPairingBridge()
             configureNotificationBridge()
         }
@@ -153,6 +162,7 @@ struct ContentView: View {
             locationBridge.shutdown()
             arPositionBridge.shutdown()
             arGuidedMeasurementBridge.shutdown()
+            arOverlayBridge.shutdown()
             roomPlanBridge.shutdown()
             screenStreamBridge.shutdown()
             sensorBridge.shutdown()
@@ -166,17 +176,20 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showImagePicker, onDismiss: handleSheetDismiss) {
-            let requestedCamera = currentRequest?["camera"] as? String
-            let cameraDevice: UIImagePickerController.CameraDevice = (requestedCamera == "front") ? .front : .rear
+            let cameraDevice = PhotoCaptureRequest(currentRequest).cameraDevice
 
             ImagePickerView(isPresented: $showImagePicker, cameraDevice: cameraDevice) { result in
                 handleImagePickerResult(result)
             }
         }
+        .sheet(isPresented: $showPortraitCapture, onDismiss: handleSheetDismiss) {
+            PortraitCaptureView(isPresented: $showPortraitCapture, request: PortraitCaptureRequest(currentRequest)) { result in
+                handlePortraitCaptureResult(result)
+            }
+        }
         .sheet(isPresented: $showBarcodeScanner, onDismiss: handleSheetDismiss) {
             if BarcodeScannerView.isSupported {
-                let requestedTypes = currentRequest?["types"] as? [String]
-                let scanTypes = BarcodeUtils.mapStringToDataTypes(requestedTypes)
+                let scanTypes = BarcodeUtils.mapStringToDataTypes(BarcodeCaptureRequest(currentRequest).types)
 
                 BarcodeScannerView(isPresented: $showBarcodeScanner, recognizedDataTypes: scanTypes) { result in
                     handleBarcodeScanResult(result)
@@ -213,69 +226,98 @@ struct ContentView: View {
         .sheet(isPresented: $arGuidedMeasurementBridge.viewVisible) {
             ARGuidedMeasurementSheet(bridge: arGuidedMeasurementBridge)
         }
+        .sheet(isPresented: $arOverlayBridge.viewVisible) {
+            AROverlaySheet(bridge: arOverlayBridge)
+        }
     }
 
     // MARK: - JavaScript Message Handling
     private func handleScriptMessage(_ message: [String: Any]) {
-        guard let action = message["action"] as? String else {
-            print("Error: Received message from JS without 'action' key.")
+        installBridgeRouterIfNeeded()
+        bridgeRouter?.postMessage(message)
+    }
 
-            webViewStore.sendErrorToWebView(action: nil, error: AppError.invalidRequest(NSLocalizedString("error.invalidRequest.missingAction", comment: "Missing action parameter error")))
+    private func installBridgeRouterIfNeeded() {
+        guard bridgeRouter == nil else {
             return
         }
+        bridgeRouter = makeBridgeRouter()
+    }
 
-        self.currentRequest = message
-        print("Processing action: \(action)")
-
-        switch action {
-        case "scanDocument":
-            self.showDocumentScanner = true
-
-        case "takePhoto":
-             guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-                 print("Error: Camera not available.")
-
-                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera")))
-                 currentRequest = nil
-                 return
-             }
-            self.showImagePicker = true
-
-        case "scanBarcode":
+    private func makeBridgeRouter() -> BridgeRouter {
+        let router = BridgeRouter.Builder(
+            resultHandler: { result in
+                webViewStore.sendResultToWebView(result: result)
+            },
+            missingActionMessage: AppError.invalidRequest(NSLocalizedString("error.invalidRequest.missingAction", comment: "Missing action parameter error")).localizedDescription,
+            unknownActionMessage: { action in
+                AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)).localizedDescription
+            },
+            unknownActionHandler: {
+                currentRequest = nil
+            }
+        )
+        .on("scanDocument") { message in
+            currentRequest = message
+            showDocumentScanner = true
+        }
+        .on("takePhoto") { message in
+            let action = "takePhoto"
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                print("Error: Camera not available.")
+                webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera")))
+                currentRequest = nil
+                return
+            }
+            currentRequest = message
+            showImagePicker = true
+        }
+        .on("portraitCapture") { message in
+            let action = "portraitCapture"
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                print("Error: Camera not available.")
+                webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.camera", comment: "Feature name: Camera")))
+                currentRequest = nil
+                return
+            }
+            currentRequest = message
+            showPortraitCapture = true
+        }
+        .on("scanBarcode") { message in
+            let action = "scanBarcode"
             guard BarcodeScannerView.isSupported else {
-                 print("Error: DataScanner is not supported on this device.")
-
-                 webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
-                 currentRequest = nil
-                 return
-             }
-            self.showBarcodeScanner = true
-
-        case "nfcTagRead":
+                print("Error: DataScanner is not supported on this device.")
+                webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable(NSLocalizedString("error.featureNotAvailable.barcodeScanner", comment: "Feature name: Barcode Scanner")))
+                currentRequest = nil
+                return
+            }
+            currentRequest = message
+            showBarcodeScanner = true
+        }
+        .on("nfcTagRead") { message in
             currentRequest = nil
             nfcTagReaderBridge.read(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "launchConfetti":
+        }
+        .on("launchConfetti") { message in
+            let action = "launchConfetti"
             guard let burstCount = ConfettiOverlayPresenter.shared.launchBurst() else {
                 webViewStore.sendErrorToWebView(action: action, error: AppError.internalError("Confetti overlay could not be attached."))
                 currentRequest = nil
                 return
             }
-            let response: [String: Any] = [
-                "action": action,
-                "launched": true,
-                "burstCount": burstCount
-            ]
-            webViewStore.sendResultToWebView(result: response)
+            webViewStore.sendResultToWebView(result: NativeCommandPayload.launchConfettiResponse(
+                request: message,
+                burstCount: burstCount
+            ))
             currentRequest = nil
-
-        case "tapToPayAvailability":
+        }
+        .on("tapToPayAvailability") { message in
             webViewStore.sendResultToWebView(result: tapToPayBridge.availabilityPayload(request: message))
             currentRequest = nil
-
-        case "tapToPayCollect":
+        }
+        .on("tapToPayCollect") { message in
             currentRequest = nil
             tapToPayBridge.collect(
                 request: message,
@@ -290,269 +332,289 @@ struct ContentView: View {
                     webViewStore.sendResultToWebView(result: result)
                 }
             }
-
-        case "deviceInfoGet":
+        }
+        .on("deviceInfoGet") { message in
             webViewStore.sendResultToWebView(result: deviceBridge.deviceInfo(request: message))
             currentRequest = nil
-
-        case "screenOrientationGet":
+        }
+        .on("screenOrientationGet") { message in
             webViewStore.sendResultToWebView(result: OrientationController.shared.statusPayload(request: message))
             currentRequest = nil
-
-        case "screenOrientationSet":
-            let mode = stringValue(message["mode"]).isEmpty ? stringValue(message["orientation"]) : stringValue(message["mode"])
-            var response = OrientationController.shared.setMode(mode.isEmpty ? "unlocked" : mode)
-            if let requestId = message["requestId"] {
-                response["requestId"] = requestId
-            }
-            webViewStore.sendResultToWebView(result: response)
+        }
+        .on("screenOrientationSet") { message in
+            webViewStore.sendResultToWebView(result: OrientationController.shared.setPayload(request: message))
             currentRequest = nil
-
-        case "wifiStatusGet":
+        }
+        .on("wifiStatusGet") { message in
             currentRequest = nil
             deviceBridge.wifiStatus(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "wifiConfigure":
+        }
+        .on("wifiConfigure") { message in
             currentRequest = nil
             deviceBridge.configureWifi(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "screenshotGet":
+        }
+        .on("screenshotGet") { message in
             currentRequest = nil
             deviceBridge.screenshot(request: message, webView: webViewStore.webView) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "geoLocationGet":
+        }
+        .on("geoLocationGet") { message in
             currentRequest = nil
             locationBridge.get(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "geoLocationStart":
+        }
+        .on("geoLocationStart") { message in
             webViewStore.sendResultToWebView(result: locationBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "geoLocationStop":
+        }
+        .on("geoLocationStop") { message in
             webViewStore.sendResultToWebView(result: locationBridge.stop(request: message))
             currentRequest = nil
-
-        case "arPositionStart":
+        }
+        .on("arPositionStart") { message in
             webViewStore.sendResultToWebView(result: arPositionBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "arPositionStop":
+        }
+        .on("arPositionStop") { message in
             webViewStore.sendResultToWebView(result: arPositionBridge.stop(request: message))
             currentRequest = nil
-
-        case "arGuidedMeasurementStart":
+        }
+        .on("arGuidedMeasurementStart") { message in
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "arGuidedMeasurementSetAnchors":
+        }
+        .on("arGuidedMeasurementSetAnchors") { message in
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.setAnchors(request: message))
             currentRequest = nil
-
-        case "arGuidedMeasurementUpdateStats":
+        }
+        .on("arGuidedMeasurementUpdateStats") { message in
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.updateStats(request: message))
             currentRequest = nil
-
-        case "arGuidedMeasurementStop":
+        }
+        .on("arGuidedMeasurementStop") { message in
             webViewStore.sendResultToWebView(result: arGuidedMeasurementBridge.stop(request: message))
             currentRequest = nil
-
-        case "roomPlanScanStart":
+        }
+        .onAll(BridgeActionCatalog.arOverlayOpenActions) { message in
+            webViewStore.sendResultToWebView(result: arOverlayBridge.open(request: message) { result in
+                webViewStore.sendResultToWebView(result: result)
+            })
+            currentRequest = nil
+        }
+        .onAll(BridgeActionCatalog.arOverlayCloseActions) { message in
+            webViewStore.sendResultToWebView(result: arOverlayBridge.close(request: message))
+            currentRequest = nil
+        }
+        .on("roomPlanScanStart") { message in
             webViewStore.sendResultToWebView(result: roomPlanBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "roomPlanScanStop":
+        }
+        .on("roomPlanScanStop") { message in
             webViewStore.sendResultToWebView(result: roomPlanBridge.stop(request: message))
             currentRequest = nil
-
-        case "roomPlanScanExport":
+        }
+        .on("roomPlanScanExport") { message in
             webViewStore.sendResultToWebView(result: roomPlanBridge.export(request: message))
             currentRequest = nil
-
-        case "soundPlay":
+        }
+        .on("soundPlay") { message in
             webViewStore.sendResultToWebView(result: deviceBridge.playSound(request: message))
             currentRequest = nil
-
-        case "notificationPermissionGet":
+        }
+        .on("notificationPermissionGet") { message in
             currentRequest = nil
             notificationBridge.permissionStatus(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "notificationPermissionRequest":
+        }
+        .on("notificationPermissionRequest") { message in
             currentRequest = nil
             notificationBridge.requestPermission(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "notificationShow":
+        }
+        .on("notificationShow") { message in
             currentRequest = nil
             notificationBridge.show(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "notificationSchedule":
+        }
+        .on("notificationSchedule") { message in
             currentRequest = nil
             notificationBridge.schedule(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "notificationCancel":
+        }
+        .on("notificationCancel") { message in
             webViewStore.sendResultToWebView(result: notificationBridge.cancel(request: message))
             currentRequest = nil
-
-        case "notificationCancelAll":
+        }
+        .on("notificationCancelAll") { message in
             webViewStore.sendResultToWebView(result: notificationBridge.cancelAll(request: message))
             currentRequest = nil
-
-        case "notificationList":
+        }
+        .on("notificationList") { message in
             currentRequest = nil
             notificationBridge.list(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "idleTimerStart":
+        }
+        .on("idleTimerStart") { message in
             webViewStore.sendResultToWebView(result: idleTimerBridge.start(request: message, webView: webViewStore.webView) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "idleTimerStop":
+        }
+        .on("idleTimerStop") { message in
             webViewStore.sendResultToWebView(result: idleTimerBridge.stop(request: message))
             currentRequest = nil
-
-        case "idleTimerReset":
+        }
+        .on("idleTimerReset") { message in
             webViewStore.sendResultToWebView(result: idleTimerBridge.reset(request: message))
             currentRequest = nil
-
-        case "idleActivity":
+        }
+        .on("idleActivity") { _ in
             idleTimerBridge.recordActivity()
             currentRequest = nil
-
-        case "screenStreamStart":
+        }
+        .on("screenStreamStart") { message in
             webViewStore.sendResultToWebView(result: screenStreamBridge.start(request: message, webView: webViewStore.webView) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "screenStreamStop":
+        }
+        .on("screenStreamStop") { message in
             webViewStore.sendResultToWebView(result: screenStreamBridge.stop(request: message))
             currentRequest = nil
-
-        case "sensorCapabilitiesGet":
+        }
+        .on("sensorCapabilitiesGet") { message in
             webViewStore.sendResultToWebView(result: sensorBridge.capabilities(request: message))
             currentRequest = nil
-
-        case "sensorStreamStart":
+        }
+        .on("sensorStreamStart") { message in
             webViewStore.sendResultToWebView(result: sensorBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             })
             currentRequest = nil
-
-        case "sensorStreamStop":
+        }
+        .on("sensorStreamStop") { message in
             webViewStore.sendResultToWebView(result: sensorBridge.stop(request: message))
             currentRequest = nil
-
-        case "configPairingShow":
+        }
+        .on("configPairingShow") { message in
             configureConfigPairingBridge()
             webViewStore.sendResultToWebView(result: configPairingBridge.startTargetSession(request: message))
             currentRequest = nil
-
-        case "configPairingStop":
+        }
+        .on("configPairingStop") { message in
             webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: message))
             currentRequest = nil
-
-        case "configPairingConnect":
+        }
+        .on("configPairingConnect") { message in
             configureConfigPairingBridge()
             webViewStore.sendResultToWebView(result: configPairingBridge.connect(request: message))
             currentRequest = nil
-
-        case "configPairingDisconnect":
+        }
+        .on("configPairingDisconnect") { message in
             webViewStore.sendResultToWebView(result: configPairingBridge.disconnect(request: message))
             currentRequest = nil
-
-        case "configPairingSend":
+        }
+        .on("configPairingSend") { message in
             webViewStore.sendResultToWebView(result: configPairingBridge.send(request: message))
             currentRequest = nil
-
-        case "settingsGet":
+        }
+        .on("settingsGet") { message in
             webViewStore.sendResultToWebView(result: settingsGetResponse(request: message))
             currentRequest = nil
-
-        case "settingsSet":
+        }
+        .on("settingsSet") { message in
             webViewStore.sendResultToWebView(result: settingsSetResponse(request: message))
             currentRequest = nil
-
-        case "continuousScanStart", "dataScanStart", "loginScanStart":
+        }
+        .on("reload") { message in
+            webViewStore.sendResultToWebView(result: NativeCommandPayload.reloadResponse(request: message))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                webViewStore.reloadCurrentOrNewURL()
+            }
+            currentRequest = nil
+        }
+        .onAll(BridgeActionCatalog.continuousScannerStartActions) { message in
+            let action = BridgeDispatcher.action(from: message) ?? "continuousScanStart"
             startContinuousScanner(action: action, request: message)
-
-        case "continuousScanStop", "dataScanEnd", "loginScanEnd":
+        }
+        .onAll(BridgeActionCatalog.continuousScannerStopActions) { message in
+            let action = BridgeDispatcher.action(from: message) ?? "continuousScanStop"
             stopContinuousScanner(action: action, request: message)
-
-        case "previewBoxLocationUpdate":
-            updateContinuousScannerPreviewRect(action: action, request: message)
-
-        case "beaconsStart":
+        }
+        .on("previewBoxLocationUpdate") { message in
+            updateContinuousScannerPreviewRect(action: "previewBoxLocationUpdate", request: message)
+        }
+        .on("beaconsStart") { message in
             let response = beaconBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
             webViewStore.sendResultToWebView(result: response)
             currentRequest = nil
-
-        case "beaconsStop":
+        }
+        .on("beaconsStop") { message in
             webViewStore.sendResultToWebView(result: beaconBridge.stop(request: message))
             currentRequest = nil
-
-        case "beaconAdvertiseStart":
+        }
+        .on("beaconAdvertiseStart") { message in
             let response = beaconAdvertiserBridge.start(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
             webViewStore.sendResultToWebView(result: response)
             currentRequest = nil
-
-        case "beaconAdvertiseStop":
+        }
+        .on("beaconAdvertiseStop") { message in
             webViewStore.sendResultToWebView(result: beaconAdvertiserBridge.stop(request: message))
             currentRequest = nil
-
-        case "printerEpsonHelloWorld":
+        }
+        .on("printerEpsonHelloWorld") { message in
             currentRequest = nil
             printerBridge.printEpsonHelloWorld(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "printerHelloWorld":
+        }
+        .on("printerHelloWorld") { message in
             currentRequest = nil
             printerBridge.printHelloWorld(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        case "printerDiscover":
+        }
+        .on("printerPrint") { message in
+            currentRequest = nil
+            webViewStore.sendResultToWebView(result: BridgeResponse.unavailable(
+                request: message,
+                action: "printerPrint",
+                message: "printerPrint is only implemented for Android/Sunmi printer targets. Use printerHelloWorld or printerEpsonHelloWorld on iOS."
+            ))
+        }
+        .on("printerDiscover") { message in
             currentRequest = nil
             printerBridge.discoverPrinters(request: message) { result in
                 webViewStore.sendResultToWebView(result: result)
             }
-
-        default:
-            print("Error: Received unknown action from JS: \(action)")
-
-            webViewStore.sendErrorToWebView(action: action, error: AppError.invalidRequest(String(format: NSLocalizedString("error.invalidRequest.unknownAction", comment: "Unknown action error format"), action)))
-            currentRequest = nil
         }
+        .build()
+
+        BridgeActionCatalog.assertRegisteredActions(router.actions)
+        return router
     }
 
     private var configPairingOverlay: some View {
@@ -647,38 +709,11 @@ struct ContentView: View {
     }
 
     private func settingsGetResponse(request: [String: Any]) -> [String: Any] {
-        var response = baseSettingsResponse(request: request, action: "settingsGet")
-        response["success"] = true
-        response["settings"] = AppSettings.shared.configurationSnapshot()
-        return response
+        settingsBridge.getResponse(request: request)
     }
 
     private func settingsSetResponse(request: [String: Any]) -> [String: Any] {
-        let token = stringValue(request["token"] ?? request["securityToken"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty, token == AppSettings.shared.securityToken else {
-            var response = baseSettingsResponse(request: request, action: "settingsSet")
-            response["success"] = false
-            response["error"] = "securityToken is required for settingsSet."
-            return response
-        }
-
-        let values = (request["settings"] as? [String: Any]) ?? request
-        let snapshot = AppSettings.shared.applyConfiguration(values)
-        var response = baseSettingsResponse(request: request, action: "settingsSet")
-        response["success"] = true
-        response["settings"] = snapshot
-        return response
-    }
-
-    private func baseSettingsResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
+        settingsBridge.setResponse(request: request)
     }
 
     private func showConfigPairingFromGesture() {
@@ -693,7 +728,7 @@ struct ContentView: View {
     private var continuousScannerOverlay: some View {
         GeometryReader { proxy in
             if let config = continuousScannerConfig {
-                let frame = scannerFrame(for: config.previewRect, in: proxy.size)
+                let frame = ContinuousScannerResponseBuilder.scannerFrame(for: config.previewRect, in: proxy.size)
                 ZStack(alignment: .topTrailing) {
                     ContinuousBarcodeScannerView(
                         config: config,
@@ -735,144 +770,55 @@ struct ContentView: View {
     }
 
     private func startContinuousScanner(action: String, request: [String: Any]) {
-        var config = continuousScannerConfig ?? ContinuousBarcodeScannerConfig()
-        config.action = action
-        config.mode = scannerMode(for: action, request: request)
-        config.camera = scannerCamera(for: action, request: request)
-        config.types = request["types"] as? [String] ?? config.types
-        config.repeatDelaySeconds = numericValue(request["repeatDelaySeconds"])
-            ?? numericValue(request["repeatDelay"])
-            ?? config.repeatDelaySeconds
-        config.previewRect = previewRect(from: request["previewRect"] as? [String: Any]) ?? config.previewRect
+        let config = ContinuousScannerResponseBuilder.config(
+            action: action,
+            request: request,
+            current: continuousScannerConfig
+        )
         continuousScannerConfig = config
 
-        webViewStore.sendResultToWebView(result: [
-            "platform": "ios",
-            "action": action,
-            "success": true,
-            "mode": config.mode,
-            "camera": config.camera,
-            "types": config.types,
-            "repeatDelaySeconds": config.repeatDelaySeconds,
-            "previewRect": previewRectPayload(config.previewRect)
-        ])
+        webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.startResponse(
+            action: action,
+            config: config
+        ))
         currentRequest = nil
     }
 
     private func stopContinuousScanner(action: String, request: [String: Any]) {
         continuousScannerConfig = nil
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action,
-            "success": true
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        webViewStore.sendResultToWebView(result: response)
+        webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.stopResponse(
+            action: action,
+            request: request
+        ))
         currentRequest = nil
     }
 
     private func updateContinuousScannerPreviewRect(action: String, request: [String: Any]) {
         guard var config = continuousScannerConfig else {
-            webViewStore.sendResultToWebView(result: [
-                "platform": "ios",
-                "action": action,
-                "success": false,
-                "error": "No continuous scanner is running."
-            ])
+            webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.errorResponse(
+                action: action,
+                message: "No continuous scanner is running."
+            ))
             currentRequest = nil
             return
         }
 
-        guard let previewRect = previewRect(from: request["previewRect"] as? [String: Any]) else {
-            webViewStore.sendResultToWebView(result: [
-                "platform": "ios",
-                "action": action,
-                "success": false,
-                "error": "Invalid previewRect."
-            ])
+        guard let previewRect = ContinuousScannerResponseBuilder.previewRect(from: request["previewRect"] as? [String: Any]) else {
+            webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.errorResponse(
+                action: action,
+                message: "Invalid previewRect."
+            ))
             currentRequest = nil
             return
         }
 
         config.previewRect = previewRect
         continuousScannerConfig = config
-        webViewStore.sendResultToWebView(result: [
-            "platform": "ios",
-            "action": action,
-            "success": true,
-            "previewRect": previewRectPayload(previewRect)
-        ])
+        webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.previewUpdateResponse(
+            action: action,
+            previewRect: previewRect
+        ))
         currentRequest = nil
-    }
-
-    private func scannerMode(for action: String, request: [String: Any]) -> String {
-        if let mode = request["mode"] as? String, !mode.isEmpty {
-            return mode
-        }
-        return action == "loginScanStart" ? "login" : "data"
-    }
-
-    private func scannerCamera(for action: String, request: [String: Any]) -> String {
-        if let camera = request["camera"] as? String, camera == "front" || camera == "back" {
-            return camera
-        }
-        return action == "loginScanStart" ? "front" : "back"
-    }
-
-    private func previewRect(from value: [String: Any]?) -> CGRect? {
-        guard let value,
-              let left = normalizedRectValue(value["left"] ?? value["x"]),
-              let top = normalizedRectValue(value["top"] ?? value["y"]),
-              let width = normalizedRectValue(value["width"]),
-              let height = normalizedRectValue(value["height"]) else {
-            return nil
-        }
-
-        let safeWidth = min(max(width, 0.1), 1)
-        let safeHeight = min(max(height, 0.1), 1)
-        let safeLeft = min(max(left, 0), 1 - safeWidth)
-        let safeTop = min(max(top, 0), 1 - safeHeight)
-        return CGRect(x: safeLeft, y: safeTop, width: safeWidth, height: safeHeight)
-    }
-
-    private func normalizedRectValue(_ value: Any?) -> CGFloat? {
-        guard let rawValue = numericValue(value) else { return nil }
-        let normalized = rawValue > 1 ? rawValue / 100 : rawValue
-        return CGFloat(normalized)
-    }
-
-    private func numericValue(_ value: Any?) -> Double? {
-        switch value {
-        case let doubleValue as Double:
-            return doubleValue
-        case let intValue as Int:
-            return Double(intValue)
-        case let numberValue as NSNumber:
-            return numberValue.doubleValue
-        case let stringValue as String:
-            return Double(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
-        default:
-            return nil
-        }
-    }
-
-    private func previewRectPayload(_ rect: CGRect) -> [String: Double] {
-        [
-            "left": Double(rect.minX),
-            "top": Double(rect.minY),
-            "width": Double(rect.width),
-            "height": Double(rect.height)
-        ]
-    }
-
-    private func scannerFrame(for rect: CGRect, in size: CGSize) -> CGRect {
-        let width = max(size.width * rect.width, 120)
-        let height = max(size.height * rect.height, 120)
-        let x = min(max(size.width * rect.minX, 0), max(size.width - width, 0))
-        let y = min(max(size.height * rect.minY, 0), max(size.height - height, 0))
-        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     private func showTapToPayTransition(_ phase: TapToPayBridge.Phase) {
@@ -909,12 +855,11 @@ struct ContentView: View {
 
     // MARK: - Result Handling
     private func handleDocumentScanResult(_ result: Result<VNDocumentCameraScan, AppError>) {
-        let action = currentRequest?["action"] as? String ?? "scanDocument" // Hole Action aus Request
+        let captureRequest = DocumentCaptureRequest(currentRequest)
+        let action = captureRequest.action
         switch result {
         case .success(let scan):
             print("Document scan successful. Processing \(scan.pageCount) pages.")
-            let requiresOCR = currentRequest?["ocr"] as? Bool ?? false
-            let outputType = currentRequest?["outputType"] as? String ?? "png"
 
             var images: [UIImage] = []
             for i in 0..<scan.pageCount {
@@ -928,13 +873,13 @@ struct ContentView: View {
                 return
             }
 
-            if requiresOCR {
+            if captureRequest.requiresOCR {
                 let recognizer = TextRecognizer(cameraScan: scan)
                 recognizer.recognizeText { ocrResult in
                     switch ocrResult {
                     case .success(let recognizedText):
                         print("OCR successful.")
-                        createAndSendDocumentResponse(action: action, images: images, text: recognizedText, outputType: outputType, pageCount: scan.pageCount)
+                        createAndSendDocumentResponse(action: action, images: images, text: recognizedText, outputType: captureRequest.outputType, pageCount: scan.pageCount)
                     case .failure(let ocrError):
                         print("OCR failed: \(ocrError.localizedDescription)")
                         // ocrError ist bereits ein AppError und somit lokalisiert
@@ -943,7 +888,7 @@ struct ContentView: View {
                      currentRequest = nil // Reset nach Abschluss der asynchronen Operation
                 }
             } else {
-                createAndSendDocumentResponse(action: action, images: images, text: nil, outputType: outputType, pageCount: scan.pageCount)
+                createAndSendDocumentResponse(action: action, images: images, text: nil, outputType: captureRequest.outputType, pageCount: scan.pageCount)
                 currentRequest = nil // Reset nach synchroner Operation
             }
 
@@ -956,51 +901,49 @@ struct ContentView: View {
     }
 
     private func createAndSendDocumentResponse(action: String, images: [UIImage], text: String?, outputType: String, pageCount: Int) {
-        var response: [String: Any] = ["action": action, "pages": pageCount]
-        if let text = text, !text.isEmpty { // Nur hinzufügen, wenn Text vorhanden ist
-            response["text"] = text
-        }
-
         if outputType.lowercased() == "pdf" {
             if let pdfDataURL = PDFGenerator.generatePDFDataURL(from: images) {
-                response["pdfData"] = pdfDataURL
-                response["format"] = "pdf"
+                let response = DocumentCaptureResponseBuilder.pdfResponse(
+                    action: action,
+                    pageCount: pageCount,
+                    text: text,
+                    pdfDataURL: pdfDataURL
+                )
+                webViewStore.sendResultToWebView(result: response)
             } else {
 
                 webViewStore.sendErrorToWebView(action: action, error: AppError.pdfCreationFailed)
                 return
             }
         } else {
-             let imageFormat: ImageConverter.ImageFormat = (outputType.lowercased() == "jpeg" || outputType.lowercased() == "jpg") ? .jpeg() : .png
+             let imageFormat = DocumentCaptureRequest.imageFormat(for: outputType)
              let imageDataURLs = ImageConverter.convertImagesToDataURLs(images: images, format: imageFormat)
              if !imageDataURLs.isEmpty {
-                 response["images"] = imageDataURLs
-
-                 response["format"] = (imageFormat == .png) ? "png" : "jpeg"
+                 let response = DocumentCaptureResponseBuilder.imageResponse(
+                    action: action,
+                    pageCount: pageCount,
+                    text: text,
+                    imageDataURLs: imageDataURLs,
+                    format: DocumentCaptureRequest.responseFormat(for: outputType)
+                 )
+                 webViewStore.sendResultToWebView(result: response)
              } else {
 
                  webViewStore.sendErrorToWebView(action: action, error: AppError.imageConversionFailed(NSLocalizedString("error.imageConversionFailed.noImagesConverted", comment: "No images could be converted error")))
                  return
              }
         }
-        webViewStore.sendResultToWebView(result: response)
     }
 
     private func handleImagePickerResult(_ result: Result<UIImage, AppError>) {
-        let action = currentRequest?["action"] as? String ?? "takePhoto"
+        let captureRequest = PhotoCaptureRequest(currentRequest)
+        let action = captureRequest.action
         switch result {
         case .success(let image):
             print("Photo capture successful.")
-            let outputType = currentRequest?["outputType"] as? String ?? "jpeg"
-            let shouldRemoveBackground = currentRequest?["removeBackground"] as? Bool ?? false
-            let cropTransparent = currentRequest?["cropTransparent"] as? Bool ?? false
-            let backgroundStyle = BackgroundRemoval.BackgroundStyle(
-                backgroundMode: currentRequest?["background"] as? String,
-                backgroundColorHex: currentRequest?["backgroundColor"] as? String
-            )
 
-            guard shouldRemoveBackground else {
-                sendPhotoResult(action: action, image: image, requestedOutputType: outputType, backgroundRemoved: false, backgroundStyle: backgroundStyle, cropped: false)
+            guard captureRequest.shouldRemoveBackground else {
+                sendPhotoResult(request: captureRequest, image: image, backgroundRemoved: false, cropped: false)
                 currentRequest = nil
                 return
             }
@@ -1013,15 +956,13 @@ struct ContentView: View {
 
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let processedImage = try BackgroundRemoval.removeBackground(from: image, style: backgroundStyle, cropTransparent: cropTransparent)
+                    let processedImage = try BackgroundRemoval.removeBackground(from: image, style: captureRequest.backgroundStyle, cropTransparent: captureRequest.cropTransparent)
                     DispatchQueue.main.async {
                         self.sendPhotoResult(
-                            action: action,
+                            request: captureRequest,
                             image: processedImage,
-                            requestedOutputType: outputType,
                             backgroundRemoved: true,
-                            backgroundStyle: backgroundStyle,
-                            cropped: cropTransparent && backgroundStyle.isTransparent
+                            cropped: captureRequest.cropTransparent && captureRequest.backgroundStyle.isTransparent
                         )
                         self.currentRequest = nil
                     }
@@ -1047,64 +988,151 @@ struct ContentView: View {
         }
     }
 
-    private func sendPhotoResult(action: String, image: UIImage, requestedOutputType: String, backgroundRemoved: Bool, backgroundStyle: BackgroundRemoval.BackgroundStyle, cropped: Bool) {
-        let outputTypeLower = requestedOutputType.lowercased()
-        let imageFormat: ImageConverter.ImageFormat
-
-        // Transparenter Hintergrund funktioniert nur mit PNG.
-        if backgroundRemoved && backgroundStyle.isTransparent {
-            imageFormat = .png
-        } else {
-            imageFormat = (outputTypeLower == "png") ? .png : .jpeg()
-        }
+    private func sendPhotoResult(request: PhotoCaptureRequest, image: UIImage, backgroundRemoved: Bool, cropped: Bool) {
+        let imageFormat = request.imageFormat(backgroundRemoved: backgroundRemoved)
 
         if let imageDataURL = ImageConverter.convertImageToDataURL(image: image, format: imageFormat) {
-            var response: [String: Any] = [
-                "action": action,
-                "imageData": imageDataURL,
-                "format": (imageFormat == .png) ? "png" : "jpeg"
-            ]
-
-            if backgroundRemoved {
-                response["backgroundRemoved"] = true
-                response["background"] = backgroundStyle.responseMode
-                response["cropped"] = cropped
-                if let colorHex = backgroundStyle.responseColorHex {
-                    response["backgroundColor"] = colorHex
-                }
-            }
+            let response = PhotoCaptureResponseBuilder.response(
+                action: request.action,
+                imageDataURL: imageDataURL,
+                format: request.responseFormat(backgroundRemoved: backgroundRemoved),
+                backgroundRemoved: backgroundRemoved,
+                backgroundMode: request.backgroundStyle.responseMode,
+                cropped: cropped,
+                backgroundColorHex: request.backgroundStyle.responseColorHex
+            )
 
             webViewStore.sendResultToWebView(result: response)
         } else {
             webViewStore.sendErrorToWebView(
-                action: action,
+                action: request.action,
                 error: AppError.imageConversionFailed(
                     String(
                         format: NSLocalizedString("error.imageConversionFailed.specificType", comment: "Image could not be converted to specific type error format"),
-                        requestedOutputType
+                        request.outputType
                     )
                 )
             )
         }
     }
 
-    private func handleBarcodeScanResult(_ result: Result<(code: String, format: String), AppError>) {
-        let action = currentRequest?["action"] as? String ?? "scanBarcode"
+    private func handlePortraitCaptureResult(_ result: Result<PortraitCaptureResult, AppError>) {
+        let captureRequest = PortraitCaptureRequest(currentRequest)
+        let action = captureRequest.action
+
+        switch result {
+        case .success(let captureResult):
+            guard !captureRequest.shouldRemoveBackground || BackgroundRemoval.isSupported else {
+                webViewStore.sendErrorToWebView(action: action, error: AppError.featureNotAvailable("Background Removal"))
+                currentRequest = nil
+                return
+            }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let cropResult: (image: UIImage, faceCount: Int)
+                    if captureRequest.faceCenteredCrop {
+                        cropResult = try PortraitImageProcessor.faceCenteredSquareCrop(captureResult.image, requiredFaces: captureRequest.requiredFaces)
+                    } else {
+                        cropResult = (captureResult.image, captureResult.detectedFaces)
+                    }
+
+                    let processedImage: UIImage
+                    let backgroundRemoved: Bool
+                    if captureRequest.shouldRemoveBackground {
+                        processedImage = try BackgroundRemoval.removeBackground(
+                            from: cropResult.image,
+                            style: captureRequest.backgroundStyle,
+                            cropTransparent: captureRequest.cropTransparent
+                        )
+                        backgroundRemoved = true
+                    } else {
+                        processedImage = cropResult.image
+                        backgroundRemoved = false
+                    }
+
+                    DispatchQueue.main.async {
+                        self.sendPortraitResult(
+                            request: captureRequest,
+                            captureResult: captureResult,
+                            image: processedImage,
+                            detectedFaces: cropResult.faceCount,
+                            backgroundRemoved: backgroundRemoved,
+                            cropped: captureRequest.faceCenteredCrop || (captureRequest.cropTransparent && captureRequest.backgroundStyle.isTransparent && backgroundRemoved)
+                        )
+                        self.currentRequest = nil
+                    }
+                } catch {
+                    let appError = (error as? AppError) ?? AppError.internalError(error.localizedDescription)
+                    DispatchQueue.main.async {
+                        self.webViewStore.sendErrorToWebView(action: action, error: appError)
+                        self.currentRequest = nil
+                    }
+                }
+            }
+
+        case .failure(let error):
+            print("Portrait capture failed: \(error.localizedDescription)")
+            webViewStore.sendErrorToWebView(action: action, error: error)
+            currentRequest = nil
+        }
+    }
+
+    private func sendPortraitResult(
+        request: PortraitCaptureRequest,
+        captureResult: PortraitCaptureResult,
+        image: UIImage,
+        detectedFaces: Int,
+        backgroundRemoved: Bool,
+        cropped: Bool
+    ) {
+        let imageFormat = request.imageFormat(backgroundRemoved: backgroundRemoved)
+
+        if let imageDataURL = ImageConverter.convertImageToDataURL(image: image, format: imageFormat) {
+            let response = PortraitCaptureResponseBuilder.response(
+                action: request.action,
+                imageDataURL: imageDataURL,
+                format: request.responseFormat(backgroundRemoved: backgroundRemoved),
+                selectedIndex: captureResult.selectedIndex,
+                variantsCaptured: captureResult.variantsCaptured,
+                requiredFaces: request.requiredFaces,
+                detectedFaces: detectedFaces,
+                faceCentered: request.faceCenteredCrop,
+                backgroundRemoved: backgroundRemoved,
+                backgroundMode: request.backgroundStyle.responseMode,
+                cropped: cropped,
+                backgroundColorHex: request.backgroundStyle.responseColorHex
+            )
+
+            webViewStore.sendResultToWebView(result: response)
+        } else {
+            webViewStore.sendErrorToWebView(
+                action: request.action,
+                error: AppError.imageConversionFailed(
+                    String(
+                        format: NSLocalizedString("error.imageConversionFailed.specificType", comment: "Image could not be converted to specific type error format"),
+                        request.outputType
+                    )
+                )
+            )
+        }
+    }
+
+    private func handleBarcodeScanResult(_ result: Result<BarcodeScannerResult, AppError>) {
+        let action = BarcodeCaptureRequest(currentRequest).action
         switch result {
         case .success(let scanResult):
-            if scanResult.code == "configChanged" && scanResult.format == "JSONConfig" {
-                print(NSLocalizedString("status.configurationChanged.reloading", comment: "Configuration changed, reloading webview status"))
-                // Die URL wurde bereits in AppSettings durch BarcodeScannerView geändert.
-                // webViewStore.reloadCurrentOrNewURL() wird die neue URL laden.
-                webViewStore.reloadCurrentOrNewURL()
-                // Kein sendResultToWebView, da die Aktion das Neuladen der UI ist.
+            if isRecoveryBarcodeRequest {
+                handleRecoveryBarcodeScan(code: scanResult.code, action: action)
+            } else if scanResult.code == "configChanged" && scanResult.format == "JSONConfig" {
+                handleConfigBarcodeScanResult(scanResult, action: action)
             } else {
                 print(String(format: NSLocalizedString("status.barcodeScan.success", comment: "Barcode scan successful status format"), scanResult.code, scanResult.format))
-                let response: [String: Any] = [
-                    "action": action,
-                    "code": scanResult.code,
-                    "format": scanResult.format
-                ]
+                let response = BarcodeResponseBuilder.response(
+                    action: action,
+                    code: scanResult.code,
+                    format: scanResult.format
+                )
                 webViewStore.sendResultToWebView(result: response)
             }
 
@@ -1113,6 +1141,43 @@ struct ContentView: View {
             webViewStore.sendErrorToWebView(action: action, error: error)
         }
         currentRequest = nil
+    }
+
+    private func handleConfigBarcodeScanResult(_ scanResult: BarcodeScannerResult, action: String) {
+        print(NSLocalizedString("status.configurationChanged.reloading", comment: "Configuration changed, reloading webview status"))
+        webViewStore.sendResultToWebView(result: BarcodeResponseBuilder.configChangedResponse(
+            request: currentRequest ?? ["action": action],
+            settings: scanResult.settings ?? AppSettings.shared.configurationSnapshot()
+        ))
+
+        guard var wifiRequest = scanResult.wifiRequest else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                webViewStore.reloadCurrentOrNewURL()
+            }
+            return
+        }
+
+        wifiRequest["requestId"] = stringValue(currentRequest?["requestId"])
+        deviceBridge.configureWifi(request: wifiRequest) { result in
+            webViewStore.sendResultToWebView(result: result)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                webViewStore.reloadCurrentOrNewURL()
+            }
+        }
+    }
+
+    private var isRecoveryBarcodeRequest: Bool {
+        RecoveryBarcodeHandler.isRecoveryRequest(currentRequest)
+    }
+
+    private func handleRecoveryBarcodeScan(code: String, action: String) {
+        switch recoveryBarcodeHandler.handle(code: code, action: action) {
+        case .invalid(let response):
+            webViewStore.sendResultToWebView(result: response)
+        case .applied(let serverURL, let snapshot):
+            print("Recovery QR updated server URL: \(snapshot["serverURL"] ?? serverURL)")
+            webViewStore.reloadCurrentOrNewURL()
+        }
     }
 
     // MARK: - Sheet Dismiss Handling

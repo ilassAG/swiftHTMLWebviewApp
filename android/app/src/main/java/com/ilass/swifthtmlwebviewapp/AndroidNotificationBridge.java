@@ -31,8 +31,6 @@ final class AndroidNotificationBridge {
     static final String EXTRA_CHANNEL_ID = "notificationChannelId";
     static final String EXTRA_DATA = "notificationData";
 
-    private static final String DEFAULT_CHANNEL_ID = "swift_html_alerts";
-    private static final String DEFAULT_CHANNEL_NAME = "Local alerts";
     private static final String PREFS_NAME = "swift_html_webview_notifications";
     private static final String PENDING_KEY = "pending";
 
@@ -40,51 +38,46 @@ final class AndroidNotificationBridge {
 
     AndroidNotificationBridge(Context context) {
         this.context = context.getApplicationContext();
-        ensureChannel(DEFAULT_CHANNEL_ID, DEFAULT_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
+        ensureChannel(AndroidNotificationPayload.DEFAULT_CHANNEL_ID, AndroidNotificationPayload.DEFAULT_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH);
     }
 
     JSONObject permissionStatus(JSONObject request) throws JSONException {
-        JSONObject response = baseResponse(request, "notificationPermissionGet");
-        response.put("success", true);
-        response.put("authorized", hasPermission());
-        response.put("authorizationStatus", authorizationStatus());
-        response.put("needsRuntimePermission", Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU);
-        response.put("settingsIntentAction", Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-        return response;
+        return AndroidNotificationPayload.permissionStatusResponse(
+                request,
+                hasPermission(),
+                authorizationStatus(),
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                Settings.ACTION_APP_NOTIFICATION_SETTINGS
+        );
     }
 
     JSONObject permissionRequestResult(JSONObject request, boolean granted) throws JSONException {
-        JSONObject response = baseResponse(request, "notificationPermissionRequest");
-        response.put("success", true);
-        response.put("authorized", hasPermission());
-        response.put("granted", granted);
-        response.put("authorizationStatus", authorizationStatus());
-        return response;
+        return AndroidNotificationPayload.permissionRequestResponse(
+                request,
+                hasPermission(),
+                granted,
+                authorizationStatus()
+        );
     }
 
     JSONObject show(JSONObject request) throws JSONException {
         if (!hasPermission()) {
             return permissionError(request, "notificationShow");
         }
-        String id = notificationId(request);
+        String id = AndroidNotificationPayload.notificationId(request);
         showNotification(context, request, id);
-
-        JSONObject response = baseResponse(request, "notificationShow");
-        response.put("success", true);
-        response.put("id", id);
-        response.put("immediate", true);
-        return response;
+        return AndroidNotificationPayload.showResponse(request, id);
     }
 
     JSONObject schedule(JSONObject request) throws JSONException {
         if (!hasPermission()) {
             return permissionError(request, "notificationSchedule");
         }
-        String id = notificationId(request);
+        String id = AndroidNotificationPayload.notificationId(request);
         long seconds = Math.max(1L, Math.round(request.optDouble("seconds",
                 request.optDouble("delaySeconds", request.optDouble("timeIntervalSeconds", 10.0)))));
         long triggerAtMs = System.currentTimeMillis() + seconds * 1000L;
-        JSONObject stored = notificationPayload(request, id);
+        JSONObject stored = AndroidNotificationPayload.notificationPayload(request, id);
         stored.put("scheduledAtMs", triggerAtMs);
         stored.put("seconds", seconds);
 
@@ -98,21 +91,15 @@ final class AndroidNotificationBridge {
 
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) {
-            return errorResponse(request, "notificationSchedule", "AlarmManager is not available.");
+            return AndroidNotificationPayload.errorResponse(request, "notificationSchedule", "AlarmManager is not available.");
         }
         alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent);
         storePending(id, stored);
-
-        JSONObject response = baseResponse(request, "notificationSchedule");
-        response.put("success", true);
-        response.put("id", id);
-        response.put("seconds", seconds);
-        response.put("scheduledAtMs", triggerAtMs);
-        return response;
+        return AndroidNotificationPayload.scheduleResponse(request, id, seconds, triggerAtMs);
     }
 
     JSONObject cancel(JSONObject request) throws JSONException {
-        JSONArray ids = idsFromRequest(request);
+        JSONArray ids = AndroidNotificationPayload.idsFromRequest(request);
         for (int index = 0; index < ids.length(); index += 1) {
             String id = ids.optString(index, "").trim();
             if (id.isEmpty()) {
@@ -121,11 +108,7 @@ final class AndroidNotificationBridge {
             cancelOne(id);
         }
 
-        JSONObject response = baseResponse(request, "notificationCancel");
-        response.put("success", true);
-        response.put("ids", ids);
-        response.put("count", ids.length());
-        return response;
+        return AndroidNotificationPayload.cancelResponse(request, ids);
     }
 
     JSONObject cancelAll(JSONObject request) throws JSONException {
@@ -140,35 +123,25 @@ final class AndroidNotificationBridge {
             manager.cancelAll();
         }
 
-        JSONObject response = baseResponse(request, "notificationCancelAll");
-        response.put("success", true);
-        return response;
+        return AndroidNotificationPayload.cancelAllResponse(request);
     }
 
     JSONObject list(JSONObject request) throws JSONException {
-        JSONObject response = baseResponse(request, "notificationList");
-        response.put("success", true);
-        response.put("pending", pendingArray());
-        response.put("delivered", new JSONArray());
-        return response;
+        return AndroidNotificationPayload.listResponse(request, pendingArray());
     }
 
     JSONObject openedEvent(Intent intent) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("platform", "android");
-        response.put("action", "notificationOpened");
-        response.put("success", true);
-        response.put("source", "local");
-        response.put("id", intent.getStringExtra(EXTRA_ID));
-        response.put("notification", notificationPayload(intent));
-        response.put("data", dataObject(intent.getStringExtra(EXTRA_DATA)));
-        return response;
+        return AndroidNotificationPayload.openedEvent(
+                intent.getStringExtra(EXTRA_ID),
+                notificationPayload(intent),
+                AndroidNotificationPayload.dataObject(intent.getStringExtra(EXTRA_DATA))
+        );
     }
 
     static void handleAlarmIntent(Context context, Intent intent) {
         String id = intent.getStringExtra(EXTRA_ID);
         try {
-            showNotification(context, notificationPayload(intent), id != null ? id : UUID.randomUUID().toString());
+            showNotification(context, notificationPayload(intent), AndroidNotificationPayload.nonEmpty(id, UUID.randomUUID().toString()));
             removePending(context, id);
         } catch (JSONException ignored) {
             // The receiver cannot report bridge errors; ignore malformed notification payloads.
@@ -176,8 +149,8 @@ final class AndroidNotificationBridge {
     }
 
     static void showNotification(Context context, JSONObject payload, String id) throws JSONException {
-        String channelId = nonEmpty(payload.optString("channelId", payload.optString("channel", "")), DEFAULT_CHANNEL_ID);
-        String channelName = nonEmpty(payload.optString("channelName", ""), DEFAULT_CHANNEL_NAME);
+        String channelId = AndroidNotificationPayload.nonEmpty(payload.optString("channelId", payload.optString("channel", "")), AndroidNotificationPayload.DEFAULT_CHANNEL_ID);
+        String channelName = AndroidNotificationPayload.nonEmpty(payload.optString("channelName", ""), AndroidNotificationPayload.DEFAULT_CHANNEL_NAME);
         int importance = importanceFromPayload(payload);
         ensureChannel(context, channelId, channelName, importance);
 
@@ -189,7 +162,7 @@ final class AndroidNotificationBridge {
                 .putExtra(EXTRA_SUBTITLE, payload.optString("subtitle", ""))
                 .putExtra(EXTRA_BODY, payload.optString("body", payload.optString("message", "")))
                 .putExtra(EXTRA_CHANNEL_ID, channelId)
-                .putExtra(EXTRA_DATA, dataString(payload));
+                .putExtra(EXTRA_DATA, AndroidNotificationPayload.dataString(payload));
         PendingIntent contentIntent = PendingIntent.getActivity(
                 context,
                 requestCode(id),
@@ -201,13 +174,13 @@ final class AndroidNotificationBridge {
                 ? new Notification.Builder(context, channelId)
                 : new Notification.Builder(context);
         builder.setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(nonEmpty(payload.optString("title", ""), "Notification"))
-                .setContentText(nonEmpty(payload.optString("body", payload.optString("message", "")), ""))
+                .setContentTitle(AndroidNotificationPayload.nonEmpty(payload.optString("title", ""), "Notification"))
+                .setContentText(AndroidNotificationPayload.nonEmpty(payload.optString("body", payload.optString("message", "")), ""))
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
                 .setCategory(Notification.CATEGORY_STATUS)
                 .setPriority(priorityFromImportance(importance))
-                .setTicker(nonEmpty(payload.optString("title", ""), "Notification"))
+                .setTicker(AndroidNotificationPayload.nonEmpty(payload.optString("title", ""), "Notification"))
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setShowWhen(true)
                 .setWhen(System.currentTimeMillis());
@@ -230,37 +203,18 @@ final class AndroidNotificationBridge {
     }
 
     private JSONObject permissionError(JSONObject request, String action) throws JSONException {
-        JSONObject response = baseResponse(request, action);
-        response.put("success", false);
-        response.put("authorized", false);
-        response.put("authorizationStatus", authorizationStatus());
-        response.put("error", "Notification permission is not granted.");
-        return response;
-    }
-
-    private JSONObject notificationPayload(JSONObject request, String id) throws JSONException {
-        JSONObject payload = new JSONObject();
-        payload.put("id", id);
-        payload.put("title", nonEmpty(request.optString("title", ""), "Notification"));
-        payload.put("subtitle", request.optString("subtitle", ""));
-        payload.put("body", request.optString("body", request.optString("message", "")));
-        payload.put("channelId", request.optString("channelId", DEFAULT_CHANNEL_ID));
-        payload.put("channelName", request.optString("channelName", DEFAULT_CHANNEL_NAME));
-        payload.put("importance", request.optString("importance", "high"));
-        payload.put("sound", !request.has("sound") || request.optBoolean("sound", true));
-        payload.put("data", request.optJSONObject("data") != null ? request.optJSONObject("data") : new JSONObject());
-        return payload;
+        return AndroidNotificationPayload.permissionError(request, action, authorizationStatus());
     }
 
     private static JSONObject notificationPayload(Intent intent) throws JSONException {
-        JSONObject payload = new JSONObject();
-        payload.put("id", intent.getStringExtra(EXTRA_ID));
-        payload.put("title", intent.getStringExtra(EXTRA_TITLE));
-        payload.put("subtitle", intent.getStringExtra(EXTRA_SUBTITLE));
-        payload.put("body", intent.getStringExtra(EXTRA_BODY));
-        payload.put("channelId", intent.getStringExtra(EXTRA_CHANNEL_ID));
-        payload.put("data", dataObject(intent.getStringExtra(EXTRA_DATA)));
-        return payload;
+        return AndroidNotificationPayload.notificationPayload(
+                intent.getStringExtra(EXTRA_ID),
+                intent.getStringExtra(EXTRA_TITLE),
+                intent.getStringExtra(EXTRA_SUBTITLE),
+                intent.getStringExtra(EXTRA_BODY),
+                intent.getStringExtra(EXTRA_CHANNEL_ID),
+                intent.getStringExtra(EXTRA_DATA)
+        );
     }
 
     private static Intent receiverIntent(Context context, JSONObject payload) {
@@ -270,27 +224,8 @@ final class AndroidNotificationBridge {
                 .putExtra(EXTRA_TITLE, payload.optString("title", "Notification"))
                 .putExtra(EXTRA_SUBTITLE, payload.optString("subtitle", ""))
                 .putExtra(EXTRA_BODY, payload.optString("body", ""))
-                .putExtra(EXTRA_CHANNEL_ID, payload.optString("channelId", DEFAULT_CHANNEL_ID))
-                .putExtra(EXTRA_DATA, dataString(payload));
-    }
-
-    private JSONArray idsFromRequest(JSONObject request) throws JSONException {
-        JSONArray ids = new JSONArray();
-        JSONArray requestIds = request.optJSONArray("ids");
-        if (requestIds != null) {
-            for (int index = 0; index < requestIds.length(); index += 1) {
-                String id = requestIds.optString(index, "").trim();
-                if (!id.isEmpty()) {
-                    ids.put(id);
-                }
-            }
-            return ids;
-        }
-        String id = notificationId(request);
-        if (!id.isEmpty()) {
-            ids.put(id);
-        }
-        return ids;
+                .putExtra(EXTRA_CHANNEL_ID, payload.optString("channelId", AndroidNotificationPayload.DEFAULT_CHANNEL_ID))
+                .putExtra(EXTRA_DATA, AndroidNotificationPayload.dataString(payload));
     }
 
     private void cancelOne(String id) throws JSONException {
@@ -349,10 +284,6 @@ final class AndroidNotificationBridge {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    private String notificationId(JSONObject request) {
-        return nonEmpty(request.optString("id", request.optString("notificationId", "")), UUID.randomUUID().toString());
-    }
-
     private boolean hasPermission() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
                 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
@@ -363,23 +294,6 @@ final class AndroidNotificationBridge {
             return "authorized";
         }
         return hasPermission() ? "authorized" : "denied";
-    }
-
-    private JSONObject baseResponse(JSONObject request, String action) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("platform", "android");
-        response.put("action", action);
-        if (request != null && request.has("requestId")) {
-            response.put("requestId", request.optString("requestId"));
-        }
-        return response;
-    }
-
-    private JSONObject errorResponse(JSONObject request, String action, String error) throws JSONException {
-        JSONObject response = baseResponse(request, action);
-        response.put("success", false);
-        response.put("error", error);
-        return response;
     }
 
     private static void removePending(Context context, String id) throws JSONException {
@@ -442,23 +356,6 @@ final class AndroidNotificationBridge {
     }
 
     private static int requestCode(String id) {
-        return nonEmpty(id, "notification").toLowerCase(Locale.US).hashCode() & 0x7fffffff;
-    }
-
-    private static String dataString(JSONObject payload) {
-        JSONObject data = payload.optJSONObject("data");
-        return data != null ? data.toString() : "{}";
-    }
-
-    private static JSONObject dataObject(String raw) throws JSONException {
-        if (raw == null || raw.trim().isEmpty()) {
-            return new JSONObject();
-        }
-        return new JSONObject(raw);
-    }
-
-    private static String nonEmpty(String value, String fallback) {
-        String trimmed = value != null ? value.trim() : "";
-        return trimmed.isEmpty() ? fallback : trimmed;
+        return AndroidNotificationPayload.nonEmpty(id, "notification").toLowerCase(Locale.US).hashCode() & 0x7fffffff;
     }
 }

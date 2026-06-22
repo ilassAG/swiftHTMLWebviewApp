@@ -186,17 +186,14 @@ final class ContinuousBarcodeScannerUIView: UIView, AVCaptureMetadataOutputObjec
             }
             lastSeenByCode[code] = now
 
-            let format = Self.displayName(for: readableObject.type)
-            let eventAction = config.mode == "login" ? "barcodeLogin" : "barcodeData"
-            onResult?([
-                "action": eventAction,
-                "sourceAction": config.action,
-                "mode": config.mode,
-                "camera": config.camera,
-                "code": code,
-                "format": format,
-                "timestamp": ISO8601DateFormatter().string(from: now)
-            ])
+            onResult?(
+                ContinuousScannerEventBuilder.event(
+                    config: config,
+                    code: code,
+                    format: Self.displayName(for: readableObject.type),
+                    date: now
+                )
+            )
         }
     }
 

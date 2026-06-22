@@ -12,10 +12,24 @@ import SwiftUI
 import VisionKit
 import Vision
 
+struct BarcodeScannerResult {
+    let code: String
+    let format: String
+    let settings: [String: Any]?
+    let wifiRequest: [String: Any]?
+
+    init(code: String, format: String, settings: [String: Any]? = nil, wifiRequest: [String: Any]? = nil) {
+        self.code = code
+        self.format = format
+        self.settings = settings
+        self.wifiRequest = wifiRequest
+    }
+}
+
 struct BarcodeScannerView: UIViewControllerRepresentable {
     @Binding var isPresented: Bool
     let recognizedDataTypes: Set<DataScannerViewController.RecognizedDataType>
-    let completion: (Result<(code: String, format: String), AppError>) -> Void
+    let completion: (Result<BarcodeScannerResult, AppError>) -> Void
 
     static var isSupported: Bool { DataScannerViewController.isSupported }
     static var isAvailable: Bool { DataScannerViewController.isAvailable }
@@ -98,67 +112,32 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                         let formatString = BarcodeUtils.mapSymbologyToDisplayName(symbology)
                         print(String(format: NSLocalizedString("status.barcodeRecognized", comment: "Barcode recognized status format"), code, formatString))
 
-                        // JSON-Verarbeitung für Konfigurationsänderung
-                        if let jsonData = code.data(using: .utf8) {
-                            do {
-                                if let json = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
-                                    if let toolmode = json["toolmode"] as? String, toolmode == "changeConfig",
-                                       let scannedToken = json["securityToken"] as? String {
-
-                                        let storedToken = AppSettings.shared.securityToken
-                                        if scannedToken == storedToken {
-                                            var configValues = json
-                                            if let defaultServerUrl = json["defaultServerUrl"] as? String, !defaultServerUrl.isEmpty {
-                                                configValues["serverURL"] = defaultServerUrl
-                                                print(String(format: NSLocalizedString("status.securityToken.match", comment: "Security token match status format"), defaultServerUrl))
-                                            }
-                                            let snapshot = AppSettings.shared.applyConfiguration(configValues)
-                                            if let newSecurityToken = snapshot["securityToken"] as? String, !newSecurityToken.isEmpty {
-                                                print(String(format: NSLocalizedString("status.newSecurityToken.set", comment: "New security token set status format"), newSecurityToken))
-                                            }
-
-                                            // Die completion wird hier nicht direkt mit dem Code aufgerufen,
-                                            // da die ContentView das Neuladen der WebView übernimmt.
-                                            // Wir signalisieren Erfolg, aber ohne den Barcode-Inhalt direkt weiterzugeben,
-                                            // da die Aktion (URL-Änderung und ggf. Token-Änderung) wichtiger ist.
-                                            // Alternativ könnte man einen speziellen Erfolgstyp für "configChanged" einführen.
-                                            // Fürs Erste rufen wir die normale completion auf, aber ContentView wird
-                                            // durch die Änderung in AppSettings.shared.serverURL (und ggf. securityToken) getriggert,
-                                            // die WebView neu zu laden (via scenePhase oder einen direkteren Mechanismus).
-                                            // Um das Neuladen explizit anzustoßen, könnte man hier eine Notification posten
-                                            // oder direkt auf den webViewStore zugreifen, falls er hier verfügbar wäre.
-                                            // Da der Coordinator keinen direkten Zugriff auf den webViewStore in ContentView hat,
-                                            // verlassen wir uns auf den bestehenden Mechanismus in ContentView (scenePhase)
-                                            // oder fügen später einen dedizierten Notification-Handler in ContentView hinzu.
-
-                                            hasCompleted = true
-                                            scanner.stopScanning()
-                                            Task { @MainActor in
-                                                // Wir signalisieren Erfolg, aber die ContentView muss das Neuladen handhaben.
-                                                // Wir könnten hier einen speziellen Wert oder eine leere Zeichenkette zurückgeben,
-                                                // um anzuzeigen, dass die Konfiguration geändert wurde.
-                                                // Fürs Erste geben wir den ursprünglichen Code zurück, aber die Hauptaktion ist die URL-Änderung.
-                                                parent.completion(.success((code: "configChanged", format: "JSONConfig")))
-                                                parent.isPresented = false
-                                            }
-                                            return
-                                        } else {
-                                            print(String(format: NSLocalizedString("error.securityToken.mismatch", comment: "Security token mismatch error format"), scannedToken, storedToken))
-                                            // Fehlerbehandlung für Token-Mismatch
-                                            hasCompleted = true
-                                            scanner.stopScanning()
-                                            Task { @MainActor in
-                                                parent.completion(.failure(.invalidConfiguration(NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error"))))
-                                                parent.isPresented = false
-                                            }
-                                            return
-                                        }
-                                    }
+                        if let config = ConfigQRCodeParser().parse(code: code) {
+                            let storedToken = AppSettings.shared.securityToken
+                            guard !config.token.isEmpty, config.token == storedToken else {
+                                print(NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error"))
+                                hasCompleted = true
+                                scanner.stopScanning()
+                                Task { @MainActor in
+                                    parent.completion(.failure(.invalidConfiguration(NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error"))))
+                                    parent.isPresented = false
                                 }
-                            } catch {
-                                print(String(format: NSLocalizedString("error.qr.jsonParseFailed", comment: "QR JSON parse failed error format"), error.localizedDescription))
-                                // Kein kritischer Fehler, wenn JSON nicht geparst werden kann, fahre mit normaler Barcode-Verarbeitung fort.
+                                return
                             }
+
+                            let snapshot = AppSettings.shared.applyConfiguration(config.settings)
+                            hasCompleted = true
+                            scanner.stopScanning()
+                            Task { @MainActor in
+                                parent.completion(.success(BarcodeScannerResult(
+                                    code: "configChanged",
+                                    format: "JSONConfig",
+                                    settings: snapshot,
+                                    wifiRequest: config.wifiRequest
+                                )))
+                                parent.isPresented = false
+                            }
+                            return
                         }
 
                         // Normale Barcode-Verarbeitung, wenn keine Konfigurationsänderung
@@ -166,7 +145,7 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
                         scanner.stopScanning()
 
                         Task { @MainActor in
-                            parent.completion(.success((code: code, format: formatString)))
+                            parent.completion(.success(BarcodeScannerResult(code: code, format: formatString)))
                             parent.isPresented = false
                         }
                         return

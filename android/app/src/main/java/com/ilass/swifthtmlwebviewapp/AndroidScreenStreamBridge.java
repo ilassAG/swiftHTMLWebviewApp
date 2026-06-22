@@ -11,7 +11,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,19 +55,19 @@ final class AndroidScreenStreamBridge {
     JSONObject start(JSONObject request) throws JSONException {
         stopInternal(false);
 
-        targetUrl = nonEmpty(request.optString("targetUrl", ""), request.optString("url", ""));
-        if (targetUrl.isEmpty()) {
-            return response(request, "screenStreamStart", false, "targetUrl is required.");
+        AndroidScreenStreamPayload.StreamRequest streamRequest = AndroidScreenStreamPayload.streamRequest(request);
+        if (!streamRequest.hasTargetUrl()) {
+            return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "targetUrl is required.");
         }
 
-        format = request.optString("format", "jpeg").toLowerCase(Locale.US);
-        if (!"jpeg".equals(format) && !"jpg".equals(format)) {
-            return response(request, "screenStreamStart", false, "Only jpeg is implemented in this Android build.");
+        if (!streamRequest.isJpeg()) {
+            return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "Only jpeg is implemented in this Android build.");
         }
-        format = "jpeg";
-        fps = clamp(request.optInt("fps", 2), 1, 10);
-        quality = clamp(request.optInt("quality", 65), 25, 95);
-        maxWidth = clamp(request.optInt("maxWidth", 720), 240, 1920);
+        targetUrl = streamRequest.targetUrl;
+        format = streamRequest.format;
+        fps = streamRequest.fps;
+        quality = streamRequest.quality;
+        maxWidth = streamRequest.maxWidth;
         framesSent = 0;
         bytesSent = 0;
         startedAtMs = System.currentTimeMillis();
@@ -98,22 +97,12 @@ final class AndroidScreenStreamBridge {
             }
         });
 
-        JSONObject ack = response(request, "screenStreamStart", true, null);
-        ack.put("targetUrl", targetUrl);
-        ack.put("transport", "websocket");
-        ack.put("format", format);
-        ack.put("fps", fps);
-        ack.put("quality", quality);
-        ack.put("maxWidth", maxWidth);
-        return ack;
+        return AndroidScreenStreamPayload.startAck(request, streamRequest);
     }
 
     JSONObject stop(JSONObject request) throws JSONException {
         stopInternal(true);
-        JSONObject ack = response(request, "screenStreamStop", true, null);
-        ack.put("frames", framesSent);
-        ack.put("bytes", bytesSent);
-        return ack;
+        return AndroidScreenStreamPayload.stopAck(request, framesSent, bytesSent);
     }
 
     void shutdown() {
@@ -184,14 +173,7 @@ final class AndroidScreenStreamBridge {
 
     private void sendTextMeta(WebSocket socket) {
         try {
-            JSONObject meta = new JSONObject();
-            meta.put("type", "screenStreamMeta");
-            meta.put("platform", "android");
-            meta.put("format", format);
-            meta.put("fps", fps);
-            meta.put("quality", quality);
-            meta.put("maxWidth", maxWidth);
-            socket.send(meta.toString());
+            socket.send(AndroidScreenStreamPayload.meta(format, fps, quality, maxWidth).toString());
         } catch (JSONException ignored) {
             // Metadata is optional; binary frames still carry the stream.
         }
@@ -204,15 +186,7 @@ final class AndroidScreenStreamBridge {
         }
         lastStatsAtMs = now;
         try {
-            JSONObject event = new JSONObject();
-            event.put("platform", "android");
-            event.put("action", "screenStreamStats");
-            event.put("success", true);
-            event.put("frames", framesSent);
-            event.put("bytes", bytesSent);
-            event.put("lastFrameBytes", lastFrameBytes);
-            event.put("durationSeconds", Math.max(0.001, (now - startedAtMs) / 1000.0));
-            listener.onScreenStreamEvent(event);
+            listener.onScreenStreamEvent(AndroidScreenStreamPayload.stats(framesSent, bytesSent, lastFrameBytes, startedAtMs, now));
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }
@@ -220,18 +194,7 @@ final class AndroidScreenStreamBridge {
 
     private void emitEvent(String action, boolean success, String message) {
         try {
-            JSONObject event = new JSONObject();
-            event.put("platform", "android");
-            event.put("action", action);
-            event.put("success", success);
-            if (message != null && !message.isEmpty()) {
-                if (success) {
-                    event.put("message", message);
-                } else {
-                    event.put("error", message);
-                }
-            }
-            listener.onScreenStreamEvent(event);
+            listener.onScreenStreamEvent(AndroidScreenStreamPayload.event(action, success, message));
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }
@@ -247,28 +210,4 @@ final class AndroidScreenStreamBridge {
         webSocket = null;
     }
 
-    private JSONObject response(JSONObject request, String action, boolean success, String error) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("platform", "android");
-        response.put("action", action);
-        response.put("success", success);
-        if (request != null && request.has("requestId")) {
-            response.put("requestId", request.optString("requestId"));
-        }
-        if (error != null && !error.isEmpty()) {
-            response.put("error", error);
-        }
-        return response;
-    }
-
-    private int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private String nonEmpty(String value, String fallback) {
-        if (value == null || value.trim().isEmpty()) {
-            return fallback == null ? "" : fallback.trim();
-        }
-        return value.trim();
-    }
 }

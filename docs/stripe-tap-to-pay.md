@@ -87,8 +87,10 @@ Response:
 
 ```json
 {
+  "platform": "ios",
   "action": "tapToPayAvailability",
   "requestId": "...",
+  "success": true,
   "available": true,
   "readerType": "apple_built_in"
 }
@@ -98,8 +100,10 @@ If StripeTerminal is not linked or the device cannot run Tap to Pay:
 
 ```json
 {
+  "platform": "ios",
   "action": "tapToPayAvailability",
   "requestId": "...",
+  "success": true,
   "available": false,
   "readerType": "apple_built_in",
   "reason": "..."
@@ -124,9 +128,11 @@ Success response:
 
 ```json
 {
+  "platform": "ios",
   "action": "tapToPayCollect",
   "requestId": "...",
   "paymentId": "your-local-payment-id",
+  "success": true,
   "paymentIntentId": "pi_...",
   "status": "succeeded",
   "nativeStatus": "processed"
@@ -137,9 +143,12 @@ Cancel response:
 
 ```json
 {
+  "platform": "ios",
   "action": "tapToPayCollect",
   "requestId": "...",
   "paymentId": "your-local-payment-id",
+  "success": false,
+  "error": "...",
   "cancelled": true,
   "reason": "..."
 }
@@ -149,9 +158,11 @@ Error response:
 
 ```json
 {
+  "platform": "ios",
   "action": "tapToPayCollect",
   "requestId": "...",
   "paymentId": "your-local-payment-id",
+  "success": false,
   "error": "..."
 }
 ```

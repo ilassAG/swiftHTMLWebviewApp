@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>WIFIMeister</string>
+	<string>WebView Demo</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -38,7 +38,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Diese App benötigt Zugriff auf die Kamera, um Dokumente zu scannen, Fotos aufzunehmen, QR-/Barcodes zu lesen und per RoomPlan/LiDAR Raumplaene zu erfassen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Diese App verbindet sich mit dem WIFIMeister-Backend im lokalen Netzwerk, um Messdaten, Raumkarten und Geraetekopplung zu synchronisieren.</string>
+	<string>Diese App verbindet sich mit konfigurierten Web-Backends im lokalen Netzwerk.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Diese App benötigt Standortzugriff, um konfigurierte iBeacon-Sender in der Nähe zu erkennen.</string>
 	<key>UIApplicationSceneManifest</key>

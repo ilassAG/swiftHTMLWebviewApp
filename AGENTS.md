@@ -10,6 +10,13 @@
 
 The wrapper should expose native capabilities to web apps. Product-specific business logic must stay in the consuming web app/backend.
 
+Product-specific native app identity, production URLs, icons, splash/loading
+assets, signing references, store metadata, and release decisions belong in the
+private product repositories. Keep this open-source wrapper generic: add shared
+bridge behavior, optional native modules, demo/example config, validation tools,
+and sanitized fixtures here. Do not add new real product data to this
+repository unless the user explicitly asks for a temporary migration step.
+
 ## Current Native Bridge Contract
 Web apps call native features by posting messages into the platform bridge. Keep the web-facing API stable across iOS and Android.
 

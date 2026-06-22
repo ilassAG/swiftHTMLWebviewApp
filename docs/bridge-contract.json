@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "description": "Machine-readable native bridge action contract for swiftHTMLWebviewApp variants.",
+  "responseShape": {
+    "requiredEchoFields": ["action"],
+    "recommendedEchoFields": ["platform", "requestId", "success"],
+    "errorField": "error"
+  },
+  "legacyCompatibility": {
+    "description": "Known legacy response omissions that are intentionally preserved for existing web apps until the corresponding action is versioned or normalized.",
+    "actions": {
+      "scanDocument": {
+        "platforms": ["ios"],
+        "omitsRecommendedFields": ["platform", "requestId", "success"],
+        "reason": "Existing iOS document-scan integrations consume legacy pages/images/pdfData fields without the newer envelope fields.",
+        "tests": [
+          "ios/swiftHTMLWebviewAppTests/CaptureResponseBuilderTests.swift"
+        ]
+      },
+      "takePhoto": {
+        "platforms": ["ios"],
+        "omitsRecommendedFields": ["platform", "requestId", "success"],
+        "reason": "Existing iOS photo integrations consume legacy imageData/background fields without the newer envelope fields.",
+        "tests": [
+          "ios/swiftHTMLWebviewAppTests/CaptureResponseBuilderTests.swift"
+        ]
+      },
+      "scanBarcode": {
+        "platforms": ["ios"],
+        "omitsRecommendedFields": ["platform", "requestId", "success"],
+        "reason": "Existing iOS one-shot scanner integrations consume legacy code/format fields without the newer envelope fields.",
+        "tests": [
+          "ios/swiftHTMLWebviewAppTests/BarcodeResponseBuilderTests.swift"
+        ]
+      }
+    }
+  },
+  "responseProfiles": {
+    "documentCapture": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "photoCapture": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "scannerRead": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "streamControl": {
+      "delivery": "callback-and-events",
+      "resultCount": "control-response-and-events",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "previewUpdate": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "diagnosticsRead": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "settingsRead": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "settingsWrite": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "nativeCommand": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "arSession": {
+      "delivery": "callback-and-events",
+      "resultCount": "control-response-and-events",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "roomPlanSession": {
+      "delivery": "callback-and-events",
+      "resultCount": "control-response-and-events",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "notificationCommand": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "configPairing": {
+      "delivery": "callback-and-events",
+      "resultCount": "control-response-and-events",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "tapToPayAvailability": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "tapToPayCollection": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "printerDiscovery": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    },
+    "printerJob": {
+      "delivery": "callback",
+      "resultCount": "single",
+      "requiredEchoFields": ["action"],
+      "errorField": "error"
+    }
+  },
+  "emittedEvents": {
+    "barcodeData": {
+      "source": "continuous scanner",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "sourceAction", "mode", "code"]
+    },
+    "barcodeLogin": {
+      "source": "continuous scanner",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "sourceAction", "mode", "code"]
+    },
+    "beacons": {
+      "source": "beacon ranging",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "count", "beacons"]
+    },
+    "geoLocation": {
+      "source": "location stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "location"]
+    },
+    "arPosition": {
+      "source": "ARKit position stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "position", "orientation", "trackingState"]
+    },
+    "arGuidedReady": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success"]
+    },
+    "arGuidedPosition": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "position", "orientation", "trackingState"]
+    },
+    "arGuidedRelocalizing": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action"]
+    },
+    "arGuidedRelocalized": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action"]
+    },
+    "arGuidedStartAnchorConfirmed": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "position"]
+    },
+    "arGuidedAnchorCaptured": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "position"]
+    },
+    "arGuidedError": {
+      "source": "ARKit guided measurement",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success", "error"]
+    },
+    "arOverlayReady": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success"]
+    },
+    "arOverlayClosed": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action"]
+    },
+    "arOverlayError": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success", "error"]
+    },
+    "arOverlayItemSelected": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "id"]
+    },
+    "arOverlayRelocalizing": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action"]
+    },
+    "arOverlayRelocalized": {
+      "source": "ARKit overlay",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action"]
+    },
+    "roomPlanScanResult": {
+      "source": "RoomPlan scanner",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success", "normalizedPlan"]
+    },
+    "roomPlanScanError": {
+      "source": "RoomPlan scanner",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success", "error"]
+    },
+    "notificationReceived": {
+      "source": "local notification",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "source"]
+    },
+    "notificationOpened": {
+      "source": "local notification",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "source"]
+    },
+    "idleTick": {
+      "source": "idle timer",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "idleSeconds", "timeoutSeconds"]
+    },
+    "idleTimeout": {
+      "source": "idle timer",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "idleSeconds", "timeoutSeconds"]
+    },
+    "sensorData": {
+      "source": "sensor stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "sensors"]
+    },
+    "screenStreamOpen": {
+      "source": "screen stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success"]
+    },
+    "screenStreamStats": {
+      "source": "screen stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "frames", "bytes"]
+    },
+    "screenStreamError": {
+      "source": "screen stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success", "error"]
+    },
+    "screenStreamClosed": {
+      "source": "screen stream",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "success"]
+    },
+    "configPairingEvent": {
+      "source": "config pairing",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "role", "event"]
+    },
+    "configPairingChunk": {
+      "source": "config pairing",
+      "delivery": "native BLE transport",
+      "requiredFields": ["action", "chunkId", "index", "total"]
+    },
+    "configPairingResponse": {
+      "source": "config pairing",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "role", "command", "requestId"]
+    }
+  },
+  "actions": [
+    { "name": "scanDocument", "ios": "implemented", "android": "implemented", "responseProfile": "documentCapture" },
+    { "name": "takePhoto", "ios": "implemented", "android": "implemented", "responseProfile": "photoCapture" },
+    { "name": "portraitCapture", "ios": "implemented", "android": "unavailable", "responseProfile": "photoCapture" },
+    { "name": "scanBarcode", "ios": "implemented", "android": "implemented", "responseProfile": "scannerRead" },
+    { "name": "nfcTagRead", "ios": "implemented", "android": "implemented", "responseProfile": "scannerRead" },
+    { "name": "continuousScanStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["barcodeData", "barcodeLogin"] },
+    { "name": "continuousScanStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "dataScanStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "aliasOf": "continuousScanStart", "emits": ["barcodeData"] },
+    { "name": "dataScanEnd", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "aliasOf": "continuousScanStop" },
+    { "name": "loginScanStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "aliasOf": "continuousScanStart", "emits": ["barcodeLogin"] },
+    { "name": "loginScanEnd", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "aliasOf": "continuousScanStop" },
+    { "name": "previewBoxLocationUpdate", "ios": "implemented", "android": "implemented", "responseProfile": "previewUpdate" },
+    { "name": "beaconsStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["beacons"] },
+    { "name": "beaconsStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "beaconAdvertiseStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "beaconAdvertiseStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "deviceInfoGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "settingsGet", "ios": "implemented", "android": "implemented", "responseProfile": "settingsRead" },
+    { "name": "settingsSet", "ios": "implemented", "android": "implemented", "responseProfile": "settingsWrite" },
+    { "name": "screenOrientationGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "screenOrientationSet", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
+    { "name": "wifiStatusGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "wifiConfigure", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
+    { "name": "screenshotGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "geoLocationGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "geoLocationStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["geoLocation"] },
+    { "name": "geoLocationStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "arPositionStart", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "emits": ["arPosition"] },
+    { "name": "arPositionStop", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession" },
+    { "name": "arGuidedMeasurementStart", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "emits": ["arGuidedReady", "arGuidedPosition", "arGuidedRelocalizing", "arGuidedRelocalized", "arGuidedStartAnchorConfirmed", "arGuidedAnchorCaptured", "arGuidedError"] },
+    { "name": "arGuidedMeasurementSetAnchors", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "emits": ["arGuidedAnchorCaptured", "arGuidedError"] },
+    { "name": "arGuidedMeasurementUpdateStats", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession" },
+    { "name": "arGuidedMeasurementStop", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession" },
+    { "name": "arOverlayOpen", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "emits": ["arOverlayReady", "arOverlayItemSelected", "arOverlayRelocalizing", "arOverlayRelocalized", "arOverlayClosed", "arOverlayError"] },
+    { "name": "arOverlayClose", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "emits": ["arOverlayClosed"] },
+    { "name": "arReplayOpen", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "aliasOf": "arOverlayOpen", "emits": ["arOverlayReady", "arOverlayItemSelected", "arOverlayRelocalizing", "arOverlayRelocalized", "arOverlayClosed", "arOverlayError"] },
+    { "name": "arReplayClose", "ios": "implemented", "android": "unavailable", "responseProfile": "arSession", "aliasOf": "arOverlayClose", "emits": ["arOverlayClosed"] },
+    { "name": "roomPlanScanStart", "ios": "implemented", "android": "unavailable", "responseProfile": "roomPlanSession", "emits": ["roomPlanScanResult", "roomPlanScanError"] },
+    { "name": "roomPlanScanStop", "ios": "implemented", "android": "unavailable", "responseProfile": "roomPlanSession" },
+    { "name": "roomPlanScanExport", "ios": "implemented", "android": "unavailable", "responseProfile": "roomPlanSession" },
+    { "name": "soundPlay", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
+    { "name": "notificationPermissionGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "notificationPermissionRequest", "ios": "implemented", "android": "implemented", "responseProfile": "notificationCommand" },
+    { "name": "notificationShow", "ios": "implemented", "android": "implemented", "responseProfile": "notificationCommand", "emits": ["notificationReceived", "notificationOpened"] },
+    { "name": "notificationSchedule", "ios": "implemented", "android": "implemented", "responseProfile": "notificationCommand", "emits": ["notificationReceived", "notificationOpened"] },
+    { "name": "notificationCancel", "ios": "implemented", "android": "implemented", "responseProfile": "notificationCommand" },
+    { "name": "notificationCancelAll", "ios": "implemented", "android": "implemented", "responseProfile": "notificationCommand" },
+    { "name": "notificationList", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "idleTimerStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["idleTick", "idleTimeout"] },
+    { "name": "idleTimerReset", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "idleTimerStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "sensorCapabilitiesGet", "ios": "implemented", "android": "implemented", "responseProfile": "diagnosticsRead" },
+    { "name": "sensorStreamStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["sensorData"] },
+    { "name": "sensorStreamStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl" },
+    { "name": "screenStreamStart", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["screenStreamOpen", "screenStreamStats", "screenStreamError", "screenStreamClosed"] },
+    { "name": "screenStreamStop", "ios": "implemented", "android": "implemented", "responseProfile": "streamControl", "emits": ["screenStreamClosed"] },
+    { "name": "configPairingShow", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing", "emits": ["configPairingEvent"] },
+    { "name": "configPairingStop", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing" },
+    { "name": "configPairingConnect", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing", "emits": ["configPairingEvent"] },
+    { "name": "configPairingDisconnect", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing" },
+    { "name": "configPairingSend", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing", "emits": ["configPairingChunk", "configPairingResponse", "configPairingEvent"] },
+    { "name": "reload", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
+    { "name": "launchConfetti", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
+    { "name": "tapToPayAvailability", "ios": "optional", "android": "optional", "responseProfile": "tapToPayAvailability" },
+    { "name": "tapToPayCollect", "ios": "optional", "android": "optional", "responseProfile": "tapToPayCollection" },
+    { "name": "printerDiscover", "ios": "optional", "android": "optional", "responseProfile": "printerDiscovery" },
+    { "name": "printerHelloWorld", "ios": "optional", "android": "optional", "responseProfile": "printerJob" },
+    { "name": "printerPrint", "ios": "unavailable", "android": "implemented", "responseProfile": "printerJob" },
+    { "name": "printerEpsonHelloWorld", "ios": "optional", "android": "optional", "responseProfile": "printerJob" }
+  ],
+  "secureDocumentActions": {
+    "status": "planned",
+    "source": "docs/secure-document-chain-of-trust-plan.md",
+    "actions": [
+      "secureCapabilitiesGet",
+      "secureAppEnroll",
+      "secureChallengeSign",
+      "secureKeyList",
+      "secureKeyDelete",
+      "secureDocumentScan",
+      "secureBlobUpload",
+      "secureGrantCreate",
+      "secureGrantRevoke",
+      "secureDocumentOpen",
+      "secureSessionEnd"
+    ]
+  }
+}

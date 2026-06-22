@@ -17,7 +17,7 @@
 "error.dataScanner.startFailed" = "Le scanner n'a pas pu démarrer : %@";
 "status.barcodeRecognized" = "Code-barres reconnu : %@ (Format : %@)";
 "status.securityToken.match" = "Le jeton de sécurité correspond. Mise à jour de l'URL du serveur vers : %@";
-"error.securityToken.mismatch" = "Le jeton de sécurité ne correspond pas. Scanné : %@, Stocké : %@";
+"error.securityToken.mismatch" = "Le jeton de sécurité ne correspond pas.";
 "error.qr.jsonParseFailed" = "Impossible d'analyser le JSON du code QR : %@";
 "warning.barcode.noStringValue" = "Le code-barres reconnu n'a pas de valeur chaîne.";
 "warning.dataScanner.unrecognizedItem" = "Type d'élément non reconnu détecté.";

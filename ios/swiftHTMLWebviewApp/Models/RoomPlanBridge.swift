@@ -45,23 +45,14 @@ final class RoomPlanBridge: ObservableObject {
         }
 
         scannerVisible = true
-        var response = baseResponse(request: request, action: "roomPlanScanStart")
-        response["success"] = true
-        response["supported"] = true
-        response["source"] = "roomplan"
-        response["coordinateSystem"] = "roomplan-local-meter"
-        return response
+        return RoomPlanPayload.startResponse(request: request, supported: true)
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         #if canImport(RoomPlan)
         if #available(iOS 16.0, *), let controller = captureController as? RoomPlanCaptureViewController {
             controller.finishCapture()
-            var response = baseResponse(request: request, action: "roomPlanScanStop")
-            response["success"] = true
-            response["state"] = "processing"
-            response["message"] = "RoomPlan scan stopped. Processing result."
-            return response
+            return RoomPlanPayload.stopProcessingResponse(request: request)
         }
         #endif
         return errorResponse(request: request, action: "roomPlanScanStop", error: "No active RoomPlan scan.")
@@ -69,12 +60,7 @@ final class RoomPlanBridge: ObservableObject {
 
     func export(request: [String: Any]) -> [String: Any] {
         if let latestResult {
-            var response = latestResult
-            response["action"] = "roomPlanScanExport"
-            if let requestId = request["requestId"] {
-                response["requestId"] = requestId
-            }
-            return response
+            return RoomPlanPayload.exportResponse(latestResult: latestResult, request: request)
         }
         return errorResponse(request: request, action: "roomPlanScanExport", error: "No RoomPlan result available yet.")
     }
@@ -92,14 +78,7 @@ final class RoomPlanBridge: ObservableObject {
     }
 
     func emitState(_ state: String, message: String = "") {
-        var response = baseResponse(request: latestRequest, action: "roomPlanScanState")
-        response["success"] = true
-        response["source"] = "roomplan"
-        response["state"] = state
-        if !message.isEmpty {
-            response["message"] = message
-        }
-        eventHandler?(response)
+        eventHandler?(RoomPlanPayload.stateEvent(request: latestRequest, state: state, message: message))
     }
 
     func emitError(_ error: String) {
@@ -126,26 +105,20 @@ final class RoomPlanBridge: ObservableObject {
         let previewSVG = previewSVG(plan: normalizedPlan)
         let rawRoomPlan = rawRoomPlanPayload(room: room)
 
-        var response = baseResponse(request: latestRequest, action: "roomPlanScanResult")
-        response["success"] = true
-        response["supported"] = true
-        response["source"] = "roomplan"
-        response["coordinateSystem"] = "roomplan-local-meter"
-        response["normalizedPlan"] = normalizedPlan
-        response["previewSvg"] = previewSVG
-        response["raw"] = rawRoomPlan
-        if let worldMapPayload {
-            response.merge(worldMapPayload) { _, new in new }
-        } else {
-            response["worldMapAvailable"] = false
-        }
-        response["counts"] = [
-            "walls": room.walls.count,
-            "doors": room.doors.count,
-            "windows": room.windows.count,
-            "openings": room.openings.count,
-            "objects": room.objects.count
-        ]
+        let response = RoomPlanPayload.resultEvent(
+            request: latestRequest,
+            normalizedPlan: normalizedPlan,
+            previewSVG: previewSVG,
+            rawRoomPlan: rawRoomPlan,
+            worldMapPayload: worldMapPayload,
+            counts: [
+                "walls": room.walls.count,
+                "doors": room.doors.count,
+                "windows": room.windows.count,
+                "openings": room.openings.count,
+                "objects": room.objects.count
+            ]
+        )
         latestResult = response
         eventHandler?(response)
         scannerVisible = false
@@ -153,24 +126,13 @@ final class RoomPlanBridge: ObservableObject {
     }
     #endif
 
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
-    }
-
     private func errorResponse(request: [String: Any], action: String, error: String) -> [String: Any] {
-        var response = baseResponse(request: request, action: action)
-        response["success"] = false
-        response["supported"] = Self.isSupported()
-        response["source"] = "roomplan"
-        response["error"] = error
-        return response
+        RoomPlanPayload.errorResponse(
+            request: request,
+            action: action,
+            error: error,
+            supported: Self.isSupported()
+        )
     }
 }
 
@@ -593,7 +555,9 @@ private func previewSVG(plan: [String: Any]) -> String {
         let y = number(object["y"])
         let width = max(0.1, number(object["width"]))
         let height = max(0.1, number(object["height"]))
-        return #"<rect x="\#(format(x - width / 2))" y="\#(format(-y - height / 2))" width="\#(format(width))" height="\#(format(height))" class="object"/>"#
+        let degrees = -number(object["rotation"]) * 180 / .pi
+        let transform = abs(degrees) > 0.001 ? #" transform="rotate(\#(format(degrees)) \#(format(x)) \#(format(-y)))""# : ""
+        return #"<rect x="\#(format(x - width / 2))" y="\#(format(-y - height / 2))" width="\#(format(width))" height="\#(format(height))" class="object"\#(transform)/>"#
     }.joined()
 
     return #"<svg xmlns="http://www.w3.org/2000/svg" viewBox="\#(format(minX)) \#(format(minY)) \#(format(width)) \#(format(height))"><style>.bg{fill:#0d100d}.wall{stroke:#d7e6cf;stroke-width:.08;stroke-linecap:round;vector-effect:non-scaling-stroke}.object{fill:rgba(159,232,112,.14);stroke:rgba(159,232,112,.42);stroke-width:.035;vector-effect:non-scaling-stroke}</style><rect class="bg" x="\#(format(minX))" y="\#(format(minY))" width="\#(format(width))" height="\#(format(height))"/>\#(objects)\#(walls)</svg>"#

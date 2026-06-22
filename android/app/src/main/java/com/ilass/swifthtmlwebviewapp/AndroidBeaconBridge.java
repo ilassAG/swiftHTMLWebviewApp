@@ -1,13 +1,9 @@
 package com.ilass.swifthtmlwebviewapp;
 
-import android.Manifest;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-
-import androidx.core.content.ContextCompat;
 
 import org.altbeacon.beacon.Beacon;
 import org.altbeacon.beacon.BeaconManager;
@@ -19,11 +15,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.text.SimpleDateFormat;
 import java.util.Collection;
-import java.util.Date;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 
 final class AndroidBeaconBridge {
@@ -31,7 +24,7 @@ final class AndroidBeaconBridge {
         void onBeaconEvent(JSONObject event);
     }
 
-    static final String DEFAULT_BEACON_UUID = "7763A937-B779-4D31-A20C-49E83047048F";
+    static final String DEFAULT_BEACON_UUID = AndroidBeaconPayload.DEFAULT_BEACON_UUID;
     private static final long STALE_AFTER_MS = 4000L;
 
     private final Context context;
@@ -78,20 +71,14 @@ final class AndroidBeaconBridge {
     }
 
     boolean hasRequiredPermissions() {
-        boolean locationGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED;
-        if (!locationGranted) {
-            return false;
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return true;
-        }
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-                && ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+        return AndroidPermissionPolicy.allGranted(
+                context,
+                AndroidPermissionPolicy.beaconScanPermissions(Build.VERSION.SDK_INT)
+        );
     }
 
     JSONObject start(JSONObject request) throws JSONException {
-        String uuid = validUUID(request.optString("uuid", "")) ? request.optString("uuid") : DEFAULT_BEACON_UUID;
+        String uuid = AndroidBeaconPayload.rangingUUID(request);
         region = new Region("SwiftHTMLWebviewAppBeacons", Identifier.parse(uuid), null, null);
         stableBeacons.clear();
 
@@ -103,18 +90,12 @@ final class AndroidBeaconBridge {
         handler.removeCallbacks(pruneRunnable);
         handler.postDelayed(pruneRunnable, 1000L);
 
-        JSONObject response = baseResponse(request, "beaconsStart");
-        response.put("success", true);
-        response.put("uuid", uuid);
-        response.put("provider", "android_altbeacon");
-        return response;
+        return AndroidBeaconPayload.rangingStartResponse(request, uuid);
     }
 
     JSONObject stop(JSONObject request) throws JSONException {
         stopInternal();
-        JSONObject response = baseResponse(request, "beaconsStop");
-        response.put("success", true);
-        return response;
+        return AndroidBeaconPayload.rangingStopResponse(request);
     }
 
     void shutdown() {
@@ -151,7 +132,7 @@ final class AndroidBeaconBridge {
             }
             stable.accuracy = beacon.getDistance();
             stable.rssi = beacon.getRssi();
-            stable.proximity = proximityLabel(beacon.getDistance());
+            stable.proximity = AndroidBeaconPayload.proximityLabel(beacon.getDistance());
             stable.lastSeenMs = now;
             stableBeacons.put(key, stable);
         }
@@ -170,24 +151,16 @@ final class AndroidBeaconBridge {
     private void sendCurrentBeacons() {
         try {
             JSONArray beaconsArray = new JSONArray();
-            JSONObject kassaMap = new JSONObject();
+            JSONObject legacyMap = new JSONObject();
             long now = System.currentTimeMillis();
             for (StableBeacon stable : stableBeacons.values()) {
                 JSONObject beaconJson = stable.toJson(now);
                 beaconsArray.put(beaconJson);
-                kassaMap.put(String.valueOf(stable.minor), beaconJson);
+                legacyMap.put(String.valueOf(stable.minor), beaconJson);
             }
 
-            JSONObject event = new JSONObject();
-            event.put("platform", "android");
-            event.put("action", "beacons");
-            event.put("success", true);
-            event.put("uuid", region != null && region.getId1() != null ? region.getId1().toString() : DEFAULT_BEACON_UUID);
-            event.put("count", beaconsArray.length());
-            event.put("beacons", beaconsArray);
-            event.put("kassaBeacons", kassaMap);
-            event.put("timestamp", timestamp(now));
-            listener.onBeaconEvent(event);
+            String uuid = region != null && region.getId1() != null ? region.getId1().toString() : DEFAULT_BEACON_UUID;
+            listener.onBeaconEvent(AndroidBeaconPayload.beaconsEvent(uuid, beaconsArray, legacyMap, now));
         } catch (JSONException ignored) {
             // Ignore malformed telemetry; the next ranging cycle can try again.
         }
@@ -200,42 +173,6 @@ final class AndroidBeaconBridge {
                 && beacon.getId1() != null
                 && beacon.getId2() != null
                 && beacon.getId3() != null;
-    }
-
-    private static JSONObject baseResponse(JSONObject request, String action) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("platform", "android");
-        response.put("action", action);
-        if (request != null && request.has("requestId")) {
-            response.put("requestId", request.optString("requestId"));
-        }
-        return response;
-    }
-
-    private static boolean validUUID(String value) {
-        try {
-            java.util.UUID.fromString(value);
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private static String proximityLabel(double distance) {
-        if (distance < 0) {
-            return "unknown";
-        }
-        if (distance <= 0.5) {
-            return "immediate";
-        }
-        if (distance <= 3.0) {
-            return "near";
-        }
-        return "far";
-    }
-
-    private static String timestamp(long timeMs) {
-        return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date(timeMs));
     }
 
     private static final class StableBeacon {
@@ -254,15 +191,15 @@ final class AndroidBeaconBridge {
         }
 
         JSONObject toJson(long now) throws JSONException {
-            JSONObject json = new JSONObject();
-            json.put("proximityUUID", uuid);
-            json.put("major", major);
-            json.put("minor", minor);
-            json.put("proximity", proximity);
-            json.put("accuracy", accuracy);
-            json.put("rssi", rssi);
-            json.put("age", Math.max(0, now - lastSeenMs) / 1000.0);
-            return json;
+            return AndroidBeaconPayload.beaconObject(
+                    uuid,
+                    major,
+                    minor,
+                    proximity,
+                    accuracy,
+                    rssi,
+                    now - lastSeenMs
+            );
         }
     }
 }

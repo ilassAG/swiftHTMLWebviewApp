@@ -17,7 +17,7 @@
 "error.dataScanner.startFailed" = "扫描器无法启动: %@";
 "status.barcodeRecognized" = "已识别条形码: %@ (格式: %@)";
 "status.securityToken.match" = "安全令牌匹配。正在将服务器 URL 更新为: %@";
-"error.securityToken.mismatch" = "安全令牌不匹配。扫描到的: %@, 存储的: %@";
+"error.securityToken.mismatch" = "安全令牌不匹配。";
 "error.qr.jsonParseFailed" = "无法从二维码解析 JSON: %@";
 "warning.barcode.noStringValue" = "识别的条形码没有字符串值。";
 "warning.dataScanner.unrecognizedItem" = "检测到无法识别的项目类型。";

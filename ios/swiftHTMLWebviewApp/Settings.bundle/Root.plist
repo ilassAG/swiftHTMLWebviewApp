@@ -19,7 +19,7 @@
             <key>Key</key>
             <string>server_url_preference</string>
             <key>DefaultValue</key>
-            <string>http://10.10.10.249:18080/mobile/?link=link_24d13638414f568d&amp;v=20260610-worldmap1</string>
+            <string>local</string>
             <key>IsSecure</key>
             <false/>
             <key>KeyboardType</key>
@@ -37,7 +37,7 @@
             <key>Key</key>
             <string>security_token_preference</string>
             <key>DefaultValue</key>
-            <string>change-me-before-production</string>
+            <string></string>
             <key>IsSecure</key>
             <true/>
             <key>KeyboardType</key>
@@ -215,7 +215,7 @@
             <key>Key</key>
             <string>beacon_uuid</string>
             <key>DefaultValue</key>
-            <string>7763A937-B779-4D31-A20C-49E83047048F</string>
+            <string>00000000-0000-0000-0000-000000000000</string>
             <key>IsSecure</key>
             <false/>
             <key>KeyboardType</key>

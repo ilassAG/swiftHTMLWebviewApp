@@ -17,7 +17,7 @@
 "error.dataScanner.startFailed" = "Scanner could not be started: %@";
 "status.barcodeRecognized" = "Barcode recognized: %@ (Format: %@)";
 "status.securityToken.match" = "Security token match. Updating server URL to: %@";
-"error.securityToken.mismatch" = "Security token mismatch. Scanned: %@, Stored: %@";
+"error.securityToken.mismatch" = "Security token mismatch.";
 "error.qr.jsonParseFailed" = "Failed to parse JSON from QR code: %@";
 "warning.barcode.noStringValue" = "Recognized barcode has no string value.";
 "warning.dataScanner.unrecognizedItem" = "Unrecognized item type detected.";

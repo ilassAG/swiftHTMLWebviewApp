@@ -17,21 +17,23 @@ final class SensorBridge: ObservableObject {
     private var eventHandler: (([String: Any]) -> Void)?
 
     func capabilities(request: [String: Any]) -> [String: Any] {
-        var response = baseResponse(request: request, action: "sensorCapabilitiesGet")
-        response["success"] = true
-        response["sensors"] = [
-            ["typeName": "accelerometer", "available": motion.isAccelerometerAvailable],
-            ["typeName": "gyroscope", "available": motion.isGyroAvailable],
-            ["typeName": "magnetometer", "available": motion.isMagnetometerAvailable],
-            ["typeName": "deviceMotion", "available": motion.isDeviceMotionAvailable]
-        ]
-        return response
+        SensorPayload.capabilitiesResponse(
+            request: request,
+            sensors: [
+                .init(typeName: "accelerometer", available: motion.isAccelerometerAvailable),
+                .init(typeName: "gyroscope", available: motion.isGyroAvailable),
+                .init(typeName: "magnetometer", available: motion.isMagnetometerAvailable),
+                .init(typeName: "deviceMotion", available: motion.isDeviceMotionAvailable)
+            ],
+            arOverlaySupported: AROverlayBridge.isSupported()
+        )
     }
 
     func start(request: [String: Any], eventHandler: @escaping ([String: Any]) -> Void) -> [String: Any] {
         stopInternal()
         self.eventHandler = eventHandler
-        intervalSeconds = max(0.1, (doubleValue(request["intervalMs"]) ?? 500) / 1000.0)
+        let streamRequest = SensorPayload.streamRequest(from: request)
+        intervalSeconds = streamRequest.intervalSeconds
         let updateInterval = intervalSeconds
 
         if motion.isAccelerometerAvailable {
@@ -57,17 +59,12 @@ final class SensorBridge: ObservableObject {
             }
         }
 
-        var response = baseResponse(request: request, action: "sensorStreamStart")
-        response["success"] = true
-        response["intervalMs"] = Int(intervalSeconds * 1000)
-        return response
+        return SensorPayload.streamStartResponse(request: request, streamRequest: streamRequest)
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         stopInternal()
-        var response = baseResponse(request: request, action: "sensorStreamStop")
-        response["success"] = true
-        return response
+        return SensorPayload.stopResponse(request: request)
     }
 
     func shutdown() {
@@ -75,48 +72,43 @@ final class SensorBridge: ObservableObject {
     }
 
     private func emitSnapshot() {
-        var sensors: [[String: Any]] = []
+        var sensors: [SensorPayload.MotionSample] = []
         if let data = motion.accelerometerData {
-            sensors.append([
-                "typeName": "accelerometer",
-                "values": [data.acceleration.x, data.acceleration.y, data.acceleration.z],
-                "timestampSeconds": data.timestamp
-            ])
+            sensors.append(.init(
+                typeName: "accelerometer",
+                values: [data.acceleration.x, data.acceleration.y, data.acceleration.z],
+                timestampSeconds: data.timestamp
+            ))
         }
         if let data = motion.gyroData {
-            sensors.append([
-                "typeName": "gyroscope",
-                "values": [data.rotationRate.x, data.rotationRate.y, data.rotationRate.z],
-                "timestampSeconds": data.timestamp
-            ])
+            sensors.append(.init(
+                typeName: "gyroscope",
+                values: [data.rotationRate.x, data.rotationRate.y, data.rotationRate.z],
+                timestampSeconds: data.timestamp
+            ))
         }
         if let data = motion.magnetometerData {
-            sensors.append([
-                "typeName": "magnetometer",
-                "values": [data.magneticField.x, data.magneticField.y, data.magneticField.z],
-                "timestampSeconds": data.timestamp
-            ])
+            sensors.append(.init(
+                typeName: "magnetometer",
+                values: [data.magneticField.x, data.magneticField.y, data.magneticField.z],
+                timestampSeconds: data.timestamp
+            ))
         }
         if let data = motion.deviceMotion {
-            sensors.append([
-                "typeName": "deviceMotion",
-                "attitude": [
+            sensors.append(.init(
+                typeName: "deviceMotion",
+                timestampSeconds: data.timestamp,
+                attitude: [
                     "roll": data.attitude.roll,
                     "pitch": data.attitude.pitch,
                     "yaw": data.attitude.yaw
                 ],
-                "gravity": [data.gravity.x, data.gravity.y, data.gravity.z],
-                "userAcceleration": [data.userAcceleration.x, data.userAcceleration.y, data.userAcceleration.z],
-                "timestampSeconds": data.timestamp
-            ])
+                gravity: [data.gravity.x, data.gravity.y, data.gravity.z],
+                userAcceleration: [data.userAcceleration.x, data.userAcceleration.y, data.userAcceleration.z]
+            ))
         }
 
-        eventHandler?([
-            "platform": "ios",
-            "action": "sensorData",
-            "success": true,
-            "sensors": sensors
-        ])
+        eventHandler?(SensorPayload.sensorDataEvent(samples: sensors))
     }
 
     private func stopInternal() {
@@ -126,16 +118,5 @@ final class SensorBridge: ObservableObject {
         motion.stopGyroUpdates()
         motion.stopMagnetometerUpdates()
         motion.stopDeviceMotionUpdates()
-    }
-
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
     }
 }

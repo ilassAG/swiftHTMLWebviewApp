@@ -19,8 +19,9 @@ final class IdleTimerBridge: ObservableObject {
 
     func start(request: [String: Any], webView: WKWebView, eventHandler: @escaping ([String: Any]) -> Void) -> [String: Any] {
         self.eventHandler = eventHandler
-        timeoutSeconds = max(1, doubleValue(request["timeoutSeconds"]) ?? 30)
-        intervalSeconds = max(0.25, doubleValue(request["intervalSeconds"]) ?? 1)
+        let config = IdleTimerPayload.startRequest(from: request)
+        timeoutSeconds = config.timeoutSeconds
+        intervalSeconds = config.intervalSeconds
         resetActivity()
         injectActivityShim(into: webView)
         timer?.invalidate()
@@ -29,26 +30,18 @@ final class IdleTimerBridge: ObservableObject {
                 self?.tick()
             }
         }
-        var response = baseResponse(request: request, action: "idleTimerStart")
-        response["success"] = true
-        response["timeoutSeconds"] = timeoutSeconds
-        response["intervalSeconds"] = intervalSeconds
-        return response
+        return IdleTimerPayload.startResponse(request: request, config: config)
     }
 
     func stop(request: [String: Any]) -> [String: Any] {
         timer?.invalidate()
         timer = nil
-        var response = baseResponse(request: request, action: "idleTimerStop")
-        response["success"] = true
-        return response
+        return IdleTimerPayload.stopResponse(request: request)
     }
 
     func reset(request: [String: Any]) -> [String: Any] {
         resetActivity()
-        var response = baseResponse(request: request, action: "idleTimerReset")
-        response["success"] = true
-        return response
+        return IdleTimerPayload.resetResponse(request: request)
     }
 
     func recordActivity() {
@@ -93,23 +86,10 @@ final class IdleTimerBridge: ObservableObject {
     }
 
     private func emit(action: String, idleSeconds: TimeInterval) {
-        eventHandler?([
-            "platform": "ios",
-            "action": action,
-            "success": true,
-            "idleSeconds": idleSeconds,
-            "timeoutSeconds": timeoutSeconds
-        ])
-    }
-
-    private func baseResponse(request: [String: Any], action: String) -> [String: Any] {
-        var response: [String: Any] = [
-            "platform": "ios",
-            "action": action
-        ]
-        if let requestId = request["requestId"] {
-            response["requestId"] = requestId
-        }
-        return response
+        eventHandler?(IdleTimerPayload.event(
+            action: action,
+            idleSeconds: idleSeconds,
+            timeoutSeconds: timeoutSeconds
+        ))
     }
 }

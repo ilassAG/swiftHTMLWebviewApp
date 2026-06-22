@@ -23,7 +23,6 @@ import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -38,14 +37,12 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -69,13 +66,13 @@ final class AndroidConfigPairingBridge {
         void hidePairingOverlay();
     }
 
-    private static final UUID SERVICE_UUID = UUID.fromString("6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A01");
-    private static final UUID COMMAND_UUID = UUID.fromString("6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A02");
-    private static final UUID RESPONSE_UUID = UUID.fromString("6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A03");
+    private static final UUID SERVICE_UUID = AndroidConfigPairingProtocol.SERVICE_UUID;
+    private static final UUID COMMAND_UUID = AndroidConfigPairingProtocol.COMMAND_UUID;
+    private static final UUID RESPONSE_UUID = AndroidConfigPairingProtocol.RESPONSE_UUID;
     private static final UUID CLIENT_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final long SESSION_LIFETIME_MS = 300000L;
     private static final int SINGLE_NOTIFICATION_LIMIT = 160;
-    private static final int CHUNK_PAYLOAD_SIZE = 32;
+    private static final int CHUNK_PAYLOAD_SIZE = AndroidConfigPairingProtocol.CHUNK_PAYLOAD_SIZE;
 
     private final Host host;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -84,15 +81,15 @@ final class AndroidConfigPairingBridge {
     private BluetoothGattCharacteristic responseCharacteristic;
     private BluetoothLeAdvertiser advertiser;
     private final Set<BluetoothDevice> subscribedDevices = new HashSet<>();
-    private final Map<String, ChunkAccumulator> targetInboundChunks = new HashMap<>();
-    private final Map<String, ChunkAccumulator> centralInboundChunks = new HashMap<>();
+    private final Map<String, AndroidConfigPairingProtocol.ChunkAccumulator> targetInboundChunks = new HashMap<>();
+    private final Map<String, AndroidConfigPairingProtocol.ChunkAccumulator> centralInboundChunks = new HashMap<>();
     private final ArrayList<byte[]> centralWriteQueue = new ArrayList<>();
     private BluetoothDevice targetDevice;
 
     private BluetoothLeScanner scanner;
     private BluetoothGatt centralGatt;
     private BluetoothGattCharacteristic centralCommandCharacteristic;
-    private PairingTarget pairingTarget;
+    private AndroidConfigPairingProtocol.PairingTarget pairingTarget;
     private boolean centralWriteInProgress = false;
 
     private String sessionId = "";
@@ -106,62 +103,50 @@ final class AndroidConfigPairingBridge {
     JSONObject startTargetSession(JSONObject request) throws JSONException {
         BluetoothAdapter adapter = bluetoothAdapter();
         if (adapter == null || !adapter.isEnabled()) {
-            return errorResponse(request, "configPairingShow", "Bluetooth is not enabled or not available.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingShow", "Bluetooth is not enabled or not available.");
         }
 
         sessionId = UUID.randomUUID().toString();
         sessionSecret = randomBase64Url(18);
         sessionExpiresAtMs = System.currentTimeMillis() + SESSION_LIFETIME_MS;
         JSONObject identity = targetIdentity();
-        String payload = pairingPayload(sessionId, sessionSecret, sessionExpiresAtMs, identity);
+        String payload = AndroidConfigPairingProtocol.pairingPayload(sessionId, sessionSecret, sessionExpiresAtMs, identity);
 
         Bitmap qrBitmap;
         try {
             qrBitmap = qrBitmap(payload, 720);
         } catch (WriterException error) {
-            return errorResponse(request, "configPairingShow", "Could not generate config pairing QR code.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingShow", "Could not generate config pairing QR code.");
         }
 
         host.showPairingOverlay(payload, qrBitmap, false);
         startGattServer();
         startAdvertising();
 
-        JSONObject response = baseResponse(request, "configPairingShow");
-        response.put("success", true);
-        response.put("payload", payload);
-        response.put("expiresAt", sessionExpiresAtMs / 1000L);
-        response.put("transport", "ble-gatt");
-        response.put("serviceUUID", SERVICE_UUID.toString());
-        response.put("targetIdentity", identity);
-        response.put("deviceName", identity.optString("deviceName", ""));
-        response.put("deviceUUID", identity.optString("deviceUUID", ""));
-        response.put("deviceLocation", identity.optString("deviceLocation", ""));
-        return response;
+        return AndroidConfigPairingProtocol.showResponse(request, payload, sessionExpiresAtMs, identity);
     }
 
     JSONObject stopTargetSession(JSONObject request) throws JSONException {
         stopTargetSession();
-        JSONObject response = baseResponse(request, "configPairingStop");
-        response.put("success", true);
-        return response;
+        return AndroidConfigPairingProtocol.acknowledgementResponse(request, "configPairingStop");
     }
 
     JSONObject connect(JSONObject request) throws JSONException {
         String payload = request.optString("payload", request.optString("pairingPayload", request.optString("code", ""))).trim();
-        PairingTarget target = PairingTarget.parse(payload);
+        AndroidConfigPairingProtocol.PairingTarget target = AndroidConfigPairingProtocol.PairingTarget.parse(payload);
         if (target == null) {
-            return errorResponse(request, "configPairingConnect", "Invalid config pairing payload.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingConnect", "Invalid config pairing payload.");
         }
         BluetoothAdapter adapter = bluetoothAdapter();
         if (adapter == null || !adapter.isEnabled()) {
-            return errorResponse(request, "configPairingConnect", "Bluetooth is not enabled or not available.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingConnect", "Bluetooth is not enabled or not available.");
         }
 
         disconnectCentral();
         pairingTarget = target;
         scanner = adapter.getBluetoothLeScanner();
         if (scanner == null) {
-            return errorResponse(request, "configPairingConnect", "BLE scanner is not available.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingConnect", "BLE scanner is not available.");
         }
 
         ScanFilter filter = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(target.serviceUuid)).build();
@@ -170,64 +155,32 @@ final class AndroidConfigPairingBridge {
                 .build();
         scanner.startScan(singleton(filter), settings, scanCallback);
 
-        JSONObject response = baseResponse(request, "configPairingConnect");
-        response.put("success", true);
-        response.put("state", "scanning");
-        response.put("serviceUUID", target.serviceUuid.toString());
-        response.put("targetName", target.name);
-        response.put("targetIdentity", target.identityPayload());
-        response.put("deviceName", target.deviceName);
-        response.put("deviceUUID", target.deviceUuid);
-        response.put("deviceLocation", target.deviceLocation);
-        return response;
+        return AndroidConfigPairingProtocol.connectResponse(request, target);
     }
 
     JSONObject disconnect(JSONObject request) throws JSONException {
         disconnectCentral();
-        JSONObject response = baseResponse(request, "configPairingDisconnect");
-        response.put("success", true);
-        return response;
+        return AndroidConfigPairingProtocol.acknowledgementResponse(request, "configPairingDisconnect");
     }
 
     JSONObject send(JSONObject request) throws JSONException {
         if (pairingTarget == null || centralGatt == null || centralCommandCharacteristic == null) {
-            return errorResponse(request, "configPairingSend", "Config pairing is not ready yet.");
+            return AndroidConfigPairingProtocol.errorResponse(request, "configPairingSend", "Config pairing is not ready yet.");
         }
 
-        JSONObject command = new JSONObject();
-        command.put("sessionId", pairingTarget.sessionId);
-        command.put("secret", pairingTarget.secret);
-        command.put("requestId", nonEmpty(request.optString("requestId", ""), UUID.randomUUID().toString()));
-        command.put("command", nonEmpty(request.optString("command", request.optString("configCommand", "")), "statusGet"));
-        if (!request.optString("token", request.optString("securityToken", "")).trim().isEmpty()) {
-            command.put("token", request.optString("token", request.optString("securityToken", "")).trim());
-        }
-        if (request.has("settings")) {
-            command.put("settings", request.getJSONObject("settings"));
-        }
-        if (!request.optString("ssid", "").trim().isEmpty()) {
-            command.put("ssid", request.optString("ssid").trim());
-        }
-        if (!request.optString("passphrase", request.optString("password", "")).trim().isEmpty()) {
-            command.put("passphrase", request.optString("passphrase", request.optString("password", "")).trim());
-        }
-        if (request.has("joinOnce")) {
-            command.put("joinOnce", request.optBoolean("joinOnce"));
-        }
+        JSONObject command = AndroidConfigPairingProtocol.commandFromRequest(pairingTarget, request);
 
         byte[] data = command.toString().getBytes(StandardCharsets.UTF_8);
         CentralWriteResult writeResult = writeCentralCommandData(data);
 
-        JSONObject response = baseResponse(request, "configPairingSend");
-        response.put("success", writeResult.started);
-        response.put("state", writeResult.started ? (writeResult.chunks > 1 ? "sentInChunks" : "sent") : "writeFailed");
-        response.put("bytes", data.length);
-        response.put("chunks", writeResult.chunks);
-        response.put("command", command.optString("command"));
-        if (!writeResult.started) {
-            response.put("error", writeResult.error);
-        }
-        return response;
+        return AndroidConfigPairingProtocol.sendResponse(
+                request,
+                writeResult.started,
+                data.length,
+                writeResult.chunks,
+                command.optString("command"),
+                writeResult.error
+        );
     }
 
     void shutdown() {
@@ -333,7 +286,7 @@ final class AndroidConfigPairingBridge {
 
     private void handleTargetCommand(BluetoothDevice device, byte[] value) {
         if (targetDevice != null && device != null && !targetDevice.getAddress().equals(device.getAddress())) {
-            notifyResponse(device, errorPayload("unknown", "", "Another config device is already connected."));
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload("unknown", "", "Another config device is already connected."));
             return;
         }
 
@@ -341,7 +294,7 @@ final class AndroidConfigPairingBridge {
         try {
             command = new JSONObject(new String(value, StandardCharsets.UTF_8));
         } catch (JSONException error) {
-            notifyResponse(device, errorPayload("unknown", "", "Invalid JSON command."));
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload("unknown", "", "Invalid JSON command."));
             return;
         }
         if ("configPairingChunk".equals(command.optString("action", ""))) {
@@ -349,9 +302,9 @@ final class AndroidConfigPairingBridge {
             return;
         }
 
-        String commandName = nonEmpty(command.optString("command", ""), "statusGet");
+        String commandName = AndroidConfigPairingProtocol.nonEmpty(command.optString("command", ""), "statusGet");
         if (!commandIsPaired(command)) {
-            notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), "Invalid or expired config pairing session."));
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), "Invalid or expired config pairing session."));
             return;
         }
 
@@ -374,7 +327,7 @@ final class AndroidConfigPairingBridge {
                 }
                 case "settingsSet": {
                     if (!host.hasValidSecurityToken(command.optString("token", command.optString("securityToken", "")))) {
-                        notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for settingsSet."));
+                        notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for settingsSet."));
                         break;
                     }
                     JSONObject values = command.optJSONObject("settings");
@@ -388,7 +341,7 @@ final class AndroidConfigPairingBridge {
                 }
                 case "wifiConfigure": {
                     if (!host.hasValidSecurityToken(command.optString("token", command.optString("securityToken", "")))) {
-                        notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for wifiConfigure."));
+                        notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for wifiConfigure."));
                         break;
                     }
                     command.put("action", "wifiConfigure");
@@ -399,14 +352,14 @@ final class AndroidConfigPairingBridge {
                             response.put("wifiResult", result);
                             notifyResponse(device, response);
                         } catch (JSONException error) {
-                            notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), error.getMessage()));
+                            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), error.getMessage()));
                         }
                     });
                     break;
                 }
                 case "reload": {
                     if (!host.hasValidSecurityToken(command.optString("token", command.optString("securityToken", "")))) {
-                        notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for reload."));
+                        notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), "securityToken is required for reload."));
                         break;
                     }
                     host.reloadConfiguredUrl();
@@ -416,10 +369,10 @@ final class AndroidConfigPairingBridge {
                     break;
                 }
                 default:
-                    notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), "Unknown config command: " + commandName + "."));
+                    notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), "Unknown config command: " + commandName + "."));
             }
         } catch (JSONException error) {
-            notifyResponse(device, errorPayload(commandName, command.optString("requestId", ""), error.getMessage()));
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload(commandName, command.optString("requestId", ""), error.getMessage()));
         }
     }
 
@@ -428,8 +381,8 @@ final class AndroidConfigPairingBridge {
         int index = object.optInt("i", -1);
         int count = object.optInt("n", 0);
         String encoded = object.optString("d", "");
-        if (chunkId.isEmpty() || index < 0 || count <= 0 || index >= count || encoded.isEmpty()) {
-            notifyResponse(device, errorPayload("unknown", "", "Invalid config command chunk."));
+        if (!AndroidConfigPairingProtocol.isValidChunkEnvelope(object)) {
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload("unknown", "", "Invalid config command chunk."));
             return;
         }
 
@@ -437,13 +390,13 @@ final class AndroidConfigPairingBridge {
         try {
             chunk = Base64.decode(encoded, Base64.NO_WRAP);
         } catch (IllegalArgumentException error) {
-            notifyResponse(device, errorPayload("unknown", "", "Invalid config command chunk encoding."));
+            notifyResponse(device, AndroidConfigPairingProtocol.errorPayload("unknown", "", "Invalid config command chunk encoding."));
             return;
         }
 
-        ChunkAccumulator accumulator = targetInboundChunks.get(chunkId);
+        AndroidConfigPairingProtocol.ChunkAccumulator accumulator = targetInboundChunks.get(chunkId);
         if (accumulator == null) {
-            accumulator = new ChunkAccumulator(count);
+            accumulator = new AndroidConfigPairingProtocol.ChunkAccumulator(count);
             targetInboundChunks.put(chunkId, accumulator);
         }
         accumulator.chunks.put(index, chunk);
@@ -508,30 +461,7 @@ final class AndroidConfigPairingBridge {
     }
 
     private JSONObject responsePayload(String command, String requestId) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("action", "configPairingResponse");
-        response.put("platform", "android");
-        response.put("role", "target");
-        response.put("command", command);
-        response.put("requestId", nonEmpty(requestId, UUID.randomUUID().toString()));
-        response.put("sessionId", sessionId);
-        return response;
-    }
-
-    private JSONObject errorPayload(String command, String requestId, String error) {
-        JSONObject response = new JSONObject();
-        try {
-            response.put("action", "configPairingResponse");
-            response.put("platform", "android");
-            response.put("role", "target");
-            response.put("command", command);
-            response.put("requestId", nonEmpty(requestId, UUID.randomUUID().toString()));
-            response.put("success", false);
-            response.put("error", error != null ? error : "Unknown config pairing error.");
-        } catch (JSONException ignored) {
-            // Return the partially built response.
-        }
-        return response;
+        return AndroidConfigPairingProtocol.responsePayload(command, requestId, sessionId);
     }
 
     private void disconnectCentral() {
@@ -703,16 +633,7 @@ final class AndroidConfigPairingBridge {
 
     private void emitEvent(String role, String event, boolean success, String error) {
         try {
-            JSONObject payload = new JSONObject();
-            payload.put("action", "configPairingEvent");
-            payload.put("platform", "android");
-            payload.put("role", role);
-            payload.put("event", event);
-            payload.put("success", success);
-            if (error != null && !error.isEmpty()) {
-                payload.put("error", error);
-            }
-            host.sendResult(payload);
+            host.sendResult(AndroidConfigPairingProtocol.eventPayload(role, event, success, error));
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }
@@ -728,7 +649,7 @@ final class AndroidConfigPairingBridge {
         int index = response.optInt("i", -1);
         int count = response.optInt("n", 0);
         String encoded = response.optString("d", "");
-        if (chunkId.isEmpty() || index < 0 || count <= 0 || index >= count || encoded.isEmpty()) {
+        if (!AndroidConfigPairingProtocol.isValidChunkEnvelope(response)) {
             emitEvent("configurator", "chunkParseFailed", false, "Invalid config response chunk.");
             return;
         }
@@ -741,9 +662,9 @@ final class AndroidConfigPairingBridge {
             return;
         }
 
-        ChunkAccumulator accumulator = centralInboundChunks.get(chunkId);
+        AndroidConfigPairingProtocol.ChunkAccumulator accumulator = centralInboundChunks.get(chunkId);
         if (accumulator == null) {
-            accumulator = new ChunkAccumulator(count);
+            accumulator = new AndroidConfigPairingProtocol.ChunkAccumulator(count);
             centralInboundChunks.put(chunkId, accumulator);
         }
         accumulator.chunks.put(index, chunk);
@@ -854,30 +775,8 @@ final class AndroidConfigPairingBridge {
         String deviceName = settings.optString("deviceName", "");
         String deviceUuid = settings.optString("deviceUUID", "");
         String deviceLocation = settings.optString("deviceLocation", "");
-        String name = nonEmpty(deviceName, Build.MODEL != null ? Build.MODEL : "Android");
-        JSONObject identity = new JSONObject();
-        identity.put("name", name);
-        identity.put("deviceName", deviceName);
-        identity.put("deviceUUID", deviceUuid);
-        identity.put("deviceLocation", deviceLocation);
-        return identity;
-    }
-
-    private String pairingPayload(String id, String secret, long expiresAtMs, JSONObject identity) {
-        return new Uri.Builder()
-                .scheme("swifthtml-config")
-                .authority("pair")
-                .appendQueryParameter("v", "1")
-                .appendQueryParameter("id", id)
-                .appendQueryParameter("secret", secret)
-                .appendQueryParameter("service", SERVICE_UUID.toString())
-                .appendQueryParameter("expires", String.valueOf(expiresAtMs / 1000L))
-                .appendQueryParameter("name", identity.optString("name", ""))
-                .appendQueryParameter("deviceName", identity.optString("deviceName", ""))
-                .appendQueryParameter("deviceUUID", identity.optString("deviceUUID", ""))
-                .appendQueryParameter("deviceLocation", identity.optString("deviceLocation", ""))
-                .build()
-                .toString();
+        String name = AndroidConfigPairingProtocol.nonEmpty(deviceName, Build.MODEL != null ? Build.MODEL : "Android");
+        return AndroidConfigPairingProtocol.identity(name, deviceName, deviceUuid, deviceLocation);
     }
 
     private Bitmap qrBitmap(String text, int size) throws WriterException {
@@ -900,140 +799,10 @@ final class AndroidConfigPairingBridge {
                 .replace("=", "");
     }
 
-    private JSONObject baseResponse(JSONObject request, String action) throws JSONException {
-        JSONObject response = new JSONObject();
-        response.put("platform", "android");
-        response.put("action", action);
-        if (request != null && request.has("requestId")) {
-            response.put("requestId", request.optString("requestId"));
-        }
-        return response;
-    }
-
-    private JSONObject errorResponse(JSONObject request, String action, String error) throws JSONException {
-        JSONObject response = baseResponse(request, action);
-        response.put("success", false);
-        response.put("error", error);
-        return response;
-    }
-
-    private String randomId() {
-        return UUID.randomUUID().toString();
-    }
-
-    private String nonEmpty(String value, String fallback) {
-        String trimmed = value != null ? value.trim() : "";
-        return trimmed.isEmpty() ? fallback : trimmed;
-    }
-
     private List<ScanFilter> singleton(ScanFilter filter) {
         ArrayList<ScanFilter> filters = new ArrayList<>();
         filters.add(filter);
         return filters;
-    }
-
-    private static final class PairingTarget {
-        final String sessionId;
-        final String secret;
-        final UUID serviceUuid;
-        final String name;
-        final String deviceName;
-        final String deviceUuid;
-        final String deviceLocation;
-
-        private PairingTarget(String sessionId, String secret, UUID serviceUuid, String name, String deviceName, String deviceUuid, String deviceLocation) {
-            this.sessionId = sessionId;
-            this.secret = secret;
-            this.serviceUuid = serviceUuid;
-            this.name = name;
-            this.deviceName = deviceName;
-            this.deviceUuid = deviceUuid;
-            this.deviceLocation = deviceLocation;
-        }
-
-        JSONObject identityPayload() throws JSONException {
-            JSONObject identity = new JSONObject();
-            identity.put("name", name);
-            identity.put("deviceName", deviceName);
-            identity.put("deviceUUID", deviceUuid);
-            identity.put("deviceLocation", deviceLocation);
-            return identity;
-        }
-
-        static PairingTarget parse(String payload) {
-            if (payload == null || !payload.startsWith("swifthtml-config://pair")) {
-                return null;
-            }
-            String query = "";
-            int index = payload.indexOf('?');
-            if (index >= 0 && index + 1 < payload.length()) {
-                query = payload.substring(index + 1);
-            }
-            JSONObject values = new JSONObject();
-            for (String part : query.split("&")) {
-                int separator = part.indexOf('=');
-                if (separator <= 0) {
-                    continue;
-                }
-                try {
-                    String key = URLDecoder.decode(part.substring(0, separator), "UTF-8");
-                    String value = URLDecoder.decode(part.substring(separator + 1), "UTF-8");
-                    values.put(key, value);
-                } catch (Exception ignored) {
-                    // Skip malformed query parts.
-                }
-            }
-            String id = values.optString("id", "");
-            String secret = values.optString("secret", "");
-            if (id.isEmpty() || secret.isEmpty()) {
-                return null;
-            }
-            UUID serviceUuid = SERVICE_UUID;
-            try {
-                serviceUuid = UUID.fromString(values.optString("service", SERVICE_UUID.toString()).toUpperCase(Locale.US));
-            } catch (Exception ignored) {
-                // Use default service UUID.
-            }
-            String deviceName = values.optString("deviceName", values.optString("device_name", ""));
-            String deviceUuid = values.optString("deviceUUID", values.optString("deviceUuid", values.optString("device_uuid", "")));
-            String deviceLocation = values.optString("deviceLocation", values.optString("device_location", ""));
-            String name = deviceName.isEmpty() ? values.optString("name", "") : deviceName;
-            return new PairingTarget(id, secret, serviceUuid, name, deviceName, deviceUuid, deviceLocation);
-        }
-    }
-
-    private static final class ChunkAccumulator {
-        final int count;
-        final Map<Integer, byte[]> chunks = new HashMap<>();
-
-        ChunkAccumulator(int count) {
-            this.count = count;
-        }
-
-        boolean isComplete() {
-            return chunks.size() == count;
-        }
-
-        byte[] assembled() {
-            int total = 0;
-            for (int index = 0; index < count; index += 1) {
-                byte[] chunk = chunks.get(index);
-                if (chunk != null) {
-                    total += chunk.length;
-                }
-            }
-            byte[] data = new byte[total];
-            int offset = 0;
-            for (int index = 0; index < count; index += 1) {
-                byte[] chunk = chunks.get(index);
-                if (chunk == null) {
-                    continue;
-                }
-                System.arraycopy(chunk, 0, data, offset, chunk.length);
-                offset += chunk.length;
-            }
-            return data;
-        }
     }
 
     private static final class CentralWriteResult {

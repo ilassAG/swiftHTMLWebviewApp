@@ -25,6 +25,46 @@
             <button id="scanDocPngBtn">Dokument Scannen (PNG mit OCR)</button>
             <button id="takePhotoFrontBtn">Foto aufnehmen (Front)</button>
             <button id="takePhotoBackBtn">Foto aufnehmen (Rück)</button>
+            <button id="portraitCaptureBtn">Passfoto aufnehmen</button>
+            <div class="photo-options">
+                <label class="photo-options-label" for="portraitCameraSelect">Passfoto Kamera:</label>
+                <select id="portraitCameraSelect">
+                    <option value="front" selected>Front</option>
+                    <option value="back">Rück</option>
+                </select>
+                <label class="photo-options-label" for="portraitFacesInput">Gesichter:</label>
+                <input type="number" id="portraitFacesInput" value="1" min="1" max="8" step="1">
+                <label class="photo-options-label" for="portraitCountdownInput">Countdown s:</label>
+                <input type="number" id="portraitCountdownInput" value="3" min="0" max="15" step="0.5">
+                <label class="photo-options-label" for="portraitVariationInput">Varianten:</label>
+                <input type="number" id="portraitVariationInput" value="4" min="1" max="8" step="1">
+                <label class="photo-options-label" for="portraitIntervalInput">Burst ms:</label>
+                <input type="number" id="portraitIntervalInput" value="200" min="50" max="2000" step="50">
+                <label class="photo-options-label" for="portraitOutputTypeSelect">Format:</label>
+                <select id="portraitOutputTypeSelect">
+                    <option value="png" selected>PNG</option>
+                    <option value="jpeg">JPEG</option>
+                </select>
+                <label class="photo-options-label" for="portraitCropSelect">Zuschnitt:</label>
+                <select id="portraitCropSelect">
+                    <option value="squareFaceCentered" selected>Gesicht mittig</option>
+                    <option value="none">Kein Face-Crop</option>
+                </select>
+                <label class="photo-options-toggle">
+                    <input type="checkbox" id="portraitRemoveBackgroundCheckbox" checked>
+                    Hintergrund entfernen
+                </label>
+                <label class="photo-options-label" for="portraitBackgroundMode">Hintergrund:</label>
+                <select id="portraitBackgroundMode">
+                    <option value="transparent" selected>Transparent</option>
+                    <option value="color">Farbe</option>
+                </select>
+                <input type="color" id="portraitBackgroundColor" value="#ffffff" disabled>
+                <label class="photo-options-toggle photo-options-crop">
+                    <input type="checkbox" id="portraitCropTransparentCheckbox">
+                    Transparent zuschneiden
+                </label>
+            </div>
             <div class="photo-options">
                 <label class="photo-options-toggle">
                     <input type="checkbox" id="removeBackgroundCheckbox">
@@ -110,15 +150,15 @@
                     <label for="configPairingPayloadInput">Pairing</label>
                     <textarea id="configPairingPayloadInput" rows="4" placeholder="QR Payload oder Scan-Ergebnis"></textarea>
                     <label for="configSecurityTokenInput">Token</label>
-                    <input type="password" id="configSecurityTokenInput" value="change-me-before-production" autocomplete="off">
+                    <input type="password" id="configSecurityTokenInput" placeholder="in App-Einstellungen setzen" autocomplete="off">
                     <label for="configNewSecurityTokenInput">Neuer Token</label>
                     <input type="password" id="configNewSecurityTokenInput" placeholder="optional rotieren" autocomplete="off">
                     <label for="configDeviceNameInput">Gerätename</label>
-                    <input type="text" id="configDeviceNameInput" placeholder="z.B. Kasse AP03">
+                    <input type="text" id="configDeviceNameInput" placeholder="z.B. Demo Tablet 03">
                     <label for="configDeviceUuidInput">Geräte UUID</label>
                     <input type="text" id="configDeviceUuidInput" placeholder="auto wenn leer">
                     <label for="configDeviceLocationInput">Standort</label>
-                    <input type="text" id="configDeviceLocationInput" placeholder="z.B. Zelt A / Eingang">
+                    <input type="text" id="configDeviceLocationInput" placeholder="z.B. Halle A / Eingang">
                     <label for="configServerUrlInput">URL 1</label>
                     <input type="text" id="configServerUrlInput" placeholder="local oder https://...">
                     <label for="configHaEnabledInput">Failover</label>

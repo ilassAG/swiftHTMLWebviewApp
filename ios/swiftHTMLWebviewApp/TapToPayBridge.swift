@@ -45,17 +45,14 @@ final class TapToPayBridge: NSObject, ObservableObject {
 
     func availabilityPayload(request: [String: Any]) -> [String: Any] {
         configureTerminalIfNeeded()
-        let requestId = request["requestId"] as? String
         let supportError = tapToPaySupportError()
         let available = supportError == nil
-        var payload: [String: Any] = [
-            "action": "tapToPayAvailability",
-            "available": available,
-            "readerType": "apple_built_in"
-        ]
-        if let requestId { payload["requestId"] = requestId }
-        if let supportError { payload["reason"] = supportError.localizedDescription }
-        return payload
+        return TapToPayPayload.availability(
+            request: request,
+            available: available,
+            readerType: "apple_built_in",
+            reason: supportError?.localizedDescription
+        )
     }
 
     func collect(
@@ -285,33 +282,23 @@ final class TapToPayBridge: NSObject, ObservableObject {
     }
 
     private func successPayload(request: [String: Any], paymentIntent: PaymentIntent) -> [String: Any] {
-        var payload: [String: Any] = [
-            "action": "tapToPayCollect",
-            "paymentIntentId": paymentIntent.stripeId,
-            "status": "\(paymentIntent.status)",
-            "nativeStatus": "processed"
-        ]
-        if let requestId = request["requestId"] as? String { payload["requestId"] = requestId }
-        if let paymentId = request["paymentId"] as? String { payload["paymentId"] = paymentId }
-        return payload
+        TapToPayPayload.collectSuccess(
+            request: request,
+            paymentIntentId: paymentIntent.stripeId,
+            status: "\(paymentIntent.status)",
+            nativeStatus: "processed"
+        )
     }
 
     private func cancelPayload(request: [String: Any], reason: String) -> [String: Any] {
-        var payload: [String: Any] = [
-            "action": "tapToPayCollect",
-            "cancelled": true,
-            "reason": reason
-        ]
-        if let requestId = request["requestId"] as? String { payload["requestId"] = requestId }
-        if let paymentId = request["paymentId"] as? String { payload["paymentId"] = paymentId }
-        return payload
+        TapToPayPayload.cancelled(request: request, reason: reason)
     }
 
     private func errorPayload(action: String, request: [String: Any], message: String) -> [String: Any] {
-        var payload: [String: Any] = ["action": action, "error": message]
-        if let requestId = request["requestId"] as? String { payload["requestId"] = requestId }
-        if let paymentId = request["paymentId"] as? String { payload["paymentId"] = paymentId }
-        return payload
+        if action == "tapToPayCollect" {
+            return TapToPayPayload.error(request: request, message: message)
+        }
+        return BridgeResponse.error(request: request, action: action, message: message)
     }
 
     private func errorPayload(action: String, request: [String: Any], error: Error) -> [String: Any] {
@@ -364,14 +351,12 @@ final class TapToPayBridge: NSObject, ObservableObject {
     }
 
     func availabilityPayload(request: [String: Any]) -> [String: Any] {
-        var payload: [String: Any] = [
-            "action": "tapToPayAvailability",
-            "available": false,
-            "readerType": "apple_built_in",
-            "reason": "StripeTerminal SDK is not linked in this build."
-        ]
-        if let requestId = request["requestId"] as? String { payload["requestId"] = requestId }
-        return payload
+        TapToPayPayload.availability(
+            request: request,
+            available: false,
+            readerType: "apple_built_in",
+            reason: "StripeTerminal SDK is not linked in this build."
+        )
     }
 
     func collect(
@@ -379,13 +364,10 @@ final class TapToPayBridge: NSObject, ObservableObject {
         onPhase: @escaping (Phase) -> Void,
         completion: @escaping ([String: Any]) -> Void
     ) {
-        var payload: [String: Any] = [
-            "action": "tapToPayCollect",
-            "error": "StripeTerminal SDK is not linked in this build."
-        ]
-        if let requestId = request["requestId"] as? String { payload["requestId"] = requestId }
-        if let paymentId = request["paymentId"] as? String { payload["paymentId"] = paymentId }
-        completion(payload)
+        completion(TapToPayPayload.error(
+            request: request,
+            message: "StripeTerminal SDK is not linked in this build."
+        ))
     }
 }
 

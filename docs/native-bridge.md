@@ -41,15 +41,39 @@ Error:
 }
 ```
 
+The machine-readable registry in `docs/bridge-contract.json` assigns each
+public action a `responseProfile`. Profiles describe broad delivery semantics
+such as one-shot callback responses, command acknowledgements, stream control
+with follow-up events, Tap to Pay flows, and printer jobs. The profiles are
+intentionally compatible with current legacy responses; `platform`, `requestId`,
+and `success` remain recommended fields until all older bridge paths are fully
+normalized. Actions that can produce asynchronous follow-up messages also list
+their concrete `emits` event actions. Those events are cataloged separately from
+public commands so wrapper variants can expose streams and sessions without
+guessing their callback names.
+
+Known legacy response omissions are recorded under
+`legacyCompatibility.actions` in the machine-readable contract. Current iOS
+`scanDocument`, `takePhoto`, and one-shot `scanBarcode` success payloads keep
+their existing field shape for compatibility with deployed web apps; new bridge
+code should use the common `platform` / `requestId` / `success` envelope unless
+an exception is explicitly recorded there.
+
+Profile-level success/error examples live in
+`docs/bridge-response-fixtures.json`. `tools/validate_contracts.js` validates
+those fixtures against every public action so response-shape changes are caught
+before platform builds.
+
 ## Built-in actions
 
 - `scanDocument`
 - `takePhoto`
+- `portraitCapture`
 - `scanBarcode`
 - `nfcTagRead`
 - `continuousScanStart` / `continuousScanStop`
-- `dataScanStart` / `dataScanEnd` (Kassa-compatible continuous scanner aliases)
-- `loginScanStart` / `loginScanEnd` (Kassa-compatible continuous scanner aliases)
+- `dataScanStart` / `dataScanEnd` (legacy-compatible continuous scanner aliases)
+- `loginScanStart` / `loginScanEnd` (legacy-compatible continuous scanner aliases)
 - `previewBoxLocationUpdate`
 - `beaconsStart` / `beaconsStop`
 - `beaconAdvertiseStart` / `beaconAdvertiseStop`
@@ -60,7 +84,8 @@ Error:
 - `screenshotGet`
 - `geoLocationGet` / `geoLocationStart` / `geoLocationStop`
 - `arPositionStart` / `arPositionStop` (iOS ARKit local position stream)
-- `arGuidedMeasurementStart` / `arGuidedMeasurementSetAnchors` / `arGuidedMeasurementStop` (iOS ARKit guided start-arrow measurement)
+- `arOverlayOpen` / `arOverlayClose` (iOS ARKit generic 3D overlay; `arReplayOpen` is a compatibility alias)
+- `arGuidedMeasurementStart` / `arGuidedMeasurementSetAnchors` / `arGuidedMeasurementUpdateStats` / `arGuidedMeasurementStop` (iOS ARKit guided start-arrow measurement)
 - `roomPlanScanStart` / `roomPlanScanStop` / `roomPlanScanExport` (iOS RoomPlan/LiDAR room scan)
 - `soundPlay`
 - `notificationPermissionGet` / `notificationPermissionRequest`
@@ -72,11 +97,13 @@ Error:
 - `configPairingShow` / `configPairingStop`
 - `configPairingConnect` / `configPairingDisconnect`
 - `configPairingSend`
+- `reload`
 - `launchConfetti`
 - `tapToPayAvailability` (optional Stripe module)
 - `tapToPayCollect` (optional Stripe module)
 - `printerDiscover` (optional Go printer core)
 - `printerHelloWorld` (selected-printer smoke test)
+- `printerPrint` (Android/Sunmi generic QR/text print payload)
 - `printerEpsonHelloWorld` (optional Go printer core)
 
 ## ARKit guided measurement
@@ -107,13 +134,66 @@ ARKit has relocalized to the saved physical space. Positions use ARKit
 gravity-aligned local meters with
 `position.x/y/z` and `orientation.pitch/yaw/roll`.
 
+## ARKit generic overlay
+
+iOS can show a generic product-defined 3D overlay in ARKit. The wrapper only
+renders neutral scene primitives; the web app owns domain semantics such as
+measurement points, inspection markers, work orders, assets, or navigation
+targets.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'arOverlayOpen',
+  requestId: crypto.randomUUID(),
+  title: 'Room inspection',
+  worldMapUrl: 'http://host/api/spaces/space_123/world-map',
+  worldMapFormat: 'arkit-arworldmap-keyedarchive-v1',
+  coordinateSystem: 'arkit-gravity-local',
+  items: [
+    {
+      id: 'marker_1',
+      kind: 'point',
+      title: 'Marker 1',
+      detail: 'Optional product-defined detail text',
+      position: { x: 1.2, y: 0.1, z: -0.4 },
+      color: 'green',
+      radius: 0.06,
+      payload: { domainId: 'abc' }
+    }
+  ],
+  lines: [
+    {
+      id: 'path_1',
+      color: 'blue',
+      points: [
+        { x: 1.2, y: 0.06, z: -0.4 },
+        { x: 1.6, y: 0.06, z: -0.8 }
+      ]
+    }
+  ]
+});
+```
+
+When `worldMapUrl` or `worldMapBase64` is supplied, iOS starts world tracking
+with `initialWorldMap` and renders the overlay only after ARKit relocalizes to
+the saved physical space. Supported item colors include `green`, `yellow`,
+`orange`, `red`, `violet`, `cyan`, `blue`, `gray`, and CSS-style `#RRGGBB`.
+Tapping a rendered item emits `arOverlayItemSelected` with the item's id,
+position, detail, and original `payload`.
+
+`arReplayOpen` and `arReplayClose` are compatibility aliases for existing web
+apps. New integrations should prefer `arOverlayOpen` and pass generic `items`
+and `lines`. For legacy overlay payloads, iOS also accepts an `overlay`
+object with `tracePoints`, `txPoints`, `speedPoints`, and `floorPlan.planJson`
+and maps those to generic lines and markers.
+
 ## Native runtime configuration
 
 Startup URL and iBeacon region settings are native app configuration, not bridge
 actions. On iOS they live in Settings.bundle:
 
 - `server_url_preference`: primary web app URL, or `local` for bundled HTML.
-- `ha_enabled`: enables Kassa-compatible URL failover.
+- `ha_enabled`: enables legacy-compatible URL failover.
 - `ha_timeout`: seconds to wait before trying the next configured URL.
 - `ha_url2`, `ha_url3`, `ha_url4`: fallback URLs.
 - `beacon_uuid`: iBeacon Proximity UUID used by the continuous beacon bridge
@@ -122,6 +202,9 @@ actions. On iOS they live in Settings.bundle:
 - `device_uuid`: persistent per-install identifier. Native code generates one
   on first start if the value is empty.
 - `device_location`: deployment-specific physical/logical location label.
+- `appConfig`: a persistent app-private JSON object for non-sensitive product or
+  deployment values such as site keys, terminal identifiers, tenant labels, or
+  feature flags. It is returned by `settingsGet` and merged by `settingsSet`.
 
 Web apps should not hard-code these values. They should treat the native wrapper
 as the owner of startup URL selection and beacon-region selection.
@@ -177,8 +260,8 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
     highAvailabilityURL3: '',
     highAvailabilityURL4: '',
     beaconUUID: '7763A937-B779-4D31-A20C-49E83047048F',
-    deviceName: 'Kasse AP03',
-    deviceLocation: 'Zelt A / Eingang'
+    deviceName: 'Demo Tablet 03',
+    deviceLocation: 'Hall A / Entrance'
   }
 });
 ```
@@ -219,9 +302,9 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
   action: 'settingsSet',
   token: 'current-security-token',
   settings: {
-    deviceName: 'Kasse AP03',
+    deviceName: 'Demo Tablet 03',
     deviceUUID: '4EF955C4-DC2B-4328-9B4D-1D0341B9DF90',
-    deviceLocation: 'Zelt A / Eingang'
+    deviceLocation: 'Hall A / Entrance'
   }
 });
 ```
@@ -229,12 +312,47 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 `settingsGet` returns non-sensitive values plus `securityTokenSet`.
 `settingsSet` requires the current security token. If `deviceUUID` is omitted,
 the existing UUID is kept. If it is explicitly set to an empty string, native
-code generates and stores a new UUID.
+code generates and stores a new UUID. `settings.appConfig` or `settings.store`
+is merged into the persistent `appConfig` object instead of replacing the whole
+object.
+
+The same configuration can be provisioned by scanning a QR code. JSON payloads
+use the same key names as `settingsSet`; `wifi` optionally triggers
+`wifiConfigure` after settings are stored:
+
+```json
+{
+  "toolmode": "changeConfig",
+  "securityToken": "current-security-token",
+  "defaultServerUrl": "https://example.invalid/app/",
+  "appConfig": {
+    "siteKey": "Demo Site",
+    "terminalId": "A1"
+  },
+  "wifi": {
+    "ssid": "Demo WLAN",
+    "pw": "demo-password"
+  }
+}
+```
+
+For smaller QR codes, use query parameters. Known top-level setting names update
+native settings, `store[key]` and `appConfig[key]` merge into `appConfig`, and
+`wifi[ssid]` plus `wifi[pw]` / `wifi[password]` / `wifi[passphrase]` trigger
+Wi-Fi configuration:
+
+```text
+swifthtml-config://set?token=current-security-token&serverURL=https%3A%2F%2Fexample.invalid%2Fapp%2F&store%5BsiteKey%5D=Demo%20Site&wifi%5Bssid%5D=Demo%20WLAN&wifi%5Bpw%5D=demo-password
+```
+
+Config QR writes and QR-triggered Wi-Fi setup require `token` or
+`securityToken`. Plain recovery QR codes that only carry a server URL keep their
+existing recovery behavior.
 
 ## Continuous scanner
 
 iOS exposes an embedded long-running scanner with camera selection and a
-relative preview rectangle. The Kassa-compatible `dataScanStart` and
+relative preview rectangle. The legacy-compatible `dataScanStart` and
 `loginScanStart` aliases are supported by the same implementation.
 
 ```js
@@ -735,6 +853,11 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 ```
 
 `printerEpsonHelloWorld` remains supported as the legacy Epson-only action.
+
+`printerPrint` is currently an Android/Sunmi-specific generic print action for
+simple text/QR payloads. iOS returns a structured unavailable response for this
+action; use `printerHelloWorld` or `printerEpsonHelloWorld` for cross-platform
+smoke tests.
 
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({

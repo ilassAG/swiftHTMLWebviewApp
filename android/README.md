@@ -28,12 +28,13 @@ Implemented:
 - Local notifications with permission request/status, immediate show,
   time-based schedule, cancel, cancel all, and pending-list bridge actions.
 - SharedPreferences-backed settings for URL/HA/beacon/device identity plus
-  direct `settingsGet` / `settingsSet` bridge actions.
+  direct `settingsGet` / `settingsSet` bridge actions. App-private defaults
+  come from variant manifest metadata such as `com.ilass.DEFAULT_SERVER_URL`.
 
 Not implemented yet:
 
-- Android Tap to Pay / Stripe Terminal.
-- Background removal for captured photos.
+- Background removal for captured photos is available as an experimental
+  Android implementation through ML Kit Selfie Segmentation.
 - OCR text extraction for scanned documents.
 - Full device-screen capture through MediaProjection.
 
