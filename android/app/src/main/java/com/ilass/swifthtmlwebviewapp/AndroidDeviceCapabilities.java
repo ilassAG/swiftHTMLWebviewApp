@@ -20,6 +20,17 @@ final class AndroidDeviceCapabilities {
         capabilities.put("deviceInfoGet", true);
         capabilities.put("settingsGet", true);
         capabilities.put("settingsSet", true);
+        capabilities.put("storageGet", true);
+        capabilities.put("storageSet", true);
+        capabilities.put("storageRemove", true);
+        capabilities.put("storageClear", true);
+        capabilities.put("filesystemWrite", true);
+        capabilities.put("filesystemRead", true);
+        capabilities.put("filesystemList", true);
+        capabilities.put("filesystemDelete", true);
+        capabilities.put("sqliteExecute", true);
+        capabilities.put("sqliteDeleteDatabase", true);
+        capabilities.put("kioskReloadControlSet", true);
         capabilities.put("screenOrientationSet", true);
         capabilities.put("wifiConfigure", true);
         capabilities.put("screenshotGet", true);

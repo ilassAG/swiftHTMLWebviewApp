@@ -190,7 +190,7 @@ struct ConfigQRCodeParser {
     private func queryItems(from rawValue: String) -> [URLQueryItem]? {
         if rawValue.hasPrefix("?") {
             var components = URLComponents()
-            components.query = String(rawValue.drop(while: { $0 == "?" || $0 == "&" }))
+            components.percentEncodedQuery = String(rawValue.drop(while: { $0 == "?" || $0 == "&" }))
             return components.queryItems
         }
         if let components = URLComponents(string: rawValue), components.query != nil {
@@ -198,7 +198,7 @@ struct ConfigQRCodeParser {
         }
         if rawValue.contains("=") {
             var components = URLComponents()
-            components.query = rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "?&"))
+            components.percentEncodedQuery = rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "?&"))
             return components.queryItems
         }
         return nil
@@ -286,6 +286,11 @@ enum RecoveryBarcodeOutcome {
     case applied(serverURL: String, snapshot: [String: Any])
 }
 
+enum ConfigPairingBarcodeOutcome {
+    case invalid(response: [String: Any])
+    case applied(settings: [String: Any], wifiRequest: [String: Any]?)
+}
+
 struct RecoveryBarcodeHandler {
     typealias ApplyConfiguration = ([String: Any]) -> [String: Any]
 
@@ -317,5 +322,47 @@ struct RecoveryBarcodeHandler {
 
         let snapshot = applyConfiguration(["serverURL": serverURL])
         return .applied(serverURL: serverURL, snapshot: snapshot)
+    }
+
+    func handleConfigPairing(
+        code: String,
+        action: String,
+        storedToken: String,
+        invalidTokenMessage: String
+    ) -> ConfigPairingBarcodeOutcome {
+        if let configQR = ConfigQRCodeParser().parse(code: code) {
+            guard allowsConfigQRToken(configQR.token, storedToken: storedToken) else {
+                return .invalid(response: BarcodeResponseBuilder.recoveryInvalidResponse(
+                    action: action,
+                    message: invalidTokenMessage
+                ))
+            }
+
+            return .applied(
+                settings: applyConfiguration(configQR.settings),
+                wifiRequest: configQR.wifiRequest
+            )
+        }
+
+        if let serverURL = parser.serverURL(from: code) {
+            return .applied(
+                settings: applyConfiguration(["serverURL": serverURL]),
+                wifiRequest: nil
+            )
+        }
+
+        return .invalid(response: BarcodeResponseBuilder.recoveryInvalidResponse(
+            action: action,
+            message: invalidMessage
+        ))
+    }
+
+    private func allowsConfigQRToken(_ token: String, storedToken: String) -> Bool {
+        let stored = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let incoming = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stored.isEmpty {
+            return incoming.isEmpty
+        }
+        return incoming == stored
     }
 }

@@ -23,7 +23,9 @@ struct WebView: UIViewRepresentable {
 
         webView.navigationDelegate = webViewStore
         webView.uiDelegate = context.coordinator
-        webViewStore.loadConfiguredURLIfNeeded()
+        DispatchQueue.main.async {
+            webViewStore.loadConfiguredURLIfNeeded()
+        }
         return webView
     }
 

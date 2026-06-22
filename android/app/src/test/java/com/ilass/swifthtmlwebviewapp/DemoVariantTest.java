@@ -25,7 +25,7 @@ public class DemoVariantTest {
         assertTrue(build.contains("applicationId 'com.ilass.swifthtmlwebviewapp'"));
         assertTrue(manifest.contains("android:label=\"@string/app_name\""));
         assertTrue(manifest.contains("android:allowBackup=\"false\""));
-        assertTrue(manifest.contains("android:usesCleartextTraffic=\"false\""));
+        assertTrue(manifest.contains("android:usesCleartextTraffic=\"true\""));
         assertTrue(strings.contains("<string name=\"app_name\">swiftHTMLWebviewApp</string>"));
     }
 
@@ -122,23 +122,23 @@ public class DemoVariantTest {
         String mainActivity = read(root.resolve("app/src/main/java/com/ilass/swifthtmlwebviewapp/MainActivity.java"));
 
         assertTrue(manifest.contains("android:name=\"com.ilass.DEFAULT_SERVER_URL\""));
-        assertTrue(manifest.contains("android:value=\"https://example.invalid/mobile/\""));
+        assertTrue(manifest.contains("android:value=\"local\""));
         assertTrue(manifest.contains("android:name=\"com.ilass.DEFAULT_SECURITY_TOKEN\""));
         assertTrue(manifest.contains("android:value=\"\""));
         assertTrue(manifest.contains("android:name=\"com.ilass.DEFAULT_BEACON_UUID\""));
         assertTrue(manifest.contains("android:value=\"00000000-0000-0000-0000-000000000000\""));
         assertTrue(manifest.contains("android:name=\"com.ilass.RECOVERY_SHORT_MARK\""));
-        assertTrue(manifest.contains("android:value=\"WV\""));
+        assertTrue(manifest.contains("android:value=\"SW\""));
         assertTrue(manifest.contains("android:name=\"com.ilass.RECOVERY_TITLE\""));
-        assertTrue(manifest.contains("android:value=\"WebView Demo Verbindung\""));
+        assertTrue(manifest.contains("android:value=\"swiftHTMLWebviewApp\""));
         assertTrue(mainActivity.contains("META_DEFAULT_SERVER_URL"));
         assertTrue(mainActivity.contains("META_DEFAULT_SECURITY_TOKEN"));
         assertTrue(mainActivity.contains("META_DEFAULT_BEACON_UUID"));
         assertTrue(mainActivity.contains("META_RECOVERY_SHORT_MARK"));
         assertTrue(mainActivity.contains("META_RECOVERY_TITLE"));
         assertFalse(mainActivity.contains("DEFAULT_SERVER_URL = \"https://example.invalid/mobile/\""));
-        assertFalse(mainActivity.contains("<title>WebView Demo Verbindung</title>"));
-        assertFalse(mainActivity.contains("<div class=\\\"mark\\\">WV</div>"));
+        assertFalse(mainActivity.contains("<title>swiftHTMLWebviewApp Verbindung</title>"));
+        assertFalse(mainActivity.contains("<div class=\\\"mark\\\">SW</div>"));
     }
 
     @Test

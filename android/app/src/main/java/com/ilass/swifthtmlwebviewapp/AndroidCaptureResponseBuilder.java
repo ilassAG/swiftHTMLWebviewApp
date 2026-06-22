@@ -61,4 +61,28 @@ final class AndroidCaptureResponseBuilder {
         response.put("camera", camera);
         return response;
     }
+
+    static JSONObject portrait(
+            AndroidPortraitCaptureRequest request,
+            String format,
+            String imageDataUrl,
+            boolean backgroundRemoved,
+            int selectedIndex,
+            int variantsCaptured,
+            int detectedFaces
+    ) throws JSONException {
+        JSONObject response = BridgeResponse.base(request.source, request.action);
+        response.put("success", true);
+        response.put("format", format);
+        response.put("imageData", imageDataUrl);
+        response.put("backgroundRemoved", backgroundRemoved);
+        response.put("background", request.background);
+        response.put("backgroundColor", request.backgroundColor);
+        response.put("cropped", request.cropTransparent || request.faceCenteredCrop);
+        response.put("camera", request.camera);
+        response.put("detectedFaces", detectedFaces);
+        response.put("selectedIndex", selectedIndex);
+        response.put("variantsCaptured", variantsCaptured);
+        return response;
+    }
 }

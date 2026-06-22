@@ -11,10 +11,16 @@ import SwiftUI
 struct ContinuousBarcodeScannerConfig {
     var action = "continuousScanStart"
     var mode = "data"
+    var purpose = ""
     var camera = "back"
     var types: [String] = ["qr", "ean13", "ean8", "code128", "datamatrix"]
     var repeatDelaySeconds: TimeInterval = 1.5
     var previewRect = CGRect(x: 0.1, y: 0.18, width: 0.8, height: 0.36)
+    var showFlipButton = false
+
+    var isConfigPairing: Bool {
+        purpose == "configPairing"
+    }
 }
 
 struct ContinuousBarcodeScannerView: UIViewRepresentable {
@@ -46,6 +52,7 @@ final class ContinuousBarcodeScannerUIView: UIView, AVCaptureMetadataOutputObjec
     private var onError: ((String) -> Void)?
     private var lastSeenByCode: [String: Date] = [:]
     private var isConfigured = false
+    private var cameraPosition: AVCaptureDevice.Position = .back
 
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
@@ -59,10 +66,31 @@ final class ContinuousBarcodeScannerUIView: UIView, AVCaptureMetadataOutputObjec
         previewLayer = layer as? AVCaptureVideoPreviewLayer
         previewLayer?.videoGravity = .resizeAspectFill
         previewLayer?.session = session
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOrientationChange),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        previewLayer?.frame = bounds
+        updatePreviewOrientation()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updatePreviewOrientation()
     }
 
     func configure(
@@ -123,6 +151,7 @@ final class ContinuousBarcodeScannerUIView: UIView, AVCaptureMetadataOutputObjec
             self.session.outputs.forEach { self.session.removeOutput($0) }
 
             let position: AVCaptureDevice.Position = config.camera.lowercased() == "front" ? .front : .back
+            self.cameraPosition = position
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
                 self.finishConfigurationWithError("Requested camera is not available.")
                 return
@@ -153,9 +182,62 @@ final class ContinuousBarcodeScannerUIView: UIView, AVCaptureMetadataOutputObjec
 
             self.session.commitConfiguration()
             self.isConfigured = true
+            DispatchQueue.main.async { [weak self] in
+                self?.updatePreviewOrientation()
+            }
 
             if !self.session.isRunning {
                 self.session.startRunning()
+            }
+        }
+    }
+
+    @objc private func handleOrientationChange() {
+        setNeedsLayout()
+        updatePreviewOrientation()
+    }
+
+    private func updatePreviewOrientation() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.updatePreviewOrientation()
+            }
+            return
+        }
+        guard let connection = previewLayer?.connection else { return }
+
+        if connection.isVideoOrientationSupported {
+            connection.videoOrientation = currentVideoOrientation()
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = cameraPosition == .front
+        }
+    }
+
+    private func currentVideoOrientation() -> AVCaptureVideoOrientation {
+        let interfaceOrientation = window?.windowScene?.interfaceOrientation
+        switch interfaceOrientation {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        default:
+            switch UIDevice.current.orientation {
+            case .portrait:
+                return .portrait
+            case .portraitUpsideDown:
+                return .portraitUpsideDown
+            case .landscapeLeft:
+                return .landscapeRight
+            case .landscapeRight:
+                return .landscapeLeft
+            default:
+                return .portrait
             }
         }
     }

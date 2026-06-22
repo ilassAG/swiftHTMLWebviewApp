@@ -64,6 +64,10 @@
                     <input type="checkbox" id="portraitCropTransparentCheckbox">
                     Transparent zuschneiden
                 </label>
+                <label class="photo-options-toggle">
+                    <input type="checkbox" id="portraitMirrorOutputCheckbox">
+                    Ausgabe spiegeln
+                </label>
             </div>
             <div class="photo-options">
                 <label class="photo-options-toggle">
@@ -184,7 +188,7 @@
                 <div class="config-actions">
                     <button id="configPairingShowBtn" type="button">Pairing QR anzeigen</button>
                     <button id="configPairingStopBtn" type="button">Pairing QR schliessen</button>
-                    <button id="configPairingScanBtn" type="button">Pairing QR scannen</button>
+                    <button id="configPairingScanBtn" type="button">Pairing QR live scannen</button>
                     <button id="configPairingConnectBtn" type="button">Config verbinden</button>
                     <button id="configPairingDisconnectBtn" type="button">Config trennen</button>
                     <button id="localSettingsGetBtn" type="button">Lokale Settings holen</button>
@@ -226,6 +230,68 @@
             </div>
             <button id="screenStreamStartBtn">Screenstream starten</button>
             <button id="screenStreamStopBtn">Screenstream stoppen</button>
+            <div class="native-demo-panel">
+                <h2>Native Persistence</h2>
+                <div class="native-demo-grid">
+                    <label for="storageNamespaceInput">Store Namespace</label>
+                    <input type="text" id="storageNamespaceInput" value="demo">
+                    <label for="storageKeyInput">Store Key</label>
+                    <input type="text" id="storageKeyInput" value="station">
+                    <label for="storageValueInput">Store JSON</label>
+                    <textarea id="storageValueInput" rows="3">{"name":"Native Bridge Demo","counter":1}</textarea>
+                </div>
+                <div class="native-demo-actions">
+                    <button id="storageSetBtn" type="button">Store setzen</button>
+                    <button id="storageGetBtn" type="button">Store lesen</button>
+                    <button id="storageRemoveBtn" type="button">Store entfernen</button>
+                    <button id="storageClearBtn" type="button">Namespace löschen</button>
+                </div>
+                <div class="native-demo-grid">
+                    <label for="fileDirectorySelect">Datei Bereich</label>
+                    <select id="fileDirectorySelect">
+                        <option value="data" selected>Data</option>
+                        <option value="cache">Cache</option>
+                        <option value="temporary">Temporary</option>
+                    </select>
+                    <label for="filePathInput">Datei Pfad</label>
+                    <input type="text" id="filePathInput" value="demo/state.json">
+                    <label for="fileDataInput">Datei Inhalt</label>
+                    <textarea id="fileDataInput" rows="3">{"offline":true,"updatedBy":"demo"}</textarea>
+                </div>
+                <div class="native-demo-actions">
+                    <button id="fileWriteBtn" type="button">Datei schreiben</button>
+                    <button id="fileReadBtn" type="button">Datei lesen</button>
+                    <button id="fileListBtn" type="button">Ordner listen</button>
+                    <button id="fileDeleteBtn" type="button">Datei löschen</button>
+                </div>
+                <div class="native-demo-grid">
+                    <label for="sqliteDatabaseInput">SQLite DB</label>
+                    <input type="text" id="sqliteDatabaseInput" value="demo.sqlite">
+                    <label for="sqliteKeyInput">SQLite Key</label>
+                    <input type="text" id="sqliteKeyInput" value="station">
+                    <label for="sqliteValueInput">SQLite Value</label>
+                    <input type="text" id="sqliteValueInput" value="Demo Terminal">
+                </div>
+                <div class="native-demo-actions">
+                    <button id="sqliteInitBtn" type="button">SQLite init</button>
+                    <button id="sqliteUpsertBtn" type="button">SQLite upsert</button>
+                    <button id="sqliteListBtn" type="button">SQLite lesen</button>
+                    <button id="sqliteDeleteDbBtn" type="button">SQLite DB löschen</button>
+                </div>
+            </div>
+            <div class="native-demo-panel">
+                <h2>Kiosk Reload Control</h2>
+                <div class="native-demo-grid">
+                    <label for="kioskOpacityInput">Opacity</label>
+                    <input type="number" id="kioskOpacityInput" value="0.1" min="0.02" max="1" step="0.02">
+                    <label for="kioskLongPressInput">Long Press s</label>
+                    <input type="number" id="kioskLongPressInput" value="2" min="0.5" max="10" step="0.5">
+                </div>
+                <div class="native-demo-actions">
+                    <button id="kioskReloadEnableBtn" type="button">Reload Button ein</button>
+                    <button id="kioskReloadDisableBtn" type="button">Reload Button aus</button>
+                </div>
+            </div>
             <button id="clearResultBtn">Ergebnis löschen</button>
         </div>
 

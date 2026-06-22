@@ -101,6 +101,64 @@ final class DeviceBridge: ObservableObject {
         }
     }
 
+    @MainActor
+    func waitForWifiReady(
+        ssid: String?,
+        timeout: TimeInterval = 75,
+        pollInterval: TimeInterval = 1,
+        completion: @escaping ([String: Any]) -> Void
+    ) {
+        let targetSSID = ssid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let startedAt = Date()
+
+        func poll() {
+            NEHotspotNetwork.fetchCurrent { currentNetwork in
+                let wifiInfo = DeviceBridge.networkInfo(currentNetwork: currentNetwork)
+                let wifiIpAddresses = (wifiInfo["wifiIpAddresses"] as? [String]) ?? []
+                let currentSSID = currentNetwork?.ssid ?? ""
+                let hasWifiAddress = !wifiIpAddresses.isEmpty
+                let ssidMatches = targetSSID.isEmpty || currentSSID == targetSSID || currentSSID.isEmpty
+
+                if hasWifiAddress && ssidMatches {
+                    DispatchQueue.main.async {
+                        completion([
+                            "platform": "ios",
+                            "action": "wifiReady",
+                            "success": true,
+                            "ssid": currentSSID,
+                            "targetSSID": targetSSID,
+                            "wifi": wifiInfo,
+                            "elapsedSeconds": Date().timeIntervalSince(startedAt)
+                        ])
+                    }
+                    return
+                }
+
+                if Date().timeIntervalSince(startedAt) >= timeout {
+                    DispatchQueue.main.async {
+                        completion([
+                            "platform": "ios",
+                            "action": "wifiReady",
+                            "success": false,
+                            "ssid": currentSSID,
+                            "targetSSID": targetSSID,
+                            "wifi": wifiInfo,
+                            "elapsedSeconds": Date().timeIntervalSince(startedAt),
+                            "error": "Timed out waiting for Wi-Fi connectivity."
+                        ])
+                    }
+                    return
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) {
+                    poll()
+                }
+            }
+        }
+
+        poll()
+    }
+
     private func persistServerURLIfPresent(in request: [String: Any]) -> String? {
         let directValue = firstNonEmptyString(in: request, keys: [
             "serverURL",

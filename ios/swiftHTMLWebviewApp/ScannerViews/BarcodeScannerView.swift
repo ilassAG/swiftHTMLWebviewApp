@@ -114,7 +114,9 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
 
                         if let config = ConfigQRCodeParser().parse(code: code) {
                             let storedToken = AppSettings.shared.securityToken
-                            guard !config.token.isEmpty, config.token == storedToken else {
+                            let incomingToken = config.token.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let expectedToken = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard (expectedToken.isEmpty && incomingToken.isEmpty) || incomingToken == expectedToken else {
                                 print(NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error"))
                                 hasCompleted = true
                                 scanner.stopScanning()

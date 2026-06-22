@@ -69,6 +69,21 @@ public class AndroidBarcodeConfigHandlerTest {
     }
 
     @Test
+    public void tokenlessConfigQrIsAllowedWhenNoTokenIsConfigured() throws Exception {
+        AndroidBarcodeConfigHandler.Result result = AndroidBarcodeConfigHandler.evaluate(
+                "?toolmode=changeConfig&serverURL=https%3A%2F%2Fdemo.example.invalid%2Fmobile%2F%3FforceStationUUID%3D190E4AD1-E307-448F-A87E-D52A9DD9479C",
+                false,
+                ""
+        );
+
+        assertEquals(AndroidBarcodeConfigHandler.Kind.CONFIG_CHANGE, result.kind);
+        assertEquals(
+                "https://demo.example.invalid/mobile/?forceStationUUID=190E4AD1-E307-448F-A87E-D52A9DD9479C",
+                result.settings.getString("serverURL")
+        );
+    }
+
+    @Test
     public void recoverySourcePersistsServerUrlFromCode() throws Exception {
         AndroidBarcodeConfigHandler.Result result = AndroidBarcodeConfigHandler.evaluate(
                 "{\"serverURL\":\"https://recovery.example.invalid\",\"linkId\":\"install-7\"}",

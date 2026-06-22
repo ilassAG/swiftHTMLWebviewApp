@@ -21,6 +21,20 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
         XCTAssertEqual(config.types, ["qr", "ean13", "ean8", "code128", "datamatrix"])
     }
 
+    func testConfigPairingDefaultsToQRFrontCameraAndFlipButton() {
+        let config = ContinuousScannerResponseBuilder.config(
+            action: "continuousScanStart",
+            request: ["action": "continuousScanStart", "purpose": "configPairing"],
+            current: nil
+        )
+
+        XCTAssertEqual(config.mode, "configPairing")
+        XCTAssertEqual(config.purpose, "configPairing")
+        XCTAssertEqual(config.camera, "front")
+        XCTAssertEqual(config.types, ["qr"])
+        XCTAssertTrue(config.showFlipButton)
+    }
+
     func testRequestOverridesTypesRepeatDelayAndPreviewRect() {
         let config = ContinuousScannerResponseBuilder.config(
             action: "dataScanStart",
@@ -60,7 +74,9 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
         XCTAssertEqual(response["action"] as? String, "continuousScanStart")
         XCTAssertEqual(response["success"] as? Bool, true)
         XCTAssertEqual(response["repeatDelaySeconds"] as? TimeInterval, 1.75)
+        XCTAssertEqual(response["purpose"] as? String, "")
         XCTAssertEqual(response["camera"] as? String, "back")
+        XCTAssertEqual(response["showFlipButton"] as? Bool, false)
         XCTAssertNotNil(response["previewRect"] as? [String: Double])
     }
 

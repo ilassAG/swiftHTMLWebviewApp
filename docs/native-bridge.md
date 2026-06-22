@@ -79,6 +79,10 @@ before platform builds.
 - `beaconAdvertiseStart` / `beaconAdvertiseStop`
 - `deviceInfoGet`
 - `settingsGet` / `settingsSet`
+- `storageGet` / `storageSet` / `storageRemove` / `storageClear`
+- `filesystemWrite` / `filesystemRead` / `filesystemList` / `filesystemDelete`
+- `sqliteExecute` / `sqliteDeleteDatabase`
+- `kioskReloadControlSet`
 - `screenOrientationGet` / `screenOrientationSet`
 - `wifiStatusGet` / `wifiConfigure`
 - `screenshotGet`
@@ -208,6 +212,75 @@ actions. On iOS they live in Settings.bundle:
 
 Web apps should not hard-code these values. They should treat the native wrapper
 as the owner of startup URL selection and beacon-region selection.
+
+## App-private persistence
+
+The wrapper exposes three persistence layers for web apps that need reliable
+offline behavior beyond normal browser storage:
+
+- Use `storageGet`, `storageSet`, `storageRemove`, and `storageClear` for small
+  native preferences or deployment values. Values are stored app-privately in a
+  namespaced key/value store. This is the general-purpose replacement for
+  product-specific `appConfig` fields.
+- Use `filesystemWrite`, `filesystemRead`, `filesystemList`, and
+  `filesystemDelete` for app-private JSON, text, or binary files. The
+  `directory` field can be `data`, `cache`, or `temporary`; paths are always
+  resolved below the wrapper-owned app-private directory.
+- Use `sqliteExecute` and `sqliteDeleteDatabase` for structured offline data,
+  local queues, and transaction logs. SQL statements accept positional `args`
+  and return `rows`, `changes`, and `lastInsertRowId`.
+
+Recommended storage split:
+
+- Small configuration and per-device preferences: native storage bridge.
+- Web-owned cache and UI state: IndexedDB when a browser-native database is
+  sufficient.
+- Transactional offline domain data, sync queues, or cash-register state:
+  SQLite bridge.
+- Photos, exports, import payloads, and larger JSON/binary documents:
+  filesystem bridge.
+
+Examples:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'storageSet',
+  namespace: 'terminal',
+  key: 'siteKey',
+  value: 'demo-site'
+});
+
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'filesystemWrite',
+  directory: 'data',
+  path: 'sync/outbox.json',
+  data: JSON.stringify({ pending: [] }),
+  encoding: 'utf8'
+});
+
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'sqliteExecute',
+  database: 'offline.sqlite',
+  sql: 'INSERT INTO events (id, payload) VALUES (?, ?)',
+  args: ['evt_1', JSON.stringify({ total: 12.5 })]
+});
+```
+
+## Kiosk reload control
+
+`kioskReloadControlSet` shows or hides a small native reload button centered on
+the left edge of the screen. It is disabled by default. A tap reloads the
+current WebView. A long press terminates the app process so kiosk launchers or
+MDM policies can restart it.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'kioskReloadControlSet',
+  enabled: true,
+  opacity: 0.1,
+  longPressSeconds: 2
+});
+```
 
 On Android these values are stored in app-private SharedPreferences. Android
 does not provide an iOS Settings.bundle equivalent where arbitrary app settings
@@ -349,11 +422,69 @@ Config QR writes and QR-triggered Wi-Fi setup require `token` or
 `securityToken`. Plain recovery QR codes that only carry a server URL keep their
 existing recovery behavior.
 
+The same QR payloads can be consumed through the continuous scanner by starting
+it with `purpose: 'configPairing'`. In that mode iOS and Android default to the
+front camera, restrict scanning to QR codes unless `types` is explicitly set,
+show a native camera-flip icon below the preview, and apply the first valid
+config QR natively before reloading the configured URL:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'continuousScanStart',
+  purpose: 'configPairing',
+  camera: 'front',
+  types: ['qr'],
+  showFlipButton: true,
+  previewRect: { top: 0.18, left: 0.1, width: 0.8, height: 0.36 }
+});
+```
+
+## Portrait capture
+
+`portraitCapture` opens a native pass-photo controller on iOS and Android. The
+front-camera preview is mirrored for familiar selfie framing, but the returned
+image is not mirrored by default so text remains readable like in the system
+camera app.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'portraitCapture',
+  camera: 'front',
+  requiredFaces: 1,
+  countdownSeconds: 3,
+  variationCount: 4,
+  captureIntervalMs: 200,
+  removeBackground: true,
+  background: 'transparent',
+  crop: 'squareFaceCentered',
+  mirrorOutput: false
+});
+```
+
+Supported request fields:
+
+- `camera`: `front` or `back`, default `front`.
+- `requiredFaces` or legacy `amountFaces`: integer `1...8`, default `1`.
+- `countdownSeconds` or legacy `secondsDelay`: seconds `0...15`, default `3`.
+- `variationCount` or legacy `withVariation`: integer `1...8`, default `4`.
+- `captureIntervalMs`, `burstIntervalMs`, or `variationIntervalMs`:
+  milliseconds `50...2000`, default `200`.
+- `removeBackground`: boolean/string boolean, default `false`.
+- `outputType`: `png` or `jpeg`; transparent background removal returns PNG.
+- `background`: `transparent` or `color`.
+- `backgroundColor`: `#RRGGBB`, default `#FFFFFF`.
+- `cropTransparent`: boolean/string boolean, default `false`.
+- `crop`: `squareFaceCentered` or `none`, default `squareFaceCentered`.
+- `mirrorOutput` or legacy-short `mirror`: boolean/string boolean, default
+  `false`. Set `true` only when the web app explicitly wants a mirror-style
+  selfie result.
+
 ## Continuous scanner
 
 iOS exposes an embedded long-running scanner with camera selection and a
 relative preview rectangle. The legacy-compatible `dataScanStart` and
 `loginScanStart` aliases are supported by the same implementation.
+Config-pairing flows use the same scanner with `purpose: 'configPairing'`.
 
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({

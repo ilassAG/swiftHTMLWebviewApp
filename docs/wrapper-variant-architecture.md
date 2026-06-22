@@ -8,8 +8,8 @@ signing, and optional-module decisions live in private product repositories.
 
 The authoritative registry is `docs/app-variants.json`.
 
-- Generic demo iOS: `org.example.swifthtmlwebviewapp.demo`, product name
-  `swiftHTMLWebviewApp`, display name `WebView Demo`.
+- Generic demo iOS: `com.ilass.swiftHTMLWebviewApp`, product name and display
+  name `swiftHTMLWebviewApp`.
 - Generic demo Android: Gradle module `:app`, application ID
   `com.ilass.swifthtmlwebviewapp`, label `swiftHTMLWebviewApp`.
 - private product: migrated out of the open-source wrapper into its private

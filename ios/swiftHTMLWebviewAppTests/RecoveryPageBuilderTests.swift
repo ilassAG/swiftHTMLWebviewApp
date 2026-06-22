@@ -21,7 +21,9 @@ final class RecoveryPageBuilderTests: XCTestCase {
         ))
 
         XCTAssertTrue(html.contains("<title>Demo &lt;Verbindung&gt; Verbindung</title>"))
-        XCTAssertTrue(html.contains("<div class=\"logo\">W&lt;i&gt;</div>"))
+        XCTAssertTrue(html.contains("<div class=\"logo\" aria-label=\"W&lt;i&gt;\">"))
+        XCTAssertTrue(html.contains("<svg viewBox=\"0 0 64 64\""))
+        XCTAssertTrue(html.contains("<h1>Demo &lt;Verbindung&gt;</h1>"))
         XCTAssertTrue(html.contains("Server &amp; WLAN pruefen"))
         XCTAssertTrue(html.contains("Timeout &lt;wifi&gt; &amp; retry"))
         XCTAssertTrue(html.contains("https://primary.invalid/?a=1&amp;b=2"))
@@ -34,7 +36,9 @@ final class RecoveryPageBuilderTests: XCTestCase {
         let html = RecoveryPageBuilder.html(config: RecoveryPageBuilder.Config())
 
         XCTAssertTrue(html.contains("window.webkit?.messageHandlers?.swiftBridge"))
-        XCTAssertTrue(html.contains("action: 'scanBarcode', source: 'recovery', types: ['qr']"))
+        XCTAssertTrue(html.contains("action: 'continuousScanStart'"))
+        XCTAssertTrue(html.contains("purpose: 'configPairing'"))
+        XCTAssertTrue(html.contains("source: 'recovery'"))
         XCTAssertTrue(html.contains("action: 'reload', source: 'recovery'"))
         XCTAssertTrue(html.contains("window.handleNativeResult"))
     }
@@ -46,7 +50,7 @@ final class RecoveryPageBuilderTests: XCTestCase {
             "https://two.invalid"
         ]))
 
-        XCTAssertTrue(singular.contains("Gepruefte Adresse</p>"))
-        XCTAssertTrue(plural.contains("Gepruefte Adressen</p>"))
+        XCTAssertTrue(singular.contains("Geprüfte Adresse</p>"))
+        XCTAssertTrue(plural.contains("Geprüfte Adressen</p>"))
     }
 }

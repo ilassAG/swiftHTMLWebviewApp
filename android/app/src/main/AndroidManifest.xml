@@ -39,7 +39,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <activity
             android:name="com.ilass.swifthtmlwebviewapp.MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -60,7 +60,7 @@
             android:value="barcode_ui" />
         <meta-data
             android:name="com.ilass.DEFAULT_SERVER_URL"
-            android:value="https://example.invalid/mobile/" />
+            android:value="local" />
         <meta-data
             android:name="com.ilass.DEFAULT_SECURITY_TOKEN"
             android:value="" />
@@ -69,16 +69,16 @@
             android:value="00000000-0000-0000-0000-000000000000" />
         <meta-data
             android:name="com.ilass.RECOVERY_SHORT_MARK"
-            android:value="WV" />
+            android:value="SW" />
         <meta-data
             android:name="com.ilass.RECOVERY_TITLE"
-            android:value="WebView Demo Verbindung" />
+            android:value="swiftHTMLWebviewApp" />
         <meta-data
             android:name="com.ilass.RECOVERY_BODY"
             android:value="Die konfigurierte Demo-Adresse kann in diesem Netzwerk nicht geladen werden. Scanne einen Konfigurations-QR-Code oder setze eine gueltige URL." />
         <meta-data
             android:name="com.ilass.RECOVERY_SUCCESS_MESSAGE"
-            android:value="Neue Server-Adresse gespeichert. Lade WebView Demo..." />
+            android:value="Neue Server-Adresse gespeichert. Lade swiftHTMLWebviewApp..." />
         <meta-data
             android:name="com.ilass.RECOVERY_INVALID_QR_MESSAGE"
             android:value="QR-Code erkannt, aber keine gueltige Server-Adresse gefunden." />

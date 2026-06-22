@@ -14,7 +14,7 @@ public class AndroidRecoveryPageBuilderTest {
                 .reason("Timeout <wifi> & retry")
                 .candidates(Arrays.asList("https://primary.invalid/?a=1&b=2", "https://backup.invalid/<bad>"))
                 .shortMark("W<i>")
-                .title("WebView Demo <Verbindung>")
+                .title("swiftHTMLWebviewApp <Verbindung>")
                 .body("Server & WLAN pruefen")
                 .successMessage("Adresse <ok> & weiter")
                 .invalidQRMessage("QR 'ungueltig' <bad>")
@@ -22,8 +22,9 @@ public class AndroidRecoveryPageBuilderTest {
 
         String html = AndroidRecoveryPageBuilder.html(config);
 
-        assertTrue(html.contains("<title>WebView Demo &lt;Verbindung&gt;</title>"));
-        assertTrue(html.contains("<div class=\"mark\">W&lt;i&gt;</div>"));
+        assertTrue(html.contains("<title>swiftHTMLWebviewApp &lt;Verbindung&gt;</title>"));
+        assertTrue(html.contains("<div class=\"mark\" aria-label=\"W&lt;i&gt;\">"));
+        assertTrue(html.contains("<svg viewBox=\"0 0 64 64\""));
         assertTrue(html.contains("Server &amp; WLAN pruefen"));
         assertTrue(html.contains("Timeout &lt;wifi&gt; &amp; retry"));
         assertTrue(html.contains("https://primary.invalid/?a=1&amp;b=2"));

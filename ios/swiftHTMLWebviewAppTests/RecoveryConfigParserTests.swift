@@ -141,6 +141,18 @@ final class RecoveryConfigParserTests: XCTestCase {
         XCTAssertEqual(config?.wifiRequest?["password"] as? String, "secret")
     }
 
+    func testConfigQRCodeParserDecodesLeadingQueryPayload() {
+        let rawCode = "?toolmode=changeConfig&serverURL=https%3A%2F%2Fdemo.example.invalid%2Fmobile%2F%3FforceStationUUID%3D190E4AD1-E307-448F-A87E-D52A9DD9479C"
+
+        let config = ConfigQRCodeParser().parse(code: rawCode)
+
+        XCTAssertEqual(config?.token, "")
+        XCTAssertEqual(
+            config?.settings["serverURL"] as? String,
+            "https://demo.example.invalid/mobile/?forceStationUUID=190E4AD1-E307-448F-A87E-D52A9DD9479C"
+        )
+    }
+
     func testConfigQRCodeParserLeavesOrdinaryURLBarcodesAlone() {
         XCTAssertNil(ConfigQRCodeParser().parse(code: "https://example.invalid/item?id=123"))
     }

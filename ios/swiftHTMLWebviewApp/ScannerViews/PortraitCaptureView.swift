@@ -76,7 +76,7 @@ final class PortraitCaptureViewController: UIViewController {
     private var latestFaceCount = 0
     private var variants: [Variant] = []
     private var photoDelegates: [PhotoDelegate] = []
-    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationCoordinator: Any?
     private var currentVisionOrientation: CGImagePropertyOrientation = .right
     private var selectionButtonSizeConstraints: [NSLayoutConstraint] = []
     private var lastSelectionColumnCount = 0
@@ -204,10 +204,10 @@ final class PortraitCaptureViewController: UIViewController {
         retakeButton.layer.cornerRadius = 12
         retakeButton.addTarget(self, action: #selector(retake), for: .touchUpInside)
 
-        useButton.setImage(UIImage(systemName: "checkmark"), for: .normal)
+        useButton.setImage(UIImage(systemName: "hand.thumbsup.fill"), for: .normal)
         useButton.imageView?.contentMode = .scaleAspectFit
-        useButton.backgroundColor = .white
-        useButton.tintColor = .black
+        useButton.backgroundColor = .systemGreen
+        useButton.tintColor = .white
         useButton.layer.cornerRadius = 12
         useButton.addTarget(self, action: #selector(useSelectedPhoto), for: .touchUpInside)
 
@@ -286,10 +286,14 @@ final class PortraitCaptureViewController: UIViewController {
 
                 self.session.commitConfiguration()
                 DispatchQueue.main.async {
-                    self.rotationCoordinator = AVCaptureDevice.RotationCoordinator(
-                        device: device,
-                        previewLayer: self.previewView.previewLayer
-                    )
+                    if #available(iOS 17.0, *) {
+                        self.rotationCoordinator = AVCaptureDevice.RotationCoordinator(
+                            device: device,
+                            previewLayer: self.previewView.previewLayer
+                        )
+                    } else {
+                        self.rotationCoordinator = nil
+                    }
                     self.previewView.previewLayer.session = self.session
                     self.updateVideoConnections()
                 }
@@ -311,10 +315,29 @@ final class PortraitCaptureViewController: UIViewController {
 
     private func updateVideoConnections() {
         previewView.previewLayer.frame = previewView.bounds
-        let previewAngle = rotationCoordinator?.videoRotationAngleForHorizonLevelPreview ?? 0
-        let captureAngle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture ?? previewAngle
-        configureVideoConnection(previewView.previewLayer.connection, rotationAngle: previewAngle)
-        configureVideoConnection(photoOutput.connection(with: .video), rotationAngle: captureAngle)
+        let fallbackOrientation = currentVideoOrientation()
+        let previewAngle: CGFloat
+        let captureAngle: CGFloat
+        if #available(iOS 17.0, *),
+           let rotationCoordinator = rotationCoordinator as? AVCaptureDevice.RotationCoordinator {
+            previewAngle = rotationCoordinator.videoRotationAngleForHorizonLevelPreview
+            captureAngle = rotationCoordinator.videoRotationAngleForHorizonLevelCapture
+        } else {
+            previewAngle = Self.rotationAngle(for: fallbackOrientation)
+            captureAngle = previewAngle
+        }
+        configureVideoConnection(
+            previewView.previewLayer.connection,
+            rotationAngle: previewAngle,
+            fallbackOrientation: fallbackOrientation,
+            mirrored: request.cameraPosition == .front
+        )
+        configureVideoConnection(
+            photoOutput.connection(with: .video),
+            rotationAngle: captureAngle,
+            fallbackOrientation: fallbackOrientation,
+            mirrored: request.cameraPosition == .front && request.mirrorOutput
+        )
         configureMirroring(for: videoOutput.connection(with: .video))
         setCurrentVisionOrientation(Self.visionOrientation(
             forRotationAngle: captureAngle,
@@ -322,18 +345,46 @@ final class PortraitCaptureViewController: UIViewController {
         ))
     }
 
-    private func configureVideoConnection(_ connection: AVCaptureConnection?, rotationAngle: CGFloat) {
+    private func configureVideoConnection(
+        _ connection: AVCaptureConnection?,
+        rotationAngle: CGFloat,
+        fallbackOrientation: AVCaptureVideoOrientation,
+        mirrored: Bool
+    ) {
         guard let connection else { return }
-        if connection.isVideoRotationAngleSupported(rotationAngle) {
-            connection.videoRotationAngle = rotationAngle
+        if #available(iOS 17.0, *) {
+            if connection.isVideoRotationAngleSupported(rotationAngle) {
+                connection.videoRotationAngle = rotationAngle
+            } else if connection.isVideoOrientationSupported {
+                connection.videoOrientation = fallbackOrientation
+            }
+        } else if connection.isVideoOrientationSupported {
+            connection.videoOrientation = fallbackOrientation
         }
-        configureMirroring(for: connection)
+        configureMirroring(for: connection, mirrored: mirrored)
+    }
+
+    private func currentVideoOrientation() -> AVCaptureVideoOrientation {
+        switch view.window?.windowScene?.interfaceOrientation {
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
     }
 
     private func configureMirroring(for connection: AVCaptureConnection?) {
+        configureMirroring(for: connection, mirrored: request.cameraPosition == .front)
+    }
+
+    private func configureMirroring(for connection: AVCaptureConnection?, mirrored: Bool) {
         guard let connection, connection.isVideoMirroringSupported else { return }
         connection.automaticallyAdjustsVideoMirroring = false
-        connection.isVideoMirrored = request.cameraPosition == .front
+        connection.isVideoMirrored = mirrored
     }
 
     private func setCurrentVisionOrientation(_ orientation: CGImagePropertyOrientation) {
@@ -676,6 +727,21 @@ final class PortraitCaptureViewController: UIViewController {
     private static func normalizedRotationAngle(_ angle: CGFloat) -> Int {
         let rounded = Int(angle.rounded()) % 360
         return rounded >= 0 ? rounded : rounded + 360
+    }
+
+    private static func rotationAngle(for orientation: AVCaptureVideoOrientation) -> CGFloat {
+        switch orientation {
+        case .portrait:
+            return 90
+        case .portraitUpsideDown:
+            return 270
+        case .landscapeLeft:
+            return 180
+        case .landscapeRight:
+            return 0
+        @unknown default:
+            return 90
+        }
     }
 
     private static let completeFaceFrameInset: CGFloat = 0.04

@@ -11,9 +11,9 @@ final class AppVariantTests: XCTestCase {
         let variant = AppVariant.demo
 
         XCTAssertEqual(variant.id, "demo-ios")
-        XCTAssertEqual(variant.bundleIdentifier, "org.example.swifthtmlwebviewapp.demo")
+        XCTAssertEqual(variant.bundleIdentifier, "com.ilass.swiftHTMLWebviewApp")
         XCTAssertEqual(variant.productName, "swiftHTMLWebviewApp")
-        XCTAssertEqual(variant.displayName, "WebView Demo")
+        XCTAssertEqual(variant.displayName, "swiftHTMLWebviewApp")
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, variant.displayName)
     }
 
@@ -26,8 +26,8 @@ final class AppVariantTests: XCTestCase {
         XCTAssertEqual(defaults.beaconUUID, "00000000-0000-0000-0000-000000000000")
         XCTAssertEqual(defaults.loadingImageName, "512")
         XCTAssertEqual(defaults.appIconName, "AppIcon")
-        XCTAssertEqual(defaults.recoveryShortMark, "WV")
-        XCTAssertEqual(defaults.recoveryTitle, "WebView Demo")
+        XCTAssertEqual(defaults.recoveryShortMark, "SW")
+        XCTAssertEqual(defaults.recoveryTitle, "swiftHTMLWebviewApp")
         XCTAssertEqual(defaults.recoveryBody, "Die konfigurierte Demo-Adresse antwortet nicht. Scanne einen Konfigurations-QR-Code oder setze eine gueltige URL in den App-Einstellungen.")
         XCTAssertEqual(defaults.recoveryQRCodeDetectedMessage, "QR-Code erkannt. Verbindung wird geprueft...")
         XCTAssertEqual(defaults.recoveryInvalidQRMessage, "Der QR-Code enthaelt keine gueltige Server-URL.")

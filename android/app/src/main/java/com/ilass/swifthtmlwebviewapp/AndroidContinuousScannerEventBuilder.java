@@ -24,6 +24,7 @@ final class AndroidContinuousScannerEventBuilder {
         event.put("action", eventAction(config.mode));
         event.put("sourceAction", config.action);
         event.put("mode", config.mode);
+        event.put("purpose", config.purpose);
         event.put("camera", config.camera);
         event.put("code", code != null ? code : "");
         event.put("format", format != null ? format : "unknown");

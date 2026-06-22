@@ -3,8 +3,8 @@
 `swiftHTMLWebviewApp` is a native WebView app wrapper for HTML/JavaScript
 applications that need access to device features such as camera capture,
 barcode scanning, document scanning, NFC, beacons, geolocation, sensors,
-notifications, AR, RoomPlan, printing, confetti, and optional payment
-capabilities.
+notifications, app-private storage, filesystem and SQLite persistence, AR,
+RoomPlan, printing, confetti, and optional payment capabilities.
 
 The project started as an iOS wrapper. The repository is now structured to support iOS and Android with a shared web-facing bridge contract.
 Printer smoke tests share a small Go core that can be bound into both mobile platforms.
@@ -39,6 +39,11 @@ swiftHTMLWebviewApp/
 - Optional iBeacon advertising with configurable UUID, major, and minor values.
 - Device information, settings, orientation, Wi-Fi, screenshot, sound, idle
   timer, geolocation, and sensor bridge actions.
+- App-private persistence bridge actions for namespaced key/value storage,
+  JSON or binary files, and SQLite databases.
+- Optional kiosk reload control that web apps can show, hide, and configure.
+  A tap reloads the WebView; a long press terminates the app for kiosk setups
+  that relaunch it automatically.
 - Screen streaming over WebSocket for diagnostics and remote viewing.
 - ARKit local position stream.
 - ARKit guided measurement with start-anchor confirmation, anchor capture,
@@ -61,10 +66,12 @@ swiftHTMLWebviewApp/
 Android support lives in `android/` as a native WebView wrapper with the same
 web-facing bridge shape. The implementation includes the WebView container,
 local smoke-test page, camera/scanner bridge features, NFC tag reading,
-beacons, Wi-Fi provisioning helpers, geolocation, sensors, screen streaming,
-sound, idle timer, local notifications, config pairing, structured unavailable
-responses for iOS-only AR/RoomPlan actions, Sunmi internal printer payloads,
-and optional printer-core bindings for Epson network-printer smoke tests.
+native portrait/pass-photo capture, beacons, Wi-Fi provisioning helpers,
+geolocation, sensors, screen streaming, sound, idle timer, local notifications,
+app-private storage, filesystem and SQLite persistence, kiosk reload control,
+config pairing, structured unavailable responses for iOS-only AR/RoomPlan
+actions, Sunmi internal printer payloads, and optional printer-core bindings for
+Epson network-printer smoke tests.
 
 ## Getting Started: iOS
 
@@ -105,12 +112,16 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
 
 ## Built-In Bridge Actions
 
-- Capture and scanning: `scanDocument`, `takePhoto`, `scanBarcode`,
-  `nfcTagRead`, `continuousScanStart`, `continuousScanStop`, `dataScanStart`,
-  `dataScanEnd`, `loginScanStart`, `loginScanEnd`, `previewBoxLocationUpdate`.
+- Capture and scanning: `scanDocument`, `takePhoto`, `portraitCapture`,
+  `scanBarcode`, `nfcTagRead`, `continuousScanStart`, `continuousScanStop`,
+  `dataScanStart`, `dataScanEnd`, `loginScanStart`, `loginScanEnd`,
+  `previewBoxLocationUpdate`.
 - Beacon and proximity: `beaconsStart`, `beaconsStop`,
   `beaconAdvertiseStart`, `beaconAdvertiseStop`.
 - Device and runtime settings: `deviceInfoGet`, `settingsGet`, `settingsSet`,
+  `storageGet`, `storageSet`, `storageRemove`, `storageClear`,
+  `filesystemWrite`, `filesystemRead`, `filesystemList`, `filesystemDelete`,
+  `sqliteExecute`, `sqliteDeleteDatabase`, `kioskReloadControlSet`,
   `screenOrientationGet`, `screenOrientationSet`, `wifiStatusGet`,
   `wifiConfigure`, `screenshotGet`, `reload`.
 - Location, sensors, and streaming: `geoLocationGet`, `geoLocationStart`,

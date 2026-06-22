@@ -15,6 +15,11 @@ Implemented:
 - Start URL override through an Android launch intent data URL.
 - Native Android confetti overlay for `launchConfetti`.
 - Android camera photo capture for `takePhoto`.
+- Native CameraX portrait/pass-photo capture for `portraitCapture` with
+  face-count validation, countdown reset, burst variants, variant selection,
+  optional ML Kit Selfie Segmentation background removal, and face-centered
+  square cropping. Front-camera preview is mirrored, but final output is
+  unmirrored by default; set `mirrorOutput: true` to request mirrored output.
 - Google Code Scanner UI for `scanBarcode`.
 - Android NFC reader-mode bridge for `nfcTagRead` with tag metadata and NDEF
   record decoding when the device has NFC hardware.
@@ -55,9 +60,9 @@ Implemented:
 Not implemented yet:
 
 - ARKit-based `arOverlayOpen` / `arOverlayClose` and `arReplayOpen` / `arReplayClose` overlays. Android returns a structured unavailable response for those iOS-only actions.
-- Background removal for `takePhoto` is available as an Android experimental
-  ML Kit Selfie Segmentation path and should be treated as optional until a
-  private variant validates it on target hardware.
+- Background removal for `takePhoto` and `portraitCapture` is available through
+  ML Kit Selfie Segmentation. Quality can differ from iOS and should be smoke
+  tested on target hardware.
 - OCR text extraction for document scans.
 - Full system-screen streaming through MediaProjection/foreground service. The
   current `screenStreamStart` bridge streams the app surface only.
@@ -130,8 +135,8 @@ Android `<application>` element:
 
 ```xml
 <meta-data
-    android:name="com.ilass.DEFAULT_SERVER_URL"
-    android:value="https://example.invalid/mobile/" />
+        android:name="com.ilass.DEFAULT_SERVER_URL"
+        android:value="local" />
 ```
 
 Use the same pattern for `com.ilass.DEFAULT_SECURITY_TOKEN` and

@@ -27,6 +27,23 @@ public class AndroidContinuousScannerConfigTest {
     }
 
     @Test
+    public void configPairingDefaultsToQrFrontCameraAndFlipButton() throws JSONException {
+        AndroidContinuousScannerConfig config = AndroidContinuousScannerConfig.from(
+                new JSONObject()
+                        .put("action", "continuousScanStart")
+                        .put("purpose", "configPairing")
+        );
+
+        assertEquals("configPairing", config.mode);
+        assertEquals("configPairing", config.purpose);
+        assertEquals("front", config.camera);
+        assertTrue(config.showFlipButton);
+        assertEquals(1, config.types.length());
+        assertEquals("qr", config.types.getString(0));
+    }
+
+
+    @Test
     public void requestOverridesRepeatDelayCloseButtonAndPreviewRect() throws JSONException {
         AndroidContinuousScannerConfig config = AndroidContinuousScannerConfig.from(
                 new JSONObject()
@@ -66,9 +83,11 @@ public class AndroidContinuousScannerConfigTest {
         assertEquals("req-stream", response.getString("requestId"));
         assertTrue(response.getBoolean("success"));
         assertEquals("android_camerax_mlkit", response.getString("provider"));
+        assertEquals("", response.getString("purpose"));
         assertEquals(2, response.getJSONArray("types").length());
         assertEquals(1.5, response.getDouble("repeatDelaySeconds"), 0.0001);
         assertTrue(response.getBoolean("showCloseButton"));
+        assertFalse(response.getBoolean("showFlipButton"));
         assertEquals(0.80, response.getJSONObject("previewRect").getDouble("width"), 0.0001);
     }
 

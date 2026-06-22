@@ -375,7 +375,7 @@ struct ARGuidedMeasurementSheet: View {
     var body: some View {
         ARGuidedMeasurementRepresentable(bridge: bridge)
             .ignoresSafeArea()
-        .onChange(of: bridge.viewVisible) { _, visible in
+        .onChange(of: bridge.viewVisible) { visible in
             if !visible {
                 dismiss()
             }

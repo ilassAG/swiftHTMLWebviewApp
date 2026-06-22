@@ -16,13 +16,18 @@ enum ContinuousScannerResponseBuilder {
     ) -> ContinuousBarcodeScannerConfig {
         var config = current ?? ContinuousBarcodeScannerConfig()
         config.action = action
+        config.purpose = scannerPurpose(request: request)
         config.mode = scannerMode(for: action, request: request)
         config.camera = scannerCamera(for: action, request: request)
-        config.types = request["types"] as? [String] ?? config.types
+        config.types = scannerTypes(request: request, purpose: config.purpose, fallback: config.types)
         config.repeatDelaySeconds = numericValue(request["repeatDelaySeconds"])
             ?? numericValue(request["repeatDelay"])
             ?? config.repeatDelaySeconds
         config.previewRect = previewRect(from: request["previewRect"] as? [String: Any]) ?? config.previewRect
+        config.showFlipButton = boolValue(request["showFlipButton"])
+            ?? boolValue(request["flipButton"])
+            ?? boolValue(request["allowCameraFlip"])
+            ?? (config.purpose == "configPairing")
         return config
     }
 
@@ -32,10 +37,12 @@ enum ContinuousScannerResponseBuilder {
             "action": action,
             "success": true,
             "mode": config.mode,
+            "purpose": config.purpose,
             "camera": config.camera,
             "types": config.types,
             "repeatDelaySeconds": config.repeatDelaySeconds,
-            "previewRect": previewRectPayload(config.previewRect)
+            "previewRect": previewRectPayload(config.previewRect),
+            "showFlipButton": config.showFlipButton
         ]
     }
 
@@ -73,6 +80,9 @@ enum ContinuousScannerResponseBuilder {
         if let mode = request["mode"] as? String, !mode.isEmpty {
             return mode
         }
+        if scannerPurpose(request: request) == "configPairing" {
+            return "configPairing"
+        }
         return action == "loginScanStart" ? "login" : "data"
     }
 
@@ -80,7 +90,26 @@ enum ContinuousScannerResponseBuilder {
         if let camera = request["camera"] as? String, camera == "front" || camera == "back" {
             return camera
         }
+        if scannerPurpose(request: request) == "configPairing" {
+            return "front"
+        }
         return action == "loginScanStart" ? "front" : "back"
+    }
+
+    static func scannerPurpose(request: [String: Any]) -> String {
+        let rawPurpose = stringValue(request["purpose"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if rawPurpose == "configPairing" {
+            return rawPurpose
+        }
+        let rawSource = stringValue(request["source"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rawSource == "configPairing" ? rawSource : ""
+    }
+
+    static func scannerTypes(request: [String: Any], purpose: String, fallback: [String]) -> [String] {
+        if let requested = request["types"] as? [String], !requested.isEmpty {
+            return requested
+        }
+        return purpose == "configPairing" ? ["qr"] : fallback
     }
 
     static func previewRect(from value: [String: Any]?) -> CGRect? {
@@ -132,6 +161,26 @@ enum ContinuousScannerResponseBuilder {
             return numberValue.doubleValue
         case let stringValue as String:
             return Double(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        switch value {
+        case let boolValue as Bool:
+            return boolValue
+        case let numberValue as NSNumber:
+            return numberValue.boolValue
+        case let stringValue as String:
+            let normalized = stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["1", "true", "yes", "ja", "on"].contains(normalized) {
+                return true
+            }
+            if ["0", "false", "no", "nein", "off"].contains(normalized) {
+                return false
+            }
+            return nil
         default:
             return nil
         }

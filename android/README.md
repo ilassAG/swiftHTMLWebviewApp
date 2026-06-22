@@ -14,6 +14,9 @@ Implemented:
 - Structured native responses through `window.handleNativeResult(...)`.
 - Native Android confetti overlay.
 - Photo capture through Android camera intent.
+- Native CameraX portrait/pass-photo capture with face-count validation,
+  countdown reset, burst variants, selection UI, optional background removal,
+  and face-centered square crop through `portraitCapture`.
 - Barcode/QR scanning through Google Code Scanner.
 - NFC tag reading through Android reader mode.
 - Document scanning through Google ML Kit Document Scanner with JPEG/PDF result handling.
@@ -33,8 +36,6 @@ Implemented:
 
 Not implemented yet:
 
-- Background removal for captured photos is available as an experimental
-  Android implementation through ML Kit Selfie Segmentation.
 - OCR text extraction for scanned documents.
 - Full device-screen capture through MediaProjection.
 

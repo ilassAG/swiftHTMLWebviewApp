@@ -61,6 +61,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -113,6 +114,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final int REQUEST_BEACON_ADVERTISE_PERMISSION = 2010;
     private static final int REQUEST_NOTIFICATION_PERMISSION = 2011;
     private static final int REQUEST_TAP_TO_PAY_LOCATION_PERMISSION = 2012;
+    private static final int REQUEST_PORTRAIT_CAMERA_PERMISSION = 2013;
     private static final String META_DEFAULT_SERVER_URL = "com.ilass.DEFAULT_SERVER_URL";
     private static final String META_DEFAULT_SECURITY_TOKEN = "com.ilass.DEFAULT_SECURITY_TOKEN";
     private static final String META_DEFAULT_BEACON_UUID = "com.ilass.DEFAULT_BEACON_UUID";
@@ -121,7 +123,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private static final String META_RECOVERY_BODY = "com.ilass.RECOVERY_BODY";
     private static final String META_RECOVERY_SUCCESS_MESSAGE = "com.ilass.RECOVERY_SUCCESS_MESSAGE";
     private static final String META_RECOVERY_INVALID_QR_MESSAGE = "com.ilass.RECOVERY_INVALID_QR_MESSAGE";
-    private static final String DEFAULT_SERVER_URL = "local";
+    private static final String DEFAULT_LOCAL_SERVER_URL = "local";
     private static final String DEFAULT_SECURITY_TOKEN = "";
     private static final String DEFAULT_BEACON_UUID = AndroidBeaconBridge.DEFAULT_BEACON_UUID;
     private static final String DEFAULT_RECOVERY_SHORT_MARK = "SW";
@@ -141,9 +143,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject pendingWifiStatusRequest;
     private JSONObject pendingConfigPairingRequest;
     private JSONObject pendingNotificationPermissionRequest;
+    private JSONObject pendingPortraitCaptureRequest;
     private String pendingConfigPairingAction;
     private AndroidConfigPairingBridge.ResultCallback pendingWifiConfigCallback;
     private ContinuousBarcodeScannerController continuousScannerController;
+    private AndroidPortraitCaptureController portraitCaptureController;
     private AndroidBeaconBridge beaconBridge;
     private AndroidBeaconAdvertiserBridge beaconAdvertiserBridge;
     private AndroidScreenStreamBridge screenStreamBridge;
@@ -157,6 +161,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private AndroidPrinterBridge printerBridge;
     private AndroidScreenOrientationBridge screenOrientationBridge;
     private AndroidIdleTimerBridge idleTimerBridge;
+    private AndroidNativeStorageBridge nativeStorageBridge;
+    private AndroidNativeFilesystemBridge nativeFilesystemBridge;
+    private AndroidNativeSQLiteBridge nativeSQLiteBridge;
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     private final Handler loadHandler = new Handler(Looper.getMainLooper());
     private final AndroidStartupLoadCoordinator startupLoadCoordinator = new AndroidStartupLoadCoordinator(this::isLocalConfiguredUrl);
@@ -165,9 +172,15 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private int confettiBursts = 0;
     private View configPairingOverlay;
     private View tapToPayTransitionOverlay;
+    private View kioskReloadControlView;
+    private Runnable kioskRestartRunnable;
+    private boolean kioskRestartTriggered = false;
     private TextView configPairingStateText;
     private long configPairingHoldStartMs = 0L;
     private boolean configPairingHoldTriggered = false;
+    private String configPairingOverlayPayload;
+    private Bitmap configPairingOverlayQrBitmap;
+    private boolean configPairingOverlayAdvertising;
     private final ArrayList<JSONObject> queuedNotificationEvents = new ArrayList<>();
     private JSONObject pendingTapToPayRequest;
     private Runnable loadTimeoutRunnable;
@@ -220,7 +233,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         continuousScannerController = new ContinuousBarcodeScannerController(this, new ContinuousBarcodeScannerController.Listener() {
             @Override
             public void onScannerEvent(JSONObject event) {
-                sendResult(event);
+                handleContinuousScannerEvent(event);
             }
 
             @Override
@@ -233,6 +246,17 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 sendContinuousScannerClosedByUser();
             }
         });
+        portraitCaptureController = new AndroidPortraitCaptureController(this, new AndroidPortraitCaptureController.Listener() {
+            @Override
+            public void onPortraitResult(JSONObject payload) {
+                sendResult(payload);
+            }
+
+            @Override
+            public void onPortraitError(JSONObject request, String action, String message) {
+                sendErrorSafe(request, action, message);
+            }
+        });
         beaconBridge = new AndroidBeaconBridge(this, this::sendResult);
         beaconAdvertiserBridge = new AndroidBeaconAdvertiserBridge(this, this::sendResult);
         screenStreamBridge = new AndroidScreenStreamBridge(this, this::sendResult);
@@ -242,6 +266,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         printerBridge = new AndroidPrinterBridge(this);
         screenOrientationBridge = new AndroidScreenOrientationBridge(this);
         idleTimerBridge = new AndroidIdleTimerBridge(this);
+        nativeStorageBridge = new AndroidNativeStorageBridge(this);
+        nativeFilesystemBridge = new AndroidNativeFilesystemBridge(this);
+        nativeSQLiteBridge = new AndroidNativeSQLiteBridge(this);
         nfcTagReaderBridge = new AndroidNfcTagReaderBridge(new AndroidNfcTagReaderBridge.Host() {
             @Override
             public Activity activity() {
@@ -350,6 +377,14 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (configPairingOverlay != null && configPairingOverlayPayload != null && configPairingOverlayQrBitmap != null) {
+            showConfigPairingOverlay(configPairingOverlayPayload, configPairingOverlayQrBitmap, configPairingOverlayAdvertising);
+        }
+    }
+
+    @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
@@ -362,6 +397,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     protected void onDestroy() {
         if (continuousScannerController != null) {
             continuousScannerController.shutdown();
+        }
+        if (portraitCaptureController != null) {
+            portraitCaptureController.shutdown();
         }
         if (beaconBridge != null) {
             beaconBridge.shutdown();
@@ -509,7 +547,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         AndroidBridgeRouter router = new AndroidBridgeRouter.Builder(this::sendResult)
                 .on("launchConfetti", this::launchConfetti)
                 .on("takePhoto", this::startPhotoCapture)
-                .on("portraitCapture", this::sendPortraitCaptureUnavailable)
+                .on("portraitCapture", this::startPortraitCapture)
                 .on("scanBarcode", this::startBarcodeScanner)
                 .on("scanDocument", this::startDocumentScanner)
                 .on("nfcTagRead", nfcTagReaderBridge::startRead)
@@ -548,6 +586,17 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 .onAll(this::handleConfigPairingAction, AndroidBridgeActionCatalog.CONFIG_PAIRING_ACTIONS)
                 .on("settingsGet", message -> sendResult(settingsGet(message)))
                 .on("settingsSet", message -> sendResult(settingsSet(message)))
+                .on("storageGet", message -> sendResult(nativeStorageBridge.get(message)))
+                .on("storageSet", message -> sendResult(nativeStorageBridge.set(message)))
+                .on("storageRemove", message -> sendResult(nativeStorageBridge.remove(message)))
+                .on("storageClear", message -> sendResult(nativeStorageBridge.clear(message)))
+                .on("filesystemWrite", message -> sendResult(nativeFilesystemBridge.write(message)))
+                .on("filesystemRead", message -> sendResult(nativeFilesystemBridge.read(message)))
+                .on("filesystemList", message -> sendResult(nativeFilesystemBridge.list(message)))
+                .on("filesystemDelete", message -> sendResult(nativeFilesystemBridge.delete(message)))
+                .on("sqliteExecute", message -> sendResult(nativeSQLiteBridge.execute(message)))
+                .on("sqliteDeleteDatabase", message -> sendResult(nativeSQLiteBridge.deleteDatabase(message)))
+                .on("kioskReloadControlSet", message -> sendResult(kioskReloadControlSet(message)))
                 .on("reload", message -> sendResult(reload(message)))
                 .onAll(this::startContinuousScanner, AndroidBridgeActionCatalog.CONTINUOUS_SCANNER_START_ACTIONS)
                 .onAll(this::stopContinuousScanner, AndroidBridgeActionCatalog.CONTINUOUS_SCANNER_STOP_ACTIONS)
@@ -708,8 +757,18 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         sendResult(AndroidUnavailableBridge.arOverlay(message));
     }
 
-    private void sendPortraitCaptureUnavailable(JSONObject message) throws JSONException {
-        sendResult(AndroidUnavailableBridge.portraitCapture(message));
+    private void startPortraitCapture(JSONObject message) {
+        JSONObject request = copyRequest(message);
+        if (portraitCaptureController == null) {
+            sendErrorSafe(request, "portraitCapture", "Android portrait capture controller is not available.");
+            return;
+        }
+        if (!portraitCaptureController.hasCameraPermission()) {
+            pendingPortraitCaptureRequest = request;
+            requestPermissions(AndroidPermissionPolicy.cameraPermissions(), REQUEST_PORTRAIT_CAMERA_PERMISSION);
+            return;
+        }
+        portraitCaptureController.start(request);
     }
 
     private JSONObject deviceInfo(JSONObject message) throws JSONException {
@@ -1245,6 +1304,70 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         sendResult(continuousScannerController.updatePreviewRect(copyRequest(message)));
     }
 
+    private void handleContinuousScannerEvent(JSONObject event) {
+        if (!"configPairing".equals(event.optString("purpose", "")) && !"configPairing".equals(event.optString("mode", ""))) {
+            sendResult(event);
+            return;
+        }
+
+        JSONObject request = continuousConfigPairingRequest(event);
+        String code = event.optString("code", "").trim();
+        try {
+            AndroidBarcodeConfigHandler.Result configResult = AndroidBarcodeConfigHandler.evaluate(
+                    code,
+                    true,
+                    configSecurityToken()
+            );
+            if (configResult.kind == AndroidBarcodeConfigHandler.Kind.CONFIG_CHANGE) {
+                hideConfigPairingOverlay();
+                sendResult(AndroidBarcodeResponseBuilder.configChanged(request, applyConfigSettings(configResult.settings)));
+                if (configResult.hasWifiRequest()) {
+                    configureWifi(configResult.wifiRequest, result -> {
+                        sendResult(result);
+                        reloadConfiguredUrlFromSettings();
+                    });
+                } else {
+                    reloadConfiguredUrlFromSettings();
+                }
+                return;
+            }
+            if (configResult.kind == AndroidBarcodeConfigHandler.Kind.RECOVERY_SERVER_URL) {
+                hideConfigPairingOverlay();
+                JSONObject settings = applyConfigSettings(configResult.settings);
+                sendResult(AndroidBarcodeResponseBuilder.configChanged(request, settings));
+                loadHandler.postDelayed(this::reloadConfiguredUrlFromSettings, 350L);
+                return;
+            }
+            sendResult(AndroidContinuousScannerConfig.errorResponse(request, request.optString("action", "continuousScanStart"), recoveryInvalidQRMessage()));
+        } catch (JSONException error) {
+            try {
+                sendResult(AndroidContinuousScannerConfig.errorResponse(request, request.optString("action", "continuousScanStart"), error.getMessage()));
+            } catch (JSONException ignored) {
+                // Ignore secondary JSON failure.
+            }
+        }
+    }
+
+    private JSONObject continuousConfigPairingRequest(JSONObject event) {
+        JSONObject request = new JSONObject();
+        try {
+            request.put("action", event.optString("sourceAction", "continuousScanStart"));
+            request.put("purpose", "configPairing");
+            request.put("source", "configPairing");
+        } catch (JSONException ignored) {
+            // Object is locally constructed with simple strings.
+        }
+        return request;
+    }
+
+    private void stopContinuousScannerAfterConfig() {
+        try {
+            continuousScannerController.stop(new JSONObject().put("action", "continuousScanStop"));
+        } catch (JSONException ignored) {
+            // Overlay cleanup is best-effort after a successful config scan.
+        }
+    }
+
     private void sendContinuousScannerError(String message) {
         try {
             sendResult(AndroidContinuousScannerConfig.errorResponse(null, "continuousScanStart", message));
@@ -1349,7 +1472,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     }
 
     private String defaultServerUrl() {
-        return manifestDefaultValue(META_DEFAULT_SERVER_URL, DEFAULT_SERVER_URL);
+        return manifestDefaultValue(META_DEFAULT_SERVER_URL, DEFAULT_LOCAL_SERVER_URL);
     }
 
     private String defaultSecurityToken() {
@@ -1506,6 +1629,99 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         return response;
     }
 
+    private JSONObject kioskReloadControlSet(JSONObject message) throws JSONException {
+        boolean enabled = message.optBoolean("enabled", message.optBoolean("visible", false));
+        float opacity = (float) Math.max(0.02, Math.min(1.0, message.optDouble("opacity", 0.10)));
+        double longPressSeconds = Math.max(0.5, Math.min(10.0, message.optDouble("longPressSeconds", 2.0)));
+        runOnUiThread(() -> setKioskReloadControlVisible(enabled, opacity, longPressSeconds));
+        JSONObject response = BridgeResponse.base(message, "kioskReloadControlSet");
+        response.put("success", true);
+        response.put("enabled", enabled);
+        response.put("opacity", opacity);
+        response.put("longPressSeconds", longPressSeconds);
+        return response;
+    }
+
+    private void setKioskReloadControlVisible(boolean enabled, float opacity, double longPressSeconds) {
+        if (!enabled) {
+            if (kioskReloadControlView != null) {
+                ViewGroup parent = (ViewGroup) kioskReloadControlView.getParent();
+                if (parent != null) {
+                    parent.removeView(kioskReloadControlView);
+                }
+                kioskReloadControlView = null;
+            }
+            return;
+        }
+
+        if (kioskReloadControlView == null) {
+            TextView button = new TextView(this);
+            button.setText("R");
+            button.setTextColor(Color.WHITE);
+            button.setTextSize(18);
+            button.setTypeface(Typeface.DEFAULT_BOLD);
+            button.setGravity(Gravity.CENTER);
+            button.setContentDescription("Reload");
+            GradientDrawable background = new GradientDrawable();
+            background.setShape(GradientDrawable.OVAL);
+            background.setColor(Color.BLACK);
+            button.setBackground(background);
+            int size = dp(40);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
+            params.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+            params.leftMargin = dp(2);
+            addContentView(button, params);
+            kioskReloadControlView = button;
+        }
+
+        kioskReloadControlView.setAlpha(opacity);
+        kioskReloadControlView.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    kioskRestartTriggered = false;
+                    if (kioskRestartRunnable != null) {
+                        loadHandler.removeCallbacks(kioskRestartRunnable);
+                    }
+                    kioskRestartRunnable = () -> {
+                        kioskRestartTriggered = true;
+                        performKioskRestart();
+                    };
+                    loadHandler.postDelayed(kioskRestartRunnable, (long) (longPressSeconds * 1000));
+                    view.setPressed(true);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    if (kioskRestartRunnable != null) {
+                        loadHandler.removeCallbacks(kioskRestartRunnable);
+                    }
+                    view.setPressed(false);
+                    if (!kioskRestartTriggered) {
+                        reloadConfiguredUrlFromSettings();
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    if (kioskRestartRunnable != null) {
+                        loadHandler.removeCallbacks(kioskRestartRunnable);
+                    }
+                    view.setPressed(false);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void performKioskRestart() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+        } else {
+            finishAffinity();
+        }
+        loadHandler.postDelayed(() -> {
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(0);
+        }, 120L);
+    }
+
     private static final class SharedPreferencesSettingsStore implements AndroidSettingsStore.Preferences {
         private final SharedPreferences preferences;
 
@@ -1572,12 +1788,23 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
 
     private void showConfigPairingOverlay(String payload, Bitmap qrBitmap, boolean advertising) {
         runOnUiThread(() -> {
+            configPairingOverlayPayload = payload;
+            configPairingOverlayQrBitmap = qrBitmap;
+            configPairingOverlayAdvertising = advertising;
             hideConfigPairingOverlay();
+            AndroidConfigPairingLayout.Spec layout = AndroidConfigPairingLayout.from(
+                    getResources().getDisplayMetrics(),
+                    getResources().getConfiguration().orientation
+            );
+            int cardPadding = dp(layout.cardPaddingDp);
+            int qrSize = dp(layout.qrSizeDp);
+            int scannerHeight = dp(layout.scannerHeightDp);
+            int containerPadding = dp(layout.containerPaddingDp);
+            int verticalGap = dp(layout.verticalGapDp);
 
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setGravity(Gravity.CENTER_HORIZONTAL);
-            int cardPadding = dp(22);
             card.setPadding(cardPadding, cardPadding, cardPadding, cardPadding);
             GradientDrawable cardBackground = new GradientDrawable();
             cardBackground.setColor(Color.rgb(23, 23, 27));
@@ -1588,7 +1815,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             TextView title = new TextView(this);
             title.setText("Config Pairing");
             title.setTextColor(Color.WHITE);
-            title.setTextSize(24);
+            title.setTextSize(layout.titleTextSizeSp);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setGravity(Gravity.CENTER);
             card.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1596,18 +1823,21 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             ImageView qrView = new ImageView(this);
             qrView.setImageBitmap(qrBitmap);
             qrView.setBackgroundColor(Color.WHITE);
-            qrView.setPadding(dp(12), dp(12), dp(12), dp(12));
-            LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(dp(270), dp(270));
-            qrParams.setMargins(0, dp(18), 0, dp(12));
-            card.addView(qrView, qrParams);
+            qrView.setPadding(dp(layout.twoColumn ? 8 : 12), dp(layout.twoColumn ? 8 : 12), dp(layout.twoColumn ? 8 : 12), dp(layout.twoColumn ? 8 : 12));
+
+            FrameLayout scannerSlot = new FrameLayout(this);
+            GradientDrawable scannerBackground = new GradientDrawable();
+            scannerBackground.setColor(Color.BLACK);
+            scannerBackground.setCornerRadius(dp(14));
+            scannerBackground.setStroke(dp(1), Color.argb(120, 79, 211, 138));
+            scannerSlot.setBackground(scannerBackground);
 
             configPairingStateText = new TextView(this);
-            configPairingStateText.setText(advertising ? "BLE aktiv" : "BLE startet");
+            configPairingStateText.setText(advertising ? "BLE active" : "BLE starting");
             configPairingStateText.setTextColor(Color.argb(220, 255, 255, 255));
             configPairingStateText.setTextSize(15);
             configPairingStateText.setTypeface(Typeface.DEFAULT_BOLD);
             configPairingStateText.setGravity(Gravity.CENTER);
-            card.addView(configPairingStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             TextView payloadView = new TextView(this);
             payloadView.setText(payload);
@@ -1615,12 +1845,30 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             payloadView.setTextSize(10);
             payloadView.setGravity(Gravity.CENTER);
             payloadView.setTypeface(Typeface.MONOSPACE);
-            payloadView.setMaxLines(5);
-            payloadView.setPadding(0, dp(12), 0, dp(12));
-            card.addView(payloadView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            payloadView.setMaxLines(layout.payloadMaxLines);
+            payloadView.setPadding(0, dp(layout.twoColumn ? 4 : 10), 0, dp(layout.twoColumn ? 4 : 10));
 
-            Button closeButton = new Button(this);
-            closeButton.setText("Schliessen");
+            LinearLayout controls = new LinearLayout(this);
+            controls.setOrientation(LinearLayout.HORIZONTAL);
+            controls.setGravity(Gravity.CENTER);
+            controls.setWeightSum(2f);
+
+            ImageButton reloadButton = configPairingIconButton(android.R.drawable.ic_popup_sync, "Reload");
+            reloadButton.setOnClickListener(view -> {
+                try {
+                    sendResult(configPairingBridge.stopTargetSession(
+                            AndroidConfigPairingProtocol.internalRequest("configPairingStop", "")
+                    ));
+                    reloadConfiguredUrlFromSettings();
+                } catch (JSONException ignored) {
+                    // Ignore secondary JSON failure.
+                }
+            });
+            LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+            reloadParams.setMargins(0, 0, dp(8), 0);
+            controls.addView(reloadButton, reloadParams);
+
+            ImageButton closeButton = configPairingIconButton(android.R.drawable.ic_menu_close_clear_cancel, "Close");
             closeButton.setOnClickListener(view -> {
                 try {
                     sendResult(configPairingBridge.stopTargetSession(
@@ -1630,31 +1878,114 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                     // Ignore secondary JSON failure.
                 }
             });
-            card.addView(closeButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+            closeParams.setMargins(dp(8), 0, 0, 0);
+            controls.addView(closeButton, closeParams);
+
+            if (layout.twoColumn) {
+                LinearLayout contentRow = new LinearLayout(this);
+                contentRow.setOrientation(LinearLayout.HORIZONTAL);
+                contentRow.setGravity(Gravity.CENTER);
+
+                LinearLayout leftColumn = new LinearLayout(this);
+                leftColumn.setOrientation(LinearLayout.VERTICAL);
+                leftColumn.setGravity(Gravity.CENTER_HORIZONTAL);
+                LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(qrSize, qrSize);
+                qrParams.setMargins(0, verticalGap, 0, verticalGap);
+                leftColumn.addView(qrView, qrParams);
+                leftColumn.addView(configPairingStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                leftColumn.addView(payloadView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                LinearLayout rightColumn = new LinearLayout(this);
+                rightColumn.setOrientation(LinearLayout.VERTICAL);
+                rightColumn.setGravity(Gravity.CENTER_VERTICAL);
+                LinearLayout.LayoutParams scannerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, scannerHeight);
+                scannerParams.setMargins(0, verticalGap, 0, verticalGap);
+                rightColumn.addView(scannerSlot, scannerParams);
+                rightColumn.addView(controls, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(layout.controlsHeightDp)));
+
+                LinearLayout.LayoutParams leftParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.36f);
+                leftParams.setMargins(0, 0, dp(12), 0);
+                contentRow.addView(leftColumn, leftParams);
+                LinearLayout.LayoutParams rightParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.64f);
+                rightParams.setMargins(dp(12), 0, 0, 0);
+                contentRow.addView(rightColumn, rightParams);
+                card.addView(contentRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            } else {
+                LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(qrSize, qrSize);
+                qrParams.setMargins(0, verticalGap, 0, verticalGap);
+                card.addView(qrView, qrParams);
+                LinearLayout.LayoutParams scannerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, scannerHeight);
+                scannerParams.setMargins(0, 0, 0, verticalGap);
+                card.addView(scannerSlot, scannerParams);
+                card.addView(configPairingStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                card.addView(payloadView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                card.addView(controls, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(layout.controlsHeightDp)));
+            }
 
             ScrollView scrollView = new ScrollView(this);
             scrollView.setFillViewport(true);
             LinearLayout container = new LinearLayout(this);
-            container.setGravity(Gravity.CENTER);
-            container.setPadding(dp(24), dp(24), dp(24), dp(24));
+            container.setGravity(layout.twoColumn ? Gravity.CENTER : Gravity.CENTER_HORIZONTAL);
+            container.setPadding(containerPadding, containerPadding, containerPadding, containerPadding);
             container.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             scrollView.addView(container, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             scrollView.setBackgroundColor(Color.argb(180, 0, 0, 0));
             configPairingOverlay = scrollView;
             addContentView(scrollView, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            scannerSlot.post(() -> startConfigPairingOverlayScanner(scannerSlot));
         });
+    }
+
+    private void startConfigPairingOverlayScanner(View scannerSlot) {
+        if (continuousScannerController == null || !continuousScannerController.hasCameraPermission()) {
+            return;
+        }
+        try {
+            JSONObject request = new JSONObject()
+                    .put("action", "continuousScanStart")
+                    .put("purpose", "configPairing")
+                    .put("source", "configPairing")
+                    .put("camera", "front")
+                    .put("types", new JSONArray().put("qr"))
+                    .put("repeatDelaySeconds", 1)
+                    .put("closeButton", false)
+                    .put("showFlipButton", true);
+            continuousScannerController.startInHost(request, scannerSlot);
+        } catch (JSONException error) {
+            sendContinuousScannerError(error.getMessage());
+        }
+    }
+
+    private ImageButton configPairingIconButton(int iconResource, String contentDescription) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconResource);
+        button.setContentDescription(contentDescription);
+        button.setColorFilter(Color.WHITE);
+        button.setPadding(dp(12), dp(10), dp(12), dp(10));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.rgb(10, 132, 255));
+        background.setCornerRadius(dp(12));
+        button.setBackground(background);
+        return button;
     }
 
     private void setConfigPairingOverlayAdvertising(boolean advertising) {
         runOnUiThread(() -> {
+            configPairingOverlayAdvertising = advertising;
             if (configPairingStateText != null) {
-                configPairingStateText.setText(advertising ? "BLE aktiv" : "BLE startet");
+                configPairingStateText.setText(advertising ? "BLE active" : "BLE starting");
             }
         });
     }
 
     private void hideConfigPairingOverlay() {
         runOnUiThread(() -> {
+            try {
+                continuousScannerController.stop(new JSONObject().put("action", "continuousScanStop"));
+            } catch (JSONException ignored) {
+                // Ignore local cleanup failure while removing the overlay.
+            }
             if (configPairingOverlay != null) {
                 ViewGroup parent = (ViewGroup) configPairingOverlay.getParent();
                 if (parent != null) {
@@ -1963,6 +2294,16 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             } else {
                 sendContinuousScannerError("Camera permission was denied.");
                 pendingContinuousScanRequest = null;
+            }
+            return;
+        }
+        if (requestCode == REQUEST_PORTRAIT_CAMERA_PERMISSION) {
+            JSONObject request = pendingPortraitCaptureRequest;
+            pendingPortraitCaptureRequest = null;
+            if (allPermissionsGranted(grantResults) && request != null && portraitCaptureController != null) {
+                portraitCaptureController.start(request);
+            } else {
+                sendErrorSafe(request, "portraitCapture", "Camera permission was denied.");
             }
             return;
         }

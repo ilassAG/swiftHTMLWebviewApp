@@ -267,11 +267,67 @@ button:disabled {
     gap: 10px;
 }
 
+.native-demo-panel {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #d1d1d6;
+    border-radius: var(--border-radius);
+    background-color: #f6f7fb;
+}
+
+.native-demo-panel h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 1.15em;
+    text-align: left;
+}
+
+.native-demo-grid {
+    display: grid;
+    grid-template-columns: minmax(108px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+}
+
+.native-demo-grid label {
+    font-size: 14px;
+    color: #3a3a3c;
+}
+
+.native-demo-grid input,
+.native-demo-grid select,
+.native-demo-grid textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #c7c7cc;
+    border-radius: 6px;
+    background-color: #fff;
+    color: var(--text-color);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.native-demo-grid textarea {
+    resize: vertical;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+}
+
+.native-demo-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
 @media (min-width: 600px) {
     .photo-options,
     .printer-options,
     .bridge-options,
-    .config-panel {
+    .config-panel,
+    .native-demo-panel {
         grid-column: 1 / -1;
     }
 }
@@ -279,12 +335,15 @@ button:disabled {
 @media (max-width: 420px) {
     .bridge-options,
     .config-grid,
-    .config-actions {
+    .config-actions,
+    .native-demo-grid,
+    .native-demo-actions {
         grid-template-columns: 1fr 1fr;
     }
 
     .bridge-options label,
-    .config-grid label {
+    .config-grid label,
+    .native-demo-grid label {
         grid-column: 1 / -1;
     }
 }

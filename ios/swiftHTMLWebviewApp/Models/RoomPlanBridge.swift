@@ -172,7 +172,7 @@ struct RoomPlanScannerSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 14)
         }
-        .onChange(of: bridge.scannerVisible) { _, visible in
+        .onChange(of: bridge.scannerVisible) { visible in
             if !visible {
                 dismiss()
             }

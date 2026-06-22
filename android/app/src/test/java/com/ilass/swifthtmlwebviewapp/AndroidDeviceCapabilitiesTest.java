@@ -15,6 +15,10 @@ public class AndroidDeviceCapabilitiesTest {
         assertTrue(capabilities.getBoolean("deviceInfoGet"));
         assertTrue(capabilities.getBoolean("settingsGet"));
         assertTrue(capabilities.getBoolean("settingsSet"));
+        assertTrue(capabilities.getBoolean("storageGet"));
+        assertTrue(capabilities.getBoolean("filesystemWrite"));
+        assertTrue(capabilities.getBoolean("sqliteExecute"));
+        assertTrue(capabilities.getBoolean("kioskReloadControlSet"));
         assertTrue(capabilities.getBoolean("wifiConfigure"));
         assertTrue(capabilities.getBoolean("screenStreamStart"));
         assertEquals("jpeg", capabilities.getJSONArray("screenStreamFormats").getString(0));

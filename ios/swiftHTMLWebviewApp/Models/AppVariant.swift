@@ -17,9 +17,9 @@ struct AppVariant: Equatable {
 
     static let demo = AppVariant(
         id: "demo-ios",
-        bundleIdentifier: "org.example.swifthtmlwebviewapp.demo",
+        bundleIdentifier: "com.ilass.swiftHTMLWebviewApp",
         productName: "swiftHTMLWebviewApp",
-        displayName: "WebView Demo",
+        displayName: "swiftHTMLWebviewApp",
         defaults: AppVariantDefaults(
             serverURL: "local",
             securityToken: "",
@@ -27,8 +27,8 @@ struct AppVariant: Equatable {
             beaconUUID: "00000000-0000-0000-0000-000000000000",
             loadingImageName: "512",
             appIconName: "AppIcon",
-            recoveryShortMark: "WV",
-            recoveryTitle: "WebView Demo",
+            recoveryShortMark: "SW",
+            recoveryTitle: "swiftHTMLWebviewApp",
             recoveryBody: "Die konfigurierte Demo-Adresse antwortet nicht. Scanne einen Konfigurations-QR-Code oder setze eine gueltige URL in den App-Einstellungen.",
             recoveryQRCodeDetectedMessage: "QR-Code erkannt. Verbindung wird geprueft...",
             recoveryInvalidQRMessage: "Der QR-Code enthaelt keine gueltige Server-URL."

@@ -26,10 +26,28 @@ public class AndroidContinuousScannerEventBuilderTest {
         assertEquals("barcodeData", event.getString("action"));
         assertEquals("dataScanStart", event.getString("sourceAction"));
         assertEquals("data", event.getString("mode"));
+        assertEquals("", event.getString("purpose"));
         assertEquals("back", event.getString("camera"));
         assertEquals("ABC-123", event.getString("code"));
         assertEquals("qr", event.getString("format"));
         assertEquals(expectedTimestamp(0L), event.getString("timestamp"));
+    }
+
+    @Test
+    public void configPairingEventCarriesPurposeForNativeConfigHandling() throws JSONException {
+        AndroidContinuousScannerConfig config = AndroidContinuousScannerConfig.from(
+                new JSONObject()
+                        .put("action", "continuousScanStart")
+                        .put("purpose", "configPairing")
+        );
+
+        JSONObject event = AndroidContinuousScannerEventBuilder.event(config, "https://demo.example.invalid/mobile/", "qr", 2000L);
+
+        assertEquals("barcodeData", event.getString("action"));
+        assertEquals("continuousScanStart", event.getString("sourceAction"));
+        assertEquals("configPairing", event.getString("mode"));
+        assertEquals("configPairing", event.getString("purpose"));
+        assertEquals("front", event.getString("camera"));
     }
 
     @Test

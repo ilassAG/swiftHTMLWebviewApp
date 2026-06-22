@@ -74,6 +74,7 @@ final class CaptureRequestTests: XCTestCase {
             "captureIntervalMs": "200",
             "camera": "back",
             "removeBackground": "yes",
+            "mirror": "yes",
             "background": "transparent"
         ])
 
@@ -84,8 +85,15 @@ final class CaptureRequestTests: XCTestCase {
         XCTAssertEqual(request.captureIntervalSeconds, 0.2)
         XCTAssertEqual(request.cameraPosition, .back)
         XCTAssertTrue(request.shouldRemoveBackground)
+        XCTAssertTrue(request.mirrorOutput)
         XCTAssertTrue(request.faceCenteredCrop)
         XCTAssertEqual(request.responseFormat(backgroundRemoved: true), "png")
+    }
+
+    func testPortraitRequestMirrorOutputDefaultsToFalse() {
+        let request = PortraitCaptureRequest([:])
+
+        XCTAssertFalse(request.mirrorOutput)
     }
 
     func testBarcodeRequestDefaultsActionAndKeepsRequestedTypes() {

@@ -107,6 +107,7 @@ struct PortraitCaptureRequest {
     let variationCount: Int
     let captureIntervalSeconds: TimeInterval
     let faceCenteredCrop: Bool
+    let mirrorOutput: Bool
 
     init(_ request: [String: Any]?) {
         action = Self.stringValue(request?["action"], defaultValue: "portraitCapture")
@@ -130,6 +131,7 @@ struct PortraitCaptureRequest {
         captureIntervalSeconds = captureIntervalMs / 1000
         let cropValue = request?["crop"] as? String
         faceCenteredCrop = cropValue == nil || cropValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "squarefacecentered"
+        mirrorOutput = Self.boolValue(Self.firstPresentValue(request, keys: ["mirrorOutput", "mirror"]), defaultValue: false)
     }
 
     func imageFormat(backgroundRemoved: Bool) -> ImageConverter.ImageFormat {

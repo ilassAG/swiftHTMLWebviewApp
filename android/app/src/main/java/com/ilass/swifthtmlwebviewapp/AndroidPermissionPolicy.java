@@ -60,6 +60,9 @@ final class AndroidPermissionPolicy {
         }
 
         ArrayList<String> permissions = new ArrayList<>();
+        if ("configPairingShow".equals(action)) {
+            permissions.add(Manifest.permission.CAMERA);
+        }
         if (sdkInt >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
             if (!"configPairingSend".equals(action)) {

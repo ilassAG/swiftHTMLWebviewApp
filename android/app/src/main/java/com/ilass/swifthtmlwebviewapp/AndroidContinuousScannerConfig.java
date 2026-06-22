@@ -11,53 +11,64 @@ import java.util.Locale;
 final class AndroidContinuousScannerConfig {
     final String action;
     final String mode;
-    final String camera;
+    final String purpose;
+    String camera;
     final JSONArray types;
     final long repeatDelayMs;
     final boolean showCloseButton;
+    final boolean showFlipButton;
     RectPercent rect;
 
     private AndroidContinuousScannerConfig(
             String action,
             String mode,
+            String purpose,
             String camera,
             JSONArray types,
             long repeatDelayMs,
             RectPercent rect,
-            boolean showCloseButton
+            boolean showCloseButton,
+            boolean showFlipButton
     ) {
         this.action = action;
         this.mode = mode;
+        this.purpose = purpose;
         this.camera = camera;
         this.types = types;
         this.repeatDelayMs = repeatDelayMs;
         this.rect = rect;
         this.showCloseButton = showCloseButton;
+        this.showFlipButton = showFlipButton;
     }
 
     static AndroidContinuousScannerConfig from(JSONObject request) {
         JSONObject source = request != null ? request : new JSONObject();
         String action = source.optString("action", "continuousScanStart");
-        String mode = nonEmpty(source.optString("mode", ""), "loginScanStart".equals(action) ? "login" : "data");
-        String camera = nonEmpty(source.optString("camera", ""), "loginScanStart".equals(action) ? "front" : "back");
-        JSONArray types = source.optJSONArray("types");
+        String purpose = scannerPurpose(source);
+        String mode = nonEmpty(source.optString("mode", ""), "configPairing".equals(purpose) ? "configPairing" : ("loginScanStart".equals(action) ? "login" : "data"));
+        String camera = nonEmpty(source.optString("camera", ""), "configPairing".equals(purpose) || "loginScanStart".equals(action) ? "front" : "back");
+        JSONArray types = scannerTypes(source, purpose);
         double repeatDelaySeconds = source.has("repeatDelaySeconds")
                 ? source.optDouble("repeatDelaySeconds", 1.5)
                 : source.optDouble("repeatDelay", 1.5);
         long repeatDelayMs = Math.max(100L, Math.round(repeatDelaySeconds * 1000.0));
         RectPercent rect = RectPercent.from(source.optJSONObject("previewRect"), RectPercent.defaults());
         boolean showCloseButton = source.optBoolean("showCloseButton", source.optBoolean("closeButton", true));
-        return new AndroidContinuousScannerConfig(action, mode, camera, types, repeatDelayMs, rect, showCloseButton);
+        boolean showFlipButton = source.optBoolean("showFlipButton",
+                source.optBoolean("flipButton", source.optBoolean("allowCameraFlip", "configPairing".equals(purpose))));
+        return new AndroidContinuousScannerConfig(action, mode, purpose, camera, types, repeatDelayMs, rect, showCloseButton, showFlipButton);
     }
 
     JSONObject response(JSONObject request, String action, boolean success) throws JSONException {
         JSONObject response = baseResponse(request, action);
         response.put("success", success);
         response.put("mode", mode);
+        response.put("purpose", purpose);
         response.put("camera", camera);
         response.put("repeatDelaySeconds", repeatDelayMs / 1000.0);
         response.put("previewRect", rect.toJson());
         response.put("showCloseButton", showCloseButton);
+        response.put("showFlipButton", showFlipButton);
         response.put("provider", "android_camerax_mlkit");
         if (types != null) {
             response.put("types", types);
@@ -145,6 +156,26 @@ final class AndroidContinuousScannerConfig {
     private static String nonEmpty(String value, String fallback) {
         String trimmed = value == null ? "" : value.trim();
         return trimmed.isEmpty() ? fallback : trimmed;
+    }
+
+    private static String scannerPurpose(JSONObject source) {
+        String purpose = nonEmpty(source.optString("purpose", ""), "");
+        if ("configPairing".equals(purpose)) {
+            return purpose;
+        }
+        String sourceValue = nonEmpty(source.optString("source", ""), "");
+        return "configPairing".equals(sourceValue) ? sourceValue : "";
+    }
+
+    private static JSONArray scannerTypes(JSONObject source, String purpose) {
+        JSONArray requested = source.optJSONArray("types");
+        if (requested != null && requested.length() > 0) {
+            return requested;
+        }
+        if ("configPairing".equals(purpose)) {
+            return new JSONArray().put("qr");
+        }
+        return requested;
     }
 
     static final class RectPercent {

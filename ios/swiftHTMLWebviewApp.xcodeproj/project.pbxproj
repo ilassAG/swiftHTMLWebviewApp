@@ -6,8 +6,18 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		A3D4C9072E1A000100E05003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 75C511492D9D49FF003A8EBB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 75C511502D9D49FF003A8EBB;
+			remoteInfo = swiftHTMLWebviewApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = swiftHTMLWebviewApp.app; path = swiftHTMLWebviewApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = swiftHTMLWebviewApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3D4C9012E1A000100E05003 /* swiftHTMLWebviewAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiftHTMLWebviewAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -87,8 +97,6 @@
 				7569F3E82DDCD25E0029F4BC /* swiftHTMLWebviewApp */,
 			);
 			name = swiftHTMLWebviewApp;
-			packageProductDependencies = (
-			);
 			productName = swiftHTMLWebviewApp;
 			productReference = 75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */;
 			productType = "com.apple.product-type.application";
@@ -110,23 +118,11 @@
 				A3D4C9002E1A000100E05003 /* swiftHTMLWebviewAppTests */,
 			);
 			name = swiftHTMLWebviewAppTests;
-			packageProductDependencies = (
-			);
 			productName = swiftHTMLWebviewAppTests;
 			productReference = A3D4C9012E1A000100E05003 /* swiftHTMLWebviewAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
-
-/* Begin PBXContainerItemProxy section */
-		A3D4C9072E1A000100E05003 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 75C511492D9D49FF003A8EBB /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 75C511502D9D49FF003A8EBB;
-			remoteInfo = swiftHTMLWebviewApp;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 		75C511492D9D49FF003A8EBB /* Project object */ = {
@@ -134,7 +130,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1620;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					75C511502D9D49FF003A8EBB = {
 						CreatedOnToolsVersion = 16.2;
@@ -218,6 +214,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -266,12 +263,13 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -282,6 +280,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -324,11 +323,12 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -344,6 +344,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"swiftHTMLWebviewApp/Preview Content\"";
+				DEVELOPMENT_TEAM = ZAMR4EWP34;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -351,7 +352,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "WebView Demo";
+				INFOPLIST_KEY_CFBundleDisplayName = swiftHTMLWebviewApp;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
@@ -364,13 +365,19 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.example.swifthtmlwebviewapp.demo;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					RoomPlan,
+					"-lsqlite3",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp;
 				PRODUCT_NAME = swiftHTMLWebviewApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -388,6 +395,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"swiftHTMLWebviewApp/Preview Content\"";
+				DEVELOPMENT_TEAM = ZAMR4EWP34;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -395,7 +403,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "WebView Demo";
+				INFOPLIST_KEY_CFBundleDisplayName = swiftHTMLWebviewApp;
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Diese App liest NFC-Tags, wenn die Web-App einen NFC-Lesevorgang startet.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Diese App nutzt Bluetooth, um ein nahegelegenes Gerät per QR-Code zu konfigurieren und optional als iBeacon zu senden.";
@@ -408,13 +416,19 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.example.swifthtmlwebviewapp.demo;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					RoomPlan,
+					"-lsqlite3",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp;
 				PRODUCT_NAME = swiftHTMLWebviewApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -431,14 +445,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.example.swifthtmlwebviewapp.demo.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -459,14 +473,14 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.example.swifthtmlwebviewapp.demo.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ilass.swiftHTMLWebviewApp.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = NO;

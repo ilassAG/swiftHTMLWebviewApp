@@ -102,6 +102,7 @@ enum BackgroundRemoval {
         }
     }
 
+    @available(iOS 17.0, *)
     private struct MaskResult {
         let observation: VNInstanceMaskObservation
         let requestHandler: VNImageRequestHandler

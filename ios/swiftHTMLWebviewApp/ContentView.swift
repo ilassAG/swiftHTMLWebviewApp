@@ -11,6 +11,7 @@ import SwiftUI
 import VisionKit
 import PDFKit
 import Vision
+import Darwin
 
 private struct TapToPayTransitionState {
     var isVisible = false
@@ -67,6 +68,12 @@ private struct TapToPayTransitionOverlay: View {
     }
 }
 
+private struct KioskReloadControlConfig {
+    var enabled = false
+    var opacity = 0.10
+    var longPressSeconds = 2.0
+}
+
 @MainActor
 struct ContentView: View {
     @StateObject var webViewStore = WebViewStore()
@@ -88,6 +95,9 @@ struct ContentView: View {
     @StateObject private var notificationBridge = NotificationBridge.shared
     @Environment(\.scenePhase) private var scenePhase
     private let settingsBridge = SettingsBridge()
+    private let nativeStorageBridge = NativeStorageBridge()
+    private let nativeFilesystemBridge = NativeFilesystemBridge()
+    private let nativeSQLiteBridge = NativeSQLiteBridge()
     private let recoveryBarcodeHandler = RecoveryBarcodeHandler(
         invalidMessage: AppSettings.shared.recoveryInvalidQRMessage,
         applyConfiguration: { values in AppSettings.shared.applyConfiguration(values) }
@@ -100,7 +110,9 @@ struct ContentView: View {
     @State private var currentRequest: [String: Any]? = nil
     @State private var tapToPayTransition = TapToPayTransitionState()
     @State private var continuousScannerConfig: ContinuousBarcodeScannerConfig?
+    @State private var configPairingScannerCamera = "front"
     @State private var bridgeRouter: BridgeRouter?
+    @State private var kioskReloadControl = KioskReloadControlConfig()
 
     var body: some View {
         ZStack {
@@ -116,6 +128,7 @@ struct ContentView: View {
             .frame(width: 0, height: 0)
 
             configPairingOverlay
+            kioskReloadControlOverlay
 
             if webViewStore.isLoading {
                 VStack(spacing: 20) {
@@ -151,7 +164,7 @@ struct ContentView: View {
             configureConfigPairingBridge()
             configureNotificationBridge()
         }
-        .onChange(of: scenePhase) { _, newPhase in
+        .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
                 print("App became active. Checking for URL updates.")
                 webViewStore.reloadCurrentOrNewURL()
@@ -545,6 +558,50 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: settingsSetResponse(request: message))
             currentRequest = nil
         }
+        .on("storageGet") { message in
+            webViewStore.sendResultToWebView(result: nativeStorageBridge.get(request: message))
+            currentRequest = nil
+        }
+        .on("storageSet") { message in
+            webViewStore.sendResultToWebView(result: nativeStorageBridge.set(request: message))
+            currentRequest = nil
+        }
+        .on("storageRemove") { message in
+            webViewStore.sendResultToWebView(result: nativeStorageBridge.remove(request: message))
+            currentRequest = nil
+        }
+        .on("storageClear") { message in
+            webViewStore.sendResultToWebView(result: nativeStorageBridge.clear(request: message))
+            currentRequest = nil
+        }
+        .on("filesystemWrite") { message in
+            webViewStore.sendResultToWebView(result: nativeFilesystemBridge.write(request: message))
+            currentRequest = nil
+        }
+        .on("filesystemRead") { message in
+            webViewStore.sendResultToWebView(result: nativeFilesystemBridge.read(request: message))
+            currentRequest = nil
+        }
+        .on("filesystemList") { message in
+            webViewStore.sendResultToWebView(result: nativeFilesystemBridge.list(request: message))
+            currentRequest = nil
+        }
+        .on("filesystemDelete") { message in
+            webViewStore.sendResultToWebView(result: nativeFilesystemBridge.delete(request: message))
+            currentRequest = nil
+        }
+        .on("sqliteExecute") { message in
+            webViewStore.sendResultToWebView(result: nativeSQLiteBridge.execute(request: message))
+            currentRequest = nil
+        }
+        .on("sqliteDeleteDatabase") { message in
+            webViewStore.sendResultToWebView(result: nativeSQLiteBridge.deleteDatabase(request: message))
+            currentRequest = nil
+        }
+        .on("kioskReloadControlSet") { message in
+            webViewStore.sendResultToWebView(result: setKioskReloadControl(request: message))
+            currentRequest = nil
+        }
         .on("reload") { message in
             webViewStore.sendResultToWebView(result: NativeCommandPayload.reloadResponse(request: message))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
@@ -639,7 +696,41 @@ struct ContentView: View {
                             .background(Color.white)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                        Text(configPairingBridge.targetAdvertising ? "BLE aktiv" : "BLE startet")
+                        let scannerConfig = configPairingOverlayScannerConfig
+                        ContinuousBarcodeScannerView(
+                            config: scannerConfig,
+                            onResult: { result in
+                                handleContinuousScannerResult(result, config: scannerConfig)
+                            },
+                            onError: { message in
+                                webViewStore.sendResultToWebView(result: [
+                                    "platform": "ios",
+                                    "action": "continuousScanStart",
+                                    "success": false,
+                                    "error": message
+                                ])
+                            }
+                        )
+                        .frame(height: 190)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.green.opacity(0.82), lineWidth: 2)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                        Button {
+                            configPairingScannerCamera = configPairingScannerCamera == "front" ? "back" : "front"
+                        } label: {
+                            Image(systemName: "camera.rotate.fill")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 58, height: 44)
+                                .background(.black.opacity(0.72), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Switch scanner camera")
+
+                        Text(configPairingBridge.targetAdvertising ? "BLE active" : "BLE starting")
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.82))
 
@@ -650,15 +741,32 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 10)
 
-                        Button {
-                            webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"]))
-                        } label: {
-                            Text("Schliessen")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
+                        HStack(spacing: 14) {
+                            Button {
+                                webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"]))
+                                webViewStore.reloadCurrentOrNewURL()
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityLabel("Reload")
+
+                            Button {
+                                webViewStore.sendResultToWebView(result: configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"]))
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityLabel("Close")
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                     .padding(22)
                     .frame(maxWidth: 360)
@@ -675,6 +783,18 @@ struct ContentView: View {
                 .zIndex(90)
             }
         }
+    }
+
+    private var configPairingOverlayScannerConfig: ContinuousBarcodeScannerConfig {
+        var config = ContinuousBarcodeScannerConfig()
+        config.action = "continuousScanStart"
+        config.mode = "configPairing"
+        config.purpose = "configPairing"
+        config.camera = configPairingScannerCamera
+        config.types = ["qr"]
+        config.repeatDelaySeconds = 1
+        config.showFlipButton = true
+        return config
     }
 
     private func configureConfigPairingBridge() {
@@ -725,6 +845,68 @@ struct ContentView: View {
         webViewStore.sendResultToWebView(result: response)
     }
 
+    private var kioskReloadControlOverlay: some View {
+        Group {
+            if kioskReloadControl.enabled {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Button {
+                            webViewStore.reloadCurrentOrNewURL()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(Circle().fill(Color.black))
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(kioskReloadControl.opacity)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: kioskReloadControl.longPressSeconds)
+                                .onEnded { _ in
+                                    Darwin.exit(0)
+                                }
+                        )
+                        .accessibilityIdentifier("kioskReloadControl")
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .ignoresSafeArea()
+                .zIndex(90)
+            }
+        }
+    }
+
+    private func setKioskReloadControl(request: [String: Any]) -> [String: Any] {
+        if let enabled = boolValue(request["enabled"] ?? request["visible"]) {
+            kioskReloadControl.enabled = enabled
+        }
+        if let opacity = request["opacity"].flatMap(doubleValue) {
+            kioskReloadControl.opacity = min(1, max(0.02, opacity))
+        }
+        if let seconds = request["longPressSeconds"].flatMap(doubleValue) {
+            kioskReloadControl.longPressSeconds = min(10, max(0.5, seconds))
+        }
+        var response = BridgeResponse.base(request: request, action: "kioskReloadControlSet")
+        response["success"] = true
+        response["enabled"] = kioskReloadControl.enabled
+        response["opacity"] = kioskReloadControl.opacity
+        response["longPressSeconds"] = kioskReloadControl.longPressSeconds
+        return response
+    }
+
+    private func doubleValue(_ value: Any?) -> Double? {
+        if let value = value as? Double { return value }
+        if let value = value as? Float { return Double(value) }
+        if let value = value as? Int { return Double(value) }
+        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? String { return Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
+    }
+
     private var continuousScannerOverlay: some View {
         GeometryReader { proxy in
             if let config = continuousScannerConfig {
@@ -733,7 +915,7 @@ struct ContentView: View {
                     ContinuousBarcodeScannerView(
                         config: config,
                         onResult: { result in
-                            webViewStore.sendResultToWebView(result: result)
+                            handleContinuousScannerResult(result, config: config)
                         },
                         onError: { message in
                             webViewStore.sendResultToWebView(result: [
@@ -764,9 +946,35 @@ struct ContentView: View {
                 .frame(width: frame.width, height: frame.height)
                 .position(x: frame.midX, y: frame.midY)
                 .zIndex(40)
+
+                if config.showFlipButton {
+                    Button {
+                        flipContinuousScannerCamera()
+                    } label: {
+                        Image(systemName: "camera.rotate.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 54, height: 44)
+                            .background(.black.opacity(0.72), in: Capsule())
+                            .shadow(radius: 3)
+                    }
+                    .accessibilityLabel("Switch scanner camera")
+                    .position(x: frame.midX, y: min(frame.maxY + 34, proxy.size.height - 34))
+                    .zIndex(41)
+                }
             }
         }
         .ignoresSafeArea()
+    }
+
+    private func flipContinuousScannerCamera() {
+        guard var config = continuousScannerConfig else { return }
+        config.camera = config.camera == "front" ? "back" : "front"
+        continuousScannerConfig = config
+        webViewStore.sendResultToWebView(result: ContinuousScannerResponseBuilder.startResponse(
+            action: config.action,
+            config: config
+        ))
     }
 
     private func startContinuousScanner(action: String, request: [String: Any]) {
@@ -819,6 +1027,82 @@ struct ContentView: View {
             previewRect: previewRect
         ))
         currentRequest = nil
+    }
+
+    private func handleContinuousScannerResult(_ result: [String: Any], config: ContinuousBarcodeScannerConfig) {
+        guard config.isConfigPairing else {
+            webViewStore.sendResultToWebView(result: result)
+            return
+        }
+
+        let code = stringValue(result["code"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else {
+            return
+        }
+
+        let request: [String: Any] = [
+            "action": config.action,
+            "purpose": "configPairing",
+            "source": "configPairing"
+        ]
+
+        switch recoveryBarcodeHandler.handleConfigPairing(
+            code: code,
+            action: config.action,
+            storedToken: AppSettings.shared.securityToken,
+            invalidTokenMessage: NSLocalizedString("error.invalidConfiguration.invalidToken", comment: "Invalid security token error")
+        ) {
+        case .applied(let snapshot, let wifiRequest):
+            applyContinuousConfigScanResult(
+                request: request,
+                settings: snapshot,
+                wifiRequest: wifiRequest
+            )
+        case .invalid(let response):
+            webViewStore.sendResultToWebView(result: response)
+        }
+    }
+
+    private func applyContinuousConfigScanResult(
+        request: [String: Any],
+        settings: [String: Any],
+        wifiRequest: [String: Any]?
+    ) {
+        continuousScannerConfig = nil
+        _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
+        webViewStore.sendResultToWebView(result: BarcodeResponseBuilder.configChangedResponse(
+            request: request,
+            settings: settings
+        ))
+
+        guard var wifiRequest else {
+            reloadConfiguredURLSoon()
+            return
+        }
+
+        wifiRequest["requestId"] = stringValue(request["requestId"])
+        deviceBridge.configureWifi(request: wifiRequest) { result in
+            webViewStore.sendResultToWebView(result: result)
+            reloadWhenWifiIsReady(wifiRequest: wifiRequest, wifiResult: result)
+        }
+    }
+
+    private func reloadConfiguredURLSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            webViewStore.reloadCurrentOrNewURL()
+        }
+    }
+
+    private func reloadWhenWifiIsReady(wifiRequest: [String: Any], wifiResult: [String: Any]) {
+        guard boolValue(wifiResult["success"]) == true else {
+            reloadConfiguredURLSoon()
+            return
+        }
+
+        deviceBridge.waitForWifiReady(ssid: stringValue(wifiRequest["ssid"])) { readiness in
+            webViewStore.sendResultToWebView(result: readiness)
+            webViewStore.reloadCurrentOrNewURL()
+        }
     }
 
     private func showTapToPayTransition(_ phase: TapToPayBridge.Phase) {
@@ -1151,18 +1435,14 @@ struct ContentView: View {
         ))
 
         guard var wifiRequest = scanResult.wifiRequest else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                webViewStore.reloadCurrentOrNewURL()
-            }
+            reloadConfiguredURLSoon()
             return
         }
 
         wifiRequest["requestId"] = stringValue(currentRequest?["requestId"])
         deviceBridge.configureWifi(request: wifiRequest) { result in
             webViewStore.sendResultToWebView(result: result)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                webViewStore.reloadCurrentOrNewURL()
-            }
+            reloadWhenWifiIsReady(wifiRequest: wifiRequest, wifiResult: result)
         }
     }
 

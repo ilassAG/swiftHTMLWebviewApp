@@ -61,6 +61,8 @@ final class ContinuousBarcodeScannerController {
     private FrameLayout overlay;
     private PreviewView previewView;
     private ImageButton closeButton;
+    private ImageButton flipButton;
+    private ViewGroup hostedParent;
     private ProcessCameraProvider cameraProvider;
     private BarcodeScanner barcodeScanner;
     private AndroidContinuousScannerConfig currentConfig;
@@ -87,8 +89,36 @@ final class ContinuousBarcodeScannerController {
                     if (closeButton != null) {
                         closeButton.setVisibility(currentConfig.showCloseButton ? View.VISIBLE : View.GONE);
                     }
+                    if (flipButton != null) {
+                        flipButton.setVisibility(currentConfig.showFlipButton ? View.VISIBLE : View.GONE);
+                    }
                     applyPreviewRect(currentConfig.rect);
-                    bindCamera(generation);
+                    bindCameraAfterLayout(generation);
+                }
+            } catch (Exception error) {
+                listener.onScannerError("Continuous scanner failed: " + error.getMessage());
+                stopInternal();
+            }
+        });
+        return currentConfig.response(request, currentConfig.action, true);
+    }
+
+    JSONObject startInHost(JSONObject request, View hostView) throws JSONException {
+        currentConfig = AndroidContinuousScannerConfig.from(request);
+        lastSeenByCode.clear();
+        scannerGeneration += 1;
+        int generation = scannerGeneration;
+        runOnMainThread(() -> {
+            try {
+                ensureHostedOverlay(hostView);
+                if (currentConfig != null && generation == scannerGeneration) {
+                    if (closeButton != null) {
+                        closeButton.setVisibility(currentConfig.showCloseButton ? View.VISIBLE : View.GONE);
+                    }
+                    if (flipButton != null) {
+                        flipButton.setVisibility(currentConfig.showFlipButton ? View.VISIBLE : View.GONE);
+                    }
+                    bindCameraAfterLayout(generation);
                 }
             } catch (Exception error) {
                 listener.onScannerError("Continuous scanner failed: " + error.getMessage());
@@ -131,6 +161,35 @@ final class ContinuousBarcodeScannerController {
             return;
         }
 
+        createOverlay();
+        hostedParent = null;
+        activity.addContentView(overlay, new FrameLayout.LayoutParams(dp(220), dp(180)));
+    }
+
+    private void ensureHostedOverlay(View hostView) {
+        if (!(hostView instanceof ViewGroup)) {
+            ensureOverlay();
+            applyHostFrame(hostView);
+            return;
+        }
+
+        ViewGroup host = (ViewGroup) hostView;
+        if (overlay != null && overlay.getParent() == host) {
+            hostedParent = host;
+            return;
+        }
+
+        removeOverlayFromParent();
+        createOverlay();
+        hostedParent = host;
+        host.addView(overlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        overlay.bringToFront();
+    }
+
+    private void createOverlay() {
         overlay = new FrameLayout(activity);
         overlay.setClipToOutline(true);
         GradientDrawable overlayBackground = new GradientDrawable();
@@ -141,6 +200,7 @@ final class ContinuousBarcodeScannerController {
 
         previewView = new PreviewView(activity);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
         overlay.addView(previewView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -158,11 +218,46 @@ final class ContinuousBarcodeScannerController {
         closeParams.gravity = Gravity.TOP | Gravity.RIGHT;
         overlay.addView(closeButton, closeParams);
 
-        activity.addContentView(overlay, new FrameLayout.LayoutParams(dp(220), dp(180)));
+        flipButton = new ImageButton(activity);
+        flipButton.setImageResource(android.R.drawable.ic_menu_camera);
+        flipButton.setColorFilter(Color.WHITE);
+        GradientDrawable flipBackground = new GradientDrawable();
+        flipBackground.setShape(GradientDrawable.OVAL);
+        flipBackground.setColor(Color.argb(190, 0, 0, 0));
+        flipButton.setBackground(flipBackground);
+        flipButton.setOnClickListener(view -> toggleCamera());
+        FrameLayout.LayoutParams flipParams = new FrameLayout.LayoutParams(dp(52), dp(44));
+        flipParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        flipParams.bottomMargin = dp(8);
+        overlay.addView(flipButton, flipParams);
+    }
+
+    private void toggleCamera() {
+        AndroidContinuousScannerConfig config = currentConfig;
+        if (config == null) {
+            return;
+        }
+        config.camera = "front".equals(config.camera) ? "back" : "front";
+        lastSeenByCode.clear();
+        scannerGeneration += 1;
+        bindCameraAfterLayout(scannerGeneration);
     }
 
     private void applyPreviewRect(AndroidContinuousScannerConfig.RectPercent rect) {
         if (overlay == null) {
+            return;
+        }
+        if (hostedParent != null) {
+            ViewGroup.LayoutParams currentParams = overlay.getLayoutParams();
+            if (!(currentParams instanceof FrameLayout.LayoutParams)
+                    || currentParams.width != ViewGroup.LayoutParams.MATCH_PARENT
+                    || currentParams.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                overlay.setLayoutParams(new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+            }
+            overlay.bringToFront();
             return;
         }
 
@@ -177,6 +272,27 @@ final class ContinuousBarcodeScannerController {
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
         params.leftMargin = left;
         params.topMargin = top;
+        params.gravity = Gravity.TOP | Gravity.LEFT;
+        overlay.setLayoutParams(params);
+        overlay.bringToFront();
+    }
+
+    private void applyHostFrame(View hostView) {
+        if (overlay == null || hostView == null) {
+            return;
+        }
+        View contentRoot = activity.findViewById(android.R.id.content);
+        int[] hostLocation = new int[2];
+        int[] rootLocation = new int[2];
+        hostView.getLocationInWindow(hostLocation);
+        if (contentRoot != null) {
+            contentRoot.getLocationInWindow(rootLocation);
+        }
+        int width = Math.max(hostView.getWidth(), dp(72));
+        int height = Math.max(hostView.getHeight(), dp(72));
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.leftMargin = Math.max(hostLocation[0] - rootLocation[0], 0);
+        params.topMargin = Math.max(hostLocation[1] - rootLocation[1], 0);
         params.gravity = Gravity.TOP | Gravity.LEFT;
         overlay.setLayoutParams(params);
         overlay.bringToFront();
@@ -219,6 +335,14 @@ final class ContinuousBarcodeScannerController {
                 stopInternal();
             }
         }, ContextCompat.getMainExecutor(activity));
+    }
+
+    private void bindCameraAfterLayout(int generation) {
+        PreviewView activePreviewView = previewView;
+        if (activePreviewView == null) {
+            return;
+        }
+        activePreviewView.post(() -> bindCamera(generation));
     }
 
     private void configureCameraForScanning(Camera camera, PreviewView activePreviewView) {
@@ -315,13 +439,12 @@ final class ContinuousBarcodeScannerController {
             barcodeScanner = null;
         }
         if (overlay != null) {
-            ViewGroup parent = (ViewGroup) overlay.getParent();
-            if (parent != null) {
-                parent.removeView(overlay);
-            }
+            removeOverlayFromParent();
             overlay = null;
             previewView = null;
             closeButton = null;
+            flipButton = null;
+            hostedParent = null;
         }
         currentConfig = null;
         lastSeenByCode.clear();
@@ -337,6 +460,16 @@ final class ContinuousBarcodeScannerController {
 
     private int dp(int value) {
         return Math.round(value * activity.getResources().getDisplayMetrics().density);
+    }
+
+    private void removeOverlayFromParent() {
+        if (overlay == null) {
+            return;
+        }
+        ViewGroup parent = (ViewGroup) overlay.getParent();
+        if (parent != null) {
+            parent.removeView(overlay);
+        }
     }
 
 }

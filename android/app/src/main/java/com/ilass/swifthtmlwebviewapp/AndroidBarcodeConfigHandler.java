@@ -108,7 +108,7 @@ final class AndroidBarcodeConfigHandler {
         }
 
         String scannedToken = config.optString("token", config.optString("securityToken", "")).trim();
-        if (scannedToken.isEmpty() || !scannedToken.equals(nonEmpty(currentSecurityToken, ""))) {
+        if (!allowsConfigToken(scannedToken, currentSecurityToken)) {
             throw new JSONException("Security token mismatch.");
         }
 
@@ -199,10 +199,19 @@ final class AndroidBarcodeConfigHandler {
         if (settings.length() == 0 && wifiRequest.length() == 0) {
             return Result.standard();
         }
-        if (scannedToken.isEmpty() || !scannedToken.equals(nonEmpty(currentSecurityToken, ""))) {
+        if (!allowsConfigToken(scannedToken, currentSecurityToken)) {
             throw new JSONException("Security token mismatch.");
         }
         return Result.configChange(settings, wifiRequest);
+    }
+
+    private static boolean allowsConfigToken(String scannedToken, String currentSecurityToken) {
+        String storedToken = nonEmpty(currentSecurityToken, "");
+        String incomingToken = nonEmpty(scannedToken, "");
+        if (storedToken.isEmpty()) {
+            return incomingToken.isEmpty();
+        }
+        return storedToken.equals(incomingToken);
     }
 
     private static boolean isConfigJson(JSONObject config) {

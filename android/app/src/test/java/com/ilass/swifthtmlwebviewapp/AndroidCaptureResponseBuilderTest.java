@@ -114,6 +114,38 @@ public class AndroidCaptureResponseBuilderTest {
         assertEquals("jpeg", AndroidCaptureResponseBuilder.photoFormat(null, false));
     }
 
+    @Test
+    public void portraitResponseUsesSharedEnvelopeAndMetadata() throws JSONException {
+        AndroidPortraitCaptureRequest request = AndroidPortraitCaptureRequest.from(request("portraitCapture")
+                .put("camera", "front")
+                .put("removeBackground", true)
+                .put("background", "transparent")
+                .put("cropTransparent", true));
+
+        JSONObject response = AndroidCaptureResponseBuilder.portrait(
+                request,
+                "png",
+                "data:image/png;base64,portrait",
+                true,
+                1,
+                4,
+                1
+        );
+
+        assertEquals("android", response.getString("platform"));
+        assertEquals("portraitCapture", response.getString("action"));
+        assertEquals("req-1", response.getString("requestId"));
+        assertTrue(response.getBoolean("success"));
+        assertEquals("png", response.getString("format"));
+        assertEquals("data:image/png;base64,portrait", response.getString("imageData"));
+        assertTrue(response.getBoolean("backgroundRemoved"));
+        assertEquals("transparent", response.getString("background"));
+        assertEquals("front", response.getString("camera"));
+        assertEquals(1, response.getInt("selectedIndex"));
+        assertEquals(4, response.getInt("variantsCaptured"));
+        assertEquals(1, response.getInt("detectedFaces"));
+    }
+
     private JSONObject request(String action) throws JSONException {
         return new JSONObject()
                 .put("action", action)

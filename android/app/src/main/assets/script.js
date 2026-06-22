@@ -6,6 +6,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const scanDocPngBtn = document.getElementById('scanDocPngBtn');
     const takePhotoFrontBtn = document.getElementById('takePhotoFrontBtn');
     const takePhotoBackBtn = document.getElementById('takePhotoBackBtn');
+    const portraitCaptureBtn = document.getElementById('portraitCaptureBtn');
+    const portraitCameraSelect = document.getElementById('portraitCameraSelect');
+    const portraitFacesInput = document.getElementById('portraitFacesInput');
+    const portraitCountdownInput = document.getElementById('portraitCountdownInput');
+    const portraitVariationInput = document.getElementById('portraitVariationInput');
+    const portraitIntervalInput = document.getElementById('portraitIntervalInput');
+    const portraitOutputTypeSelect = document.getElementById('portraitOutputTypeSelect');
+    const portraitCropSelect = document.getElementById('portraitCropSelect');
+    const portraitRemoveBackgroundCheckbox = document.getElementById('portraitRemoveBackgroundCheckbox');
+    const portraitBackgroundMode = document.getElementById('portraitBackgroundMode');
+    const portraitBackgroundColor = document.getElementById('portraitBackgroundColor');
+    const portraitCropTransparentCheckbox = document.getElementById('portraitCropTransparentCheckbox');
+    const portraitMirrorOutputCheckbox = document.getElementById('portraitMirrorOutputCheckbox');
     const removeBackgroundCheckbox = document.getElementById('removeBackgroundCheckbox');
     const photoBackgroundMode = document.getElementById('photoBackgroundMode');
     const photoBackgroundColor = document.getElementById('photoBackgroundColor');
@@ -86,6 +99,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const screenStreamWidthInput = document.getElementById('screenStreamWidthInput');
     const screenStreamStartBtn = document.getElementById('screenStreamStartBtn');
     const screenStreamStopBtn = document.getElementById('screenStreamStopBtn');
+    const storageNamespaceInput = document.getElementById('storageNamespaceInput');
+    const storageKeyInput = document.getElementById('storageKeyInput');
+    const storageValueInput = document.getElementById('storageValueInput');
+    const storageSetBtn = document.getElementById('storageSetBtn');
+    const storageGetBtn = document.getElementById('storageGetBtn');
+    const storageRemoveBtn = document.getElementById('storageRemoveBtn');
+    const storageClearBtn = document.getElementById('storageClearBtn');
+    const fileDirectorySelect = document.getElementById('fileDirectorySelect');
+    const filePathInput = document.getElementById('filePathInput');
+    const fileDataInput = document.getElementById('fileDataInput');
+    const fileWriteBtn = document.getElementById('fileWriteBtn');
+    const fileReadBtn = document.getElementById('fileReadBtn');
+    const fileListBtn = document.getElementById('fileListBtn');
+    const fileDeleteBtn = document.getElementById('fileDeleteBtn');
+    const sqliteDatabaseInput = document.getElementById('sqliteDatabaseInput');
+    const sqliteKeyInput = document.getElementById('sqliteKeyInput');
+    const sqliteValueInput = document.getElementById('sqliteValueInput');
+    const sqliteInitBtn = document.getElementById('sqliteInitBtn');
+    const sqliteUpsertBtn = document.getElementById('sqliteUpsertBtn');
+    const sqliteListBtn = document.getElementById('sqliteListBtn');
+    const sqliteDeleteDbBtn = document.getElementById('sqliteDeleteDbBtn');
+    const kioskOpacityInput = document.getElementById('kioskOpacityInput');
+    const kioskLongPressInput = document.getElementById('kioskLongPressInput');
+    const kioskReloadEnableBtn = document.getElementById('kioskReloadEnableBtn');
+    const kioskReloadDisableBtn = document.getElementById('kioskReloadDisableBtn');
     const printEpsonHelloBtn = document.getElementById('printEpsonHelloBtn');
     const discoverPrintersBtn = document.getElementById('discoverPrintersBtn');
     const epsonPrinterHost = document.getElementById('epsonPrinterHost');
@@ -149,6 +187,17 @@ document.addEventListener('DOMContentLoaded', () => {
         "sensorStreamStop",
         "screenStreamStart",
         "screenStreamStop",
+        "storageGet",
+        "storageSet",
+        "storageRemove",
+        "storageClear",
+        "filesystemWrite",
+        "filesystemRead",
+        "filesystemList",
+        "filesystemDelete",
+        "sqliteExecute",
+        "sqliteDeleteDatabase",
+        "kioskReloadControlSet",
         "configPairingShow",
         "configPairingStop",
         "configPairingConnect",
@@ -182,6 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     takePhotoBackBtn.addEventListener('click', () => {
         sendBridgeMessage(createPhotoRequest("back"));
+    });
+
+    portraitCaptureBtn?.addEventListener('click', () => {
+        sendBridgeMessage(createPortraitCaptureRequest());
     });
 
     confettiBtn?.addEventListener('click', () => {
@@ -292,9 +345,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     configPairingScanBtn?.addEventListener('click', () => {
         sendBridgeMessage({
-            action: "scanBarcode",
+            action: "continuousScanStart",
             purpose: "configPairing",
-            types: ["qr"]
+            camera: "front",
+            types: ["qr"],
+            repeatDelaySeconds: 1,
+            showFlipButton: true,
+            previewRect: {
+                top: 0.18,
+                left: 0.10,
+                width: 0.80,
+                height: 0.36
+            }
         });
     });
 
@@ -469,6 +531,122 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBridgeMessage({ action: "screenStreamStop" });
     });
 
+    storageSetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "storageSet",
+            namespace: nativeStorageNamespace(),
+            key: nativeStorageKey(),
+            value: parseJsonish(storageValueInput?.value || "")
+        });
+    });
+
+    storageGetBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "storageGet",
+            namespace: nativeStorageNamespace(),
+            key: nativeStorageKey()
+        });
+    });
+
+    storageRemoveBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "storageRemove",
+            namespace: nativeStorageNamespace(),
+            key: nativeStorageKey()
+        });
+    });
+
+    storageClearBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "storageClear",
+            namespace: nativeStorageNamespace()
+        });
+    });
+
+    fileWriteBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "filesystemWrite",
+            directory: nativeFileDirectory(),
+            path: nativeFilePath(),
+            data: String(fileDataInput?.value || ""),
+            encoding: "utf8"
+        });
+    });
+
+    fileReadBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "filesystemRead",
+            directory: nativeFileDirectory(),
+            path: nativeFilePath(),
+            encoding: "utf8"
+        });
+    });
+
+    fileListBtn?.addEventListener('click', () => {
+        const path = nativeFilePath();
+        sendBridgeMessage({
+            action: "filesystemList",
+            directory: nativeFileDirectory(),
+            path: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""
+        });
+    });
+
+    fileDeleteBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "filesystemDelete",
+            directory: nativeFileDirectory(),
+            path: nativeFilePath()
+        });
+    });
+
+    sqliteInitBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "sqliteExecute",
+            database: nativeSQLiteDatabase(),
+            sql: "CREATE TABLE IF NOT EXISTS demo_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        });
+    });
+
+    sqliteUpsertBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "sqliteExecute",
+            database: nativeSQLiteDatabase(),
+            sql: "INSERT OR REPLACE INTO demo_store (key, value, updated_at) VALUES (?, ?, ?)",
+            args: [nativeSQLiteKey(), String(sqliteValueInput?.value || ""), new Date().toISOString()]
+        });
+    });
+
+    sqliteListBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "sqliteExecute",
+            database: nativeSQLiteDatabase(),
+            sql: "SELECT key, value, updated_at FROM demo_store ORDER BY key"
+        });
+    });
+
+    sqliteDeleteDbBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "sqliteDeleteDatabase",
+            database: nativeSQLiteDatabase()
+        });
+    });
+
+    kioskReloadEnableBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "kioskReloadControlSet",
+            enabled: true,
+            opacity: numericInputRange(kioskOpacityInput, 0.1, 0.02, 1),
+            longPressSeconds: numericInputRange(kioskLongPressInput, 2, 0.5, 10)
+        });
+    });
+
+    kioskReloadDisableBtn?.addEventListener('click', () => {
+        sendBridgeMessage({
+            action: "kioskReloadControlSet",
+            enabled: false
+        });
+    });
+
     printEpsonHelloBtn?.addEventListener('click', () => {
         const request = createPrinterHelloRequest();
         if (request) {
@@ -489,6 +667,9 @@ document.addEventListener('DOMContentLoaded', () => {
     removeBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
     photoBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
     cropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    portraitRemoveBackgroundCheckbox?.addEventListener('change', updatePhotoOptionControls);
+    portraitBackgroundMode?.addEventListener('change', updatePhotoOptionControls);
+    portraitCropTransparentCheckbox?.addEventListener('change', updatePhotoOptionControls);
     updatePhotoOptionControls();
 
     // --- Funktionen ---
@@ -508,6 +689,32 @@ document.addEventListener('DOMContentLoaded', () => {
             background,
             backgroundColor,
             cropTransparent
+        };
+    }
+
+    function createPortraitCaptureRequest() {
+        const shouldRemoveBackground = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+        const background = portraitBackgroundMode?.value || "transparent";
+        const backgroundColor = normalizeHexColor(portraitBackgroundColor?.value || "#ffffff");
+        const cropTransparent = Boolean(portraitCropTransparentCheckbox?.checked);
+        const mirrorOutput = Boolean(portraitMirrorOutputCheckbox?.checked);
+        const requestedOutputType = portraitOutputTypeSelect?.value === "jpeg" ? "jpeg" : "png";
+        const outputType = (shouldRemoveBackground && background === "transparent") ? "png" : requestedOutputType;
+
+        return {
+            action: "portraitCapture",
+            camera: portraitCameraSelect?.value === "back" ? "back" : "front",
+            requiredFaces: numericInputInt(portraitFacesInput, 1, 1, 8),
+            countdownSeconds: numericInputRange(portraitCountdownInput, 3, 0, 15),
+            variationCount: numericInputInt(portraitVariationInput, 4, 1, 8),
+            captureIntervalMs: numericInputInt(portraitIntervalInput, 200, 50, 2000),
+            outputType,
+            removeBackground: shouldRemoveBackground,
+            background,
+            backgroundColor,
+            cropTransparent,
+            mirrorOutput,
+            crop: portraitCropSelect?.value === "none" ? "none" : "squareFaceCentered"
         };
     }
 
@@ -571,6 +778,42 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    function nativeStorageNamespace() {
+        return String(storageNamespaceInput?.value || "demo").trim() || "demo";
+    }
+
+    function nativeStorageKey() {
+        return String(storageKeyInput?.value || "station").trim() || "station";
+    }
+
+    function nativeFileDirectory() {
+        return fileDirectorySelect?.value || "data";
+    }
+
+    function nativeFilePath() {
+        return String(filePathInput?.value || "demo/state.json").trim() || "demo/state.json";
+    }
+
+    function nativeSQLiteDatabase() {
+        return String(sqliteDatabaseInput?.value || "demo.sqlite").trim() || "demo.sqlite";
+    }
+
+    function nativeSQLiteKey() {
+        return String(sqliteKeyInput?.value || "station").trim() || "station";
+    }
+
+    function parseJsonish(value) {
+        const raw = String(value || "").trim();
+        if (!raw) {
+            return "";
+        }
+        try {
+            return JSON.parse(raw);
+        } catch (error) {
+            return raw;
+        }
+    }
+
     function createPermanentScanStartRequest() {
         const mode = scannerModeSelect?.value === "login" ? "login" : "data";
         return {
@@ -601,6 +844,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function numericInputValue(input, fallback) {
         const raw = Number(input?.value);
         return Number.isFinite(raw) ? raw : fallback;
+    }
+
+    function numericInputRange(input, fallback, min, max) {
+        const value = numericInputValue(input, fallback);
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function numericInputInt(input, fallback, min, max) {
+        return Math.round(numericInputRange(input, fallback, min, max));
     }
 
     function pairingPayloadFromInput() {
@@ -722,19 +974,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePhotoOptionControls() {
-        if (!photoBackgroundMode || !photoBackgroundColor || !cropTransparentCheckbox) {
-            return;
+        if (photoBackgroundMode && photoBackgroundColor && cropTransparentCheckbox) {
+            const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
+            const backgroundMode = photoBackgroundMode.value || "transparent";
+            const cropEnabled = removeChecked && backgroundMode === "transparent";
+
+            photoBackgroundMode.disabled = !removeChecked;
+            photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+            cropTransparentCheckbox.disabled = !cropEnabled;
+            if (!cropEnabled && !removeChecked) {
+                cropTransparentCheckbox.checked = false;
+            }
         }
 
-        const removeChecked = Boolean(removeBackgroundCheckbox?.checked);
-        const backgroundMode = photoBackgroundMode.value || "transparent";
-        const cropEnabled = removeChecked && backgroundMode === "transparent";
+        if (portraitBackgroundMode && portraitBackgroundColor && portraitCropTransparentCheckbox) {
+            const removeChecked = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+            const backgroundMode = portraitBackgroundMode.value || "transparent";
+            const cropEnabled = removeChecked && backgroundMode === "transparent";
 
-        photoBackgroundMode.disabled = !removeChecked;
-        photoBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
-        cropTransparentCheckbox.disabled = !cropEnabled;
-        if (!cropEnabled && !removeChecked) {
-            cropTransparentCheckbox.checked = false;
+            portraitBackgroundMode.disabled = !removeChecked;
+            portraitBackgroundColor.disabled = !removeChecked || backgroundMode !== "color";
+            portraitCropTransparentCheckbox.disabled = !cropEnabled;
+            if (!cropEnabled && !removeChecked) {
+                portraitCropTransparentCheckbox.checked = false;
+            }
         }
     }
 
@@ -786,6 +1049,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayDocumentResult(result);
                 break;
             case "takePhoto":
+            case "portraitCapture":
                 displayPhotoResult(result);
                 break;
             case "launchConfetti":
@@ -826,6 +1090,17 @@ document.addEventListener('DOMContentLoaded', () => {
             case "beaconAdvertiseStop":
             case "settingsGet":
             case "settingsSet":
+            case "storageGet":
+            case "storageSet":
+            case "storageRemove":
+            case "storageClear":
+            case "filesystemWrite":
+            case "filesystemRead":
+            case "filesystemList":
+            case "filesystemDelete":
+            case "sqliteExecute":
+            case "sqliteDeleteDatabase":
+            case "kioskReloadControlSet":
                 if (result.settings) {
                     updateConfigFormFromSettings(result.settings);
                 }
@@ -980,6 +1255,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayBarcodeResult(result) {
+        if (result.code === "configChanged" && result.settings) {
+            updateConfigFormFromSettings(result.settings);
+        }
         if (result.code) {
             if (String(result.code).startsWith("swifthtml-config://pair") && configPairingPayloadInput) {
                 configPairingPayloadInput.value = result.code;
@@ -1296,6 +1574,26 @@ document.addEventListener('DOMContentLoaded', () => {
              cropTransparentCheckbox.disabled = disabled || !cropEnabled;
              if (!cropEnabled && !removeChecked) {
                  cropTransparentCheckbox.checked = false;
+             }
+         }
+
+         if (portraitRemoveBackgroundCheckbox) {
+             portraitRemoveBackgroundCheckbox.disabled = disabled;
+         }
+
+         if (portraitMirrorOutputCheckbox) {
+             portraitMirrorOutputCheckbox.disabled = disabled;
+         }
+
+         if (portraitBackgroundMode && portraitBackgroundColor && portraitCropTransparentCheckbox) {
+             const removeChecked = Boolean(portraitRemoveBackgroundCheckbox?.checked);
+             const isColorMode = (portraitBackgroundMode.value || "transparent") === "color";
+             const cropEnabled = removeChecked && !isColorMode;
+             portraitBackgroundMode.disabled = disabled || !removeChecked;
+             portraitBackgroundColor.disabled = disabled || !removeChecked || !isColorMode;
+             portraitCropTransparentCheckbox.disabled = disabled || !cropEnabled;
+             if (!cropEnabled && !removeChecked) {
+                 portraitCropTransparentCheckbox.checked = false;
              }
          }
 

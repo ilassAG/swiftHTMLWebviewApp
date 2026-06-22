@@ -22,15 +22,15 @@ printercore/scripts/build_mobile.sh
 ## Default configuration
 
 The iOS app loads its startup URL from the Settings bundle. The demo wrapper
-defaults to `https://example.invalid/mobile/` so the recovery/configuration
-flow is visible in a clean checkout. The value `local` loads the bundled demo
-page from `ios/swiftHTMLWebviewApp/HTML/`.
+defaults to `local`, which loads the bundled demo page from
+`ios/swiftHTMLWebviewApp/HTML/`. Remote URLs can still be configured through
+Settings, QR configuration, or private app variants.
 
 Runtime settings:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `server_url_preference` | `https://example.invalid/mobile/` | Primary web app URL. `local`, `bundle`, an empty value, and `about:local` all load the bundled HTML. |
+| `server_url_preference` | `local` | Primary web app URL. `local`, `bundle`, an empty value, and `about:local` all load the bundled HTML. |
 | `security_token_preference` | empty | Optional token made available to native code that needs protected configuration updates. Protected writes require a non-empty stored token and matching request token. |
 | `ha_enabled` | `false` | Enables legacy-compatible startup URL failover. |
 | `ha_timeout` | `5` | Seconds to wait for a remote URL before the next candidate is tried. |
@@ -59,6 +59,10 @@ scanning.
 The iOS wrapper includes:
 
 - `continuousScanStart` / `continuousScanStop`
+- `portraitCapture` for native pass-photo capture with face-count validation,
+  burst variants, optional background removal, and face-centered square crop.
+  Front-camera preview is mirrored, but final output is unmirrored by default;
+  set `mirrorOutput: true` to request mirrored output.
 - `dataScanStart` / `dataScanEnd`
 - `loginScanStart` / `loginScanEnd`
 - `previewBoxLocationUpdate`

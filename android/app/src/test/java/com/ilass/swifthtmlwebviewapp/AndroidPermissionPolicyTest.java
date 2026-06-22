@@ -79,12 +79,13 @@ public class AndroidPermissionPolicyTest {
                 AndroidPermissionPolicy.configPairingPermissions("configPairingConnect", Build.VERSION_CODES.R)
         );
         assertArrayEquals(
-                new String[]{},
+                new String[]{Manifest.permission.CAMERA},
                 AndroidPermissionPolicy.configPairingPermissions("configPairingShow", Build.VERSION_CODES.R)
         );
 
         assertArrayEquals(
                 new String[]{
+                        Manifest.permission.CAMERA,
                         Manifest.permission.BLUETOOTH_CONNECT,
                         Manifest.permission.BLUETOOTH_SCAN,
                         Manifest.permission.BLUETOOTH_ADVERTISE
