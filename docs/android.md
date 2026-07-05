@@ -48,7 +48,9 @@ Implemented:
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
   `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity
   fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
-  generated on first start if it is empty.
+  generated on first start if it is empty. `appUUID` is a separate read-only
+  native app installation UUID returned by `settingsGet`, `deviceInfoGet`, and
+  config-pairing identity payloads.
 - BLE config pairing as target and config device through `configPairingShow`,
   `configPairingConnect`, and `configPairingSend`.
 - `wifiStatusGet` mirrors the iOS response shape for `ssidAvailable`, `ssid`,
@@ -109,9 +111,9 @@ The demo page also contains a `Config Pairing` panel. On Android 12+ the app
 requests `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, and
 `BLUETOOTH_ADVERTISE` as needed. The target pairing UI can also be opened with
 a two-finger long press in the center of the WebView for about 1.5 seconds.
-The pairing QR includes `deviceName`, `deviceUUID`, and `deviceLocation` from
-the target settings so the config device can identify the target before sending
-commands. It does not include the persistent security token. Large config
+The pairing QR includes read-only `appUUID` plus `deviceName`, `deviceUUID`,
+and `deviceLocation` from the target settings so the config device can identify
+the target before sending commands. It does not include the persistent security token. Large config
 commands and responses are transported as BLE chunks and reassembled natively.
 Writable config commands require the current stored security token. WLAN setup
 uses Android's user-approved add-network/suggestion APIs, so it cannot silently
@@ -127,7 +129,9 @@ The same SharedPreferences-backed runtime settings can be updated by Config QR
 codes. JSON payloads accept `appConfig` or `store` objects; URL/query payloads
 accept `store[key]=value` / `appConfig[key]=value` and `wifi[ssid]` plus
 `wifi[pw]` / `wifi[password]` / `wifi[passphrase]`. `appConfig` is stored as a
-persistent non-sensitive JSON object and returned by `settingsGet`.
+persistent non-sensitive JSON object and returned by `settingsGet`. Incoming
+`appUUID` values are ignored because the native app owns that immutable
+installation identifier.
 
 The first-run defaults for `server_url_preference`,
 `security_token_preference`, and `beacon_uuid` are variant metadata on the

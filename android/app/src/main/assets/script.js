@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const configPairingPayloadInput = document.getElementById('configPairingPayloadInput');
     const configSecurityTokenInput = document.getElementById('configSecurityTokenInput');
     const configNewSecurityTokenInput = document.getElementById('configNewSecurityTokenInput');
+    const configAppUuidOutput = document.getElementById('configAppUuidOutput');
     const configDeviceNameInput = document.getElementById('configDeviceNameInput');
     const configDeviceUuidInput = document.getElementById('configDeviceUuidInput');
     const configDeviceLocationInput = document.getElementById('configDeviceLocationInput');
@@ -867,6 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const params = url.searchParams;
             return {
+                appUUID: params.get("appUUID") || params.get("appUuid") || params.get("app_uuid") || "",
                 deviceName: params.get("deviceName") || params.get("device_name") || "",
                 deviceUUID: params.get("deviceUUID") || params.get("deviceUuid") || params.get("device_uuid") || "",
                 deviceLocation: params.get("deviceLocation") || params.get("device_location") || ""
@@ -928,6 +930,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (configServerUrlInput && typeof settings.serverURL === "string") {
             configServerUrlInput.value = settings.serverURL;
+        }
+        if (configAppUuidOutput && typeof settings.appUUID === "string") {
+            configAppUuidOutput.value = settings.appUUID;
         }
         if (configDeviceNameInput && typeof settings.deviceName === "string") {
             configDeviceNameInput.value = settings.deviceName;

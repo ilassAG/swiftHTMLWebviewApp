@@ -38,6 +38,10 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         self.webView = createAndConfigureWebView()
     }
 
+    var isShowingRecoveryPage: Bool {
+        startupLoadCoordinator.isShowingRecovery
+    }
+
     func loadConfiguredURLIfNeeded() {
         guard !hasStartedInitialLoad else {
             return

@@ -772,11 +772,12 @@ final class AndroidConfigPairingBridge {
 
     private JSONObject targetIdentity() throws JSONException {
         JSONObject settings = host.settingsSnapshot();
+        String appUuid = settings.optString("appUUID", "");
         String deviceName = settings.optString("deviceName", "");
         String deviceUuid = settings.optString("deviceUUID", "");
         String deviceLocation = settings.optString("deviceLocation", "");
         String name = AndroidConfigPairingProtocol.nonEmpty(deviceName, Build.MODEL != null ? Build.MODEL : "Android");
-        return AndroidConfigPairingProtocol.identity(name, deviceName, deviceUuid, deviceLocation);
+        return AndroidConfigPairingProtocol.identity(name, appUuid, deviceName, deviceUuid, deviceLocation);
     }
 
     private Bitmap qrBitmap(String text, int size) throws WriterException {

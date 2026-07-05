@@ -88,10 +88,10 @@ Keep these layers separate:
   decision-record placement before wrapper-owned product footprint is moved.
 - `swiftHTMLWebviewAppTests` currently covers private iOS product identity,
   Settings.bundle/default alignment, isolated `AppSettings` behavior, HA URL
-  de-duplication, generated device UUIDs, reset behavior, token redaction, and
-  isolated settings bridge, startup URL resolver, recovery QR parser/handler,
-  and shared capture response builder / bridge response shape / dispatcher
-  behavior.
+  de-duplication, generated device UUIDs, immutable app UUIDs, reset behavior,
+  token redaction, and isolated settings bridge, startup URL resolver, recovery
+  QR parser/handler, and shared capture response builder / bridge response
+  shape / dispatcher behavior.
 - iOS one-shot barcode response payloads are isolated in
   `BarcodeResponseBuilder` with unit tests outside `ContentView`.
 - iOS native-result JavaScript generation and invalid-payload fallback are
@@ -237,7 +237,7 @@ Keep these layers separate:
   `AndroidContinuousScannerEventBuilder` with pure JVM tests.
 - Android `settingsGet` / `settingsSet` response and token gate are isolated in
   `AndroidSettingsBridge`; persisted config reads/writes, aliases, startup URL
-  candidate resolution, and device UUID normalization live in
+  candidate resolution, immutable app UUIDs, and device UUID normalization live in
   `AndroidSettingsStore` with pure JVM tests.
 - Android `deviceInfoGet` capability payload construction is isolated in
   `AndroidDeviceCapabilities` with pure JVM tests, while `MainActivity` only

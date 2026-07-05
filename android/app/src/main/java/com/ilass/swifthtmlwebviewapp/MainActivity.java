@@ -190,6 +190,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        settingsStore().appUUID();
         settingsStore().deviceUUID();
 
         webView = new WebView(this);
@@ -774,6 +775,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject deviceInfo(JSONObject message) throws JSONException {
         AndroidDeviceInfoPayload.Snapshot snapshot = new AndroidDeviceInfoPayload.Snapshot();
         snapshot.name = stringOrEmpty(Build.DEVICE);
+        snapshot.appUUID = configAppUUID();
         snapshot.configuredDeviceName = configDeviceName();
         snapshot.configuredDeviceUUID = configDeviceUUID();
         snapshot.configuredDeviceLocation = configDeviceLocation();
@@ -1597,6 +1599,10 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
 
     private String configDeviceName() {
         return settingsStore().deviceName();
+    }
+
+    private String configAppUUID() {
+        return settingsStore().appUUID();
     }
 
     private String configDeviceUUID() {

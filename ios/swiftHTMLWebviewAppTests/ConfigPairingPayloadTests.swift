@@ -10,6 +10,7 @@ final class ConfigPairingPayloadTests: XCTestCase {
     func testPairingPayloadRoundTripsIdentityFields() {
         let identity = ConfigPairingPayload.identity(
             settings: [
+                "appUUID": "app-123",
                 "deviceName": "Demo Tablet 03",
                 "deviceUUID": "device-123",
                 "deviceLocation": "Hall A / Entrance"
@@ -30,9 +31,11 @@ final class ConfigPairingPayloadTests: XCTestCase {
         XCTAssertEqual(target?.secret, "secret+/=")
         XCTAssertEqual(target?.serviceUUID, ConfigPairingPayload.serviceUUID)
         XCTAssertEqual(target?.name, "Demo Tablet 03")
+        XCTAssertEqual(target?.appUUID, "app-123")
         XCTAssertEqual(target?.deviceName, "Demo Tablet 03")
         XCTAssertEqual(target?.deviceUUID, "device-123")
         XCTAssertEqual(target?.deviceLocation, "Hall A / Entrance")
+        XCTAssertEqual(target?.identity["appUUID"], "app-123")
         XCTAssertEqual(target?.identity["deviceLocation"], "Hall A / Entrance")
     }
 
@@ -42,6 +45,7 @@ final class ConfigPairingPayloadTests: XCTestCase {
 
         XCTAssertNotNil(target)
         XCTAssertEqual(target?.sessionID, "session-2")
+        XCTAssertEqual(target?.appUUID, "")
         XCTAssertEqual(target?.deviceName, "Legacy Name")
         XCTAssertEqual(target?.deviceUUID, "uuid-1")
         XCTAssertEqual(target?.deviceLocation, "Bar")
@@ -89,7 +93,7 @@ final class ConfigPairingPayloadTests: XCTestCase {
             request: request,
             payload: "swifthtml-config://pair?id=s&secret=t",
             expiresAt: Date(timeIntervalSince1970: 300),
-            identity: ["name": "Target", "deviceName": "Target", "deviceUUID": "uuid", "deviceLocation": "Bar"]
+            identity: ["name": "Target", "appUUID": "app-123", "deviceName": "Target", "deviceUUID": "uuid", "deviceLocation": "Bar"]
         )
         XCTAssertEqual(show["action"] as? String, "configPairingShow")
         XCTAssertEqual(show["platform"] as? String, "ios")
@@ -97,6 +101,7 @@ final class ConfigPairingPayloadTests: XCTestCase {
         XCTAssertEqual(show["success"] as? Bool, true)
         XCTAssertEqual(show["transport"] as? String, "ble-gatt")
         XCTAssertEqual(show["serviceUUID"] as? String, ConfigPairingPayload.serviceUUID)
+        XCTAssertEqual(show["appUUID"] as? String, "app-123")
 
         let response = ConfigPairingPayload.responsePayload(
             command: "settingsGet",

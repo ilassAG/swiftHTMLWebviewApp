@@ -25,6 +25,7 @@ final class DeviceBridge: ObservableObject {
         var response = DeviceBridgePayload.baseResponse(request: request, action: "deviceInfoGet")
         response["success"] = true
         response["name"] = UIDevice.current.name
+        response["appUUID"] = AppSettings.shared.appUUIDString
         response["configuredDeviceName"] = AppSettings.shared.deviceName
         response["configuredDeviceUUID"] = AppSettings.shared.deviceUUIDString
         response["configuredDeviceLocation"] = AppSettings.shared.deviceLocation

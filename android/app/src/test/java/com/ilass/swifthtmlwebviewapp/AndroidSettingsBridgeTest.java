@@ -76,6 +76,7 @@ public class AndroidSettingsBridgeTest {
         snapshot.highAvailabilityURL3 = "https://ha3.example.invalid/mobile/";
         snapshot.highAvailabilityURL4 = "https://ha4.example.invalid/mobile/";
         snapshot.beaconUUID = "D57092AC-DFAA-446C-8EF3-C81AA22815B5";
+        snapshot.appUUID = "APP-123";
         snapshot.deviceName = "Demo Entry Device";
         snapshot.deviceUUID = "DEVICE-123";
         snapshot.deviceLocation = "EG";
@@ -92,6 +93,7 @@ public class AndroidSettingsBridgeTest {
         assertEquals("https://ha3.example.invalid/mobile/", response.getString("highAvailabilityURL3"));
         assertEquals("https://ha4.example.invalid/mobile/", response.getString("highAvailabilityURL4"));
         assertEquals("D57092AC-DFAA-446C-8EF3-C81AA22815B5", response.getString("beaconUUID"));
+        assertEquals("APP-123", response.getString("appUUID"));
         assertEquals("Demo Entry Device", response.getString("deviceName"));
         assertEquals("DEVICE-123", response.getString("deviceUUID"));
         assertEquals("EG", response.getString("deviceLocation"));
@@ -102,6 +104,7 @@ public class AndroidSettingsBridgeTest {
         assertEquals("", response.getString("serverURL"));
         assertFalse(response.getBoolean("securityTokenSet"));
         assertEquals(1, response.getInt("highAvailabilityTimeoutSeconds"));
+        assertEquals("", response.getString("appUUID"));
         assertEquals("", response.getString("deviceLocation"));
     }
 

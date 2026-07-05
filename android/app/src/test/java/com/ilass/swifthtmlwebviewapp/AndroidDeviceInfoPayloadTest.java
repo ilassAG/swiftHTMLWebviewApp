@@ -13,6 +13,7 @@ public class AndroidDeviceInfoPayloadTest {
     public void responseUsesDiagnosticsEnvelopeAndRuntimeSnapshots() throws Exception {
         AndroidDeviceInfoPayload.Snapshot snapshot = new AndroidDeviceInfoPayload.Snapshot();
         snapshot.name = "pixel_9";
+        snapshot.appUUID = "APP-123";
         snapshot.configuredDeviceName = "Demo Entry Device";
         snapshot.configuredDeviceUUID = "device-123";
         snapshot.configuredDeviceLocation = "EG";
@@ -45,6 +46,7 @@ public class AndroidDeviceInfoPayloadTest {
         assertEquals("req-device", response.getString("requestId"));
         assertTrue(response.getBoolean("success"));
         assertEquals("pixel_9", response.getString("name"));
+        assertEquals("APP-123", response.getString("appUUID"));
         assertEquals("Demo Entry Device", response.getString("configuredDeviceName"));
         assertEquals("device-123", response.getString("configuredDeviceUUID"));
         assertEquals("EG", response.getString("configuredDeviceLocation"));
@@ -77,6 +79,7 @@ public class AndroidDeviceInfoPayloadTest {
         assertEquals("deviceInfoGet", response.getString("action"));
         assertTrue(response.getBoolean("success"));
         assertEquals("", response.getString("name"));
+        assertEquals("", response.getString("appUUID"));
         assertEquals("", response.getString("configuredDeviceName"));
         assertEquals("", response.getString("configuredDeviceUUID"));
         assertEquals("", response.getString("configuredDeviceLocation"));

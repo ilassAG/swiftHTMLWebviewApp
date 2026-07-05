@@ -16,6 +16,7 @@ enum ConfigPairingPayload {
         let secret: String
         let serviceUUID: String
         let name: String
+        let appUUID: String
         let deviceName: String
         let deviceUUID: String
         let deviceLocation: String
@@ -23,6 +24,7 @@ enum ConfigPairingPayload {
         var identity: [String: String] {
             [
                 "name": name,
+                "appUUID": appUUID,
                 "deviceName": deviceName,
                 "deviceUUID": deviceUUID,
                 "deviceLocation": deviceLocation
@@ -43,6 +45,7 @@ enum ConfigPairingPayload {
             self.sessionID = sessionID
             self.secret = secret
             self.serviceUUID = nonEmpty(items["service"], ConfigPairingPayload.serviceUUID)
+            self.appUUID = items["appUUID"] ?? items["appUuid"] ?? items["app_uuid"] ?? ""
             self.deviceName = items["deviceName"] ?? items["device_name"] ?? ""
             self.deviceUUID = items["deviceUUID"] ?? items["deviceUuid"] ?? items["device_uuid"] ?? ""
             self.deviceLocation = items["deviceLocation"] ?? items["device_location"] ?? ""
@@ -68,12 +71,14 @@ enum ConfigPairingPayload {
     }
 
     static func identity(settings: [String: Any], fallbackName: String) -> [String: String] {
+        let appUUID = string(settings["appUUID"]) ?? ""
         let deviceName = string(settings["deviceName"]) ?? ""
         let deviceUUID = string(settings["deviceUUID"]) ?? ""
         let deviceLocation = string(settings["deviceLocation"]) ?? ""
         let displayName = deviceName.isEmpty ? fallbackName : deviceName
         return [
             "name": displayName,
+            "appUUID": appUUID,
             "deviceName": deviceName,
             "deviceUUID": deviceUUID,
             "deviceLocation": deviceLocation
@@ -91,6 +96,7 @@ enum ConfigPairingPayload {
             URLQueryItem(name: "service", value: serviceUUID),
             URLQueryItem(name: "expires", value: String(Int(expiresAt.timeIntervalSince1970))),
             URLQueryItem(name: "name", value: identity["name"] ?? ""),
+            URLQueryItem(name: "appUUID", value: identity["appUUID"] ?? ""),
             URLQueryItem(name: "deviceName", value: identity["deviceName"] ?? ""),
             URLQueryItem(name: "deviceUUID", value: identity["deviceUUID"] ?? ""),
             URLQueryItem(name: "deviceLocation", value: identity["deviceLocation"] ?? "")
@@ -117,6 +123,7 @@ enum ConfigPairingPayload {
         response["transport"] = "ble-gatt"
         response["serviceUUID"] = serviceUUID
         response["targetIdentity"] = identity
+        response["appUUID"] = identity["appUUID"] ?? ""
         response["deviceName"] = identity["deviceName"] ?? ""
         response["deviceUUID"] = identity["deviceUUID"] ?? ""
         response["deviceLocation"] = identity["deviceLocation"] ?? ""
@@ -139,6 +146,7 @@ enum ConfigPairingPayload {
         response["state"] = "scanning"
         response["targetName"] = target.name
         response["targetIdentity"] = target.identity
+        response["appUUID"] = target.appUUID
         response["deviceName"] = target.deviceName
         response["deviceUUID"] = target.deviceUUID
         response["deviceLocation"] = target.deviceLocation

@@ -25,6 +25,7 @@ class AppSettings {
     private let activeServerUrlKey = "active_server_url"
     private let lastServerUrlKey = "last_server_url"
     private let beaconUUIDKey = "beacon_uuid"
+    private let appUUIDKey = "app_uuid"
     private let deviceNameKey = "device_name"
     private let deviceUUIDKey = "device_uuid"
     private let deviceLocationKey = "device_location"
@@ -98,6 +99,11 @@ class AppSettings {
 
     var beaconUUID: UUID {
         UUID(uuidString: beaconUUIDString) ?? UUID(uuidString: variant.defaults.beaconUUID)!
+    }
+
+    var appUUIDString: String {
+        ensureAppUUID()
+        return normalizedOptionalValue(userDefaults.string(forKey: appUUIDKey)) ?? ""
     }
 
     var deviceName: String {
@@ -186,11 +192,13 @@ class AppSettings {
             activeServerUrlKey: "",
             lastServerUrlKey: "",
             beaconUUIDKey: variant.defaults.beaconUUID,
+            appUUIDKey: "",
             deviceNameKey: "",
             deviceUUIDKey: "",
             deviceLocationKey: "",
             appConfigKey: "{}"
         ])
+        ensureAppUUID()
         ensureDeviceUUID()
     }
 
@@ -232,6 +240,7 @@ class AppSettings {
             "activeServerURL": activeServerURL ?? "",
             "lastServerURL": lastServerURL ?? "",
             "beaconUUID": beaconUUIDString,
+            "appUUID": appUUIDString,
             "deviceName": deviceName,
             "deviceUUID": deviceUUIDString,
             "deviceLocation": deviceLocation,
@@ -294,6 +303,14 @@ class AppSettings {
 
         userDefaults.synchronize()
         return configurationSnapshot()
+    }
+
+    private func ensureAppUUID() {
+        let value = normalizedOptionalValue(userDefaults.string(forKey: appUUIDKey))
+        if value == nil || value.flatMap(UUID.init(uuidString:)) == nil {
+            userDefaults.set(UUID().uuidString, forKey: appUUIDKey)
+            userDefaults.synchronize()
+        }
     }
 
     private func ensureDeviceUUID() {

@@ -27,14 +27,20 @@ final class AndroidConfigPairingProtocol {
                 + "&service=" + urlEncode(SERVICE_UUID.toString())
                 + "&expires=" + (expiresAtMs / 1000L)
                 + "&name=" + urlEncode(identity.optString("name", ""))
+                + "&appUUID=" + urlEncode(identity.optString("appUUID", ""))
                 + "&deviceName=" + urlEncode(identity.optString("deviceName", ""))
                 + "&deviceUUID=" + urlEncode(identity.optString("deviceUUID", ""))
                 + "&deviceLocation=" + urlEncode(identity.optString("deviceLocation", ""));
     }
 
     static JSONObject identity(String name, String deviceName, String deviceUuid, String deviceLocation) throws JSONException {
+        return identity(name, "", deviceName, deviceUuid, deviceLocation);
+    }
+
+    static JSONObject identity(String name, String appUuid, String deviceName, String deviceUuid, String deviceLocation) throws JSONException {
         JSONObject identity = new JSONObject();
         identity.put("name", nonEmpty(name, ""));
+        identity.put("appUUID", nonEmpty(appUuid, ""));
         identity.put("deviceName", nonEmpty(deviceName, ""));
         identity.put("deviceUUID", nonEmpty(deviceUuid, ""));
         identity.put("deviceLocation", nonEmpty(deviceLocation, ""));
@@ -89,6 +95,7 @@ final class AndroidConfigPairingProtocol {
         response.put("transport", "ble-gatt");
         response.put("serviceUUID", SERVICE_UUID.toString());
         response.put("targetIdentity", identity);
+        response.put("appUUID", identity.optString("appUUID", ""));
         response.put("deviceName", identity.optString("deviceName", ""));
         response.put("deviceUUID", identity.optString("deviceUUID", ""));
         response.put("deviceLocation", identity.optString("deviceLocation", ""));
@@ -108,6 +115,7 @@ final class AndroidConfigPairingProtocol {
         response.put("serviceUUID", target.serviceUuid.toString());
         response.put("targetName", target.name);
         response.put("targetIdentity", target.identityPayload());
+        response.put("appUUID", target.appUuid);
         response.put("deviceName", target.deviceName);
         response.put("deviceUUID", target.deviceUuid);
         response.put("deviceLocation", target.deviceLocation);
@@ -207,22 +215,24 @@ final class AndroidConfigPairingProtocol {
         final String secret;
         final UUID serviceUuid;
         final String name;
+        final String appUuid;
         final String deviceName;
         final String deviceUuid;
         final String deviceLocation;
 
-        private PairingTarget(String sessionId, String secret, UUID serviceUuid, String name, String deviceName, String deviceUuid, String deviceLocation) {
+        private PairingTarget(String sessionId, String secret, UUID serviceUuid, String name, String appUuid, String deviceName, String deviceUuid, String deviceLocation) {
             this.sessionId = sessionId;
             this.secret = secret;
             this.serviceUuid = serviceUuid;
             this.name = name;
+            this.appUuid = appUuid;
             this.deviceName = deviceName;
             this.deviceUuid = deviceUuid;
             this.deviceLocation = deviceLocation;
         }
 
         JSONObject identityPayload() throws JSONException {
-            return identity(name, deviceName, deviceUuid, deviceLocation);
+            return identity(name, appUuid, deviceName, deviceUuid, deviceLocation);
         }
 
         static PairingTarget parse(String payload) {
@@ -257,11 +267,12 @@ final class AndroidConfigPairingProtocol {
             } catch (Exception ignored) {
                 // Use default service UUID.
             }
+            String appUuid = values.optString("appUUID", values.optString("appUuid", values.optString("app_uuid", "")));
             String deviceName = values.optString("deviceName", values.optString("device_name", ""));
             String deviceUuid = values.optString("deviceUUID", values.optString("deviceUuid", values.optString("device_uuid", "")));
             String deviceLocation = values.optString("deviceLocation", values.optString("device_location", ""));
             String name = deviceName.isEmpty() ? values.optString("name", "") : deviceName;
-            return new PairingTarget(id, secret, serviceUuid, name, deviceName, deviceUuid, deviceLocation);
+            return new PairingTarget(id, secret, serviceUuid, name, appUuid, deviceName, deviceUuid, deviceLocation);
         }
     }
 

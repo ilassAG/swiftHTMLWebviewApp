@@ -129,11 +129,12 @@ xcodebuild -project ios/swiftHTMLWebviewApp.xcodeproj -scheme swiftHTMLWebviewAp
 
 from the repository root. The current iOS tests cover private product variant
 identity, Settings.bundle/default alignment, isolated `AppSettings` defaults,
-HA URL de-duplication, reset behavior, generated device UUIDs, and token
-redaction in public settings snapshots, plus variant-driven loading image and
-recovery copy. `SettingsBridgeTests` cover the JS `settingsGet` / `settingsSet`
-response shape, token enforcement, and nested settings application outside
-`ContentView`. `NativeCommandPayloadTests` cover iOS `reload` and
+HA URL de-duplication, reset behavior, generated device UUIDs, immutable
+read-only app UUIDs, and token redaction in public settings snapshots, plus
+variant-driven loading image and recovery copy. `SettingsBridgeTests` cover the
+JS `settingsGet` / `settingsSet` response shape, token enforcement, immutable
+`appUUID`, and nested settings application outside `ContentView`.
+`NativeCommandPayloadTests` cover iOS `reload` and
 `launchConfetti` acknowledgements so callback commands return a native-command
 envelope before the WebView performs side effects. `TapToPayPayloadTests` cover
 iOS Tap to Pay availability and collect error envelopes, including builds where
@@ -304,8 +305,8 @@ The current Android JVM tests cover:
   outside `MainActivity`.
 - Android `settingsGet` / `settingsSet` response, public settings snapshot
   shape, token handling, persisted config aliases, startup URL candidate
-  resolution, and device UUID normalization covered as pure JVM tests outside
-  `MainActivity`.
+  resolution, immutable app UUIDs, and device UUID normalization covered as
+  pure JVM tests outside `MainActivity`.
 - Android shared base, error, and unavailable response shape covered as pure
   JVM tests; variant tests keep private error-envelope builders out of
   `MainActivity`.

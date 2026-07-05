@@ -17,6 +17,7 @@ public class AndroidConfigPairingProtocolTest {
     public void pairingPayloadRoundTripsIdentityFields() throws Exception {
         JSONObject identity = AndroidConfigPairingProtocol.identity(
                 "Demo Tablet 03",
+                "app-123",
                 "Demo Tablet 03",
                 "device-123",
                 "Hall A / Entrance"
@@ -35,9 +36,11 @@ public class AndroidConfigPairingProtocolTest {
         assertEquals("secret+/=", target.secret);
         assertEquals(AndroidConfigPairingProtocol.SERVICE_UUID, target.serviceUuid);
         assertEquals("Demo Tablet 03", target.name);
+        assertEquals("app-123", target.appUuid);
         assertEquals("Demo Tablet 03", target.deviceName);
         assertEquals("device-123", target.deviceUuid);
         assertEquals("Hall A / Entrance", target.deviceLocation);
+        assertEquals("app-123", target.identityPayload().getString("appUUID"));
         assertEquals("Hall A / Entrance", target.identityPayload().getString("deviceLocation"));
     }
 
@@ -47,6 +50,7 @@ public class AndroidConfigPairingProtocolTest {
         AndroidConfigPairingProtocol.PairingTarget target = AndroidConfigPairingProtocol.PairingTarget.parse(payload);
 
         assertNotNull(target);
+        assertEquals("", target.appUuid);
         assertEquals("Legacy Name", target.deviceName);
         assertEquals("uuid-1", target.deviceUuid);
         assertEquals("Bar", target.deviceLocation);
@@ -145,16 +149,19 @@ public class AndroidConfigPairingProtocolTest {
         assertTrue(show.getBoolean("success"));
         assertEquals("ble-gatt", show.getString("transport"));
         assertEquals(AndroidConfigPairingProtocol.SERVICE_UUID.toString(), show.getString("serviceUUID"));
+        assertEquals("", show.getString("appUUID"));
         assertEquals("Demo Tablet 03", show.getJSONObject("targetIdentity").getString("deviceName"));
         assertEquals("device-123", show.getString("deviceUUID"));
 
         AndroidConfigPairingProtocol.PairingTarget target = AndroidConfigPairingProtocol.PairingTarget.parse(
-                "swifthtml-config://pair?id=session-1&secret=secret-1&deviceName=Demo%20Tablet%2003&deviceUUID=device-123&deviceLocation=Hall%20A"
+                "swifthtml-config://pair?id=session-1&secret=secret-1&appUUID=app-123&deviceName=Demo%20Tablet%2003&deviceUUID=device-123&deviceLocation=Hall%20A"
         );
         JSONObject connect = AndroidConfigPairingProtocol.connectResponse(request, target);
         assertEquals("configPairingConnect", connect.getString("action"));
         assertEquals("scanning", connect.getString("state"));
         assertEquals("Demo Tablet 03", connect.getString("targetName"));
+        assertEquals("app-123", connect.getString("appUUID"));
+        assertEquals("app-123", connect.getJSONObject("targetIdentity").getString("appUUID"));
         assertEquals("device-123", connect.getString("deviceUUID"));
 
         JSONObject ack = AndroidConfigPairingProtocol.acknowledgementResponse(request, "configPairingDisconnect");

@@ -302,9 +302,12 @@ The iOS Settings app also supports a local page mode (`local`), an optional
 high-availability URL list (`ha_enabled`, `ha_timeout`, `ha_url2`, `ha_url3`,
 `ha_url4`), an iBeacon Proximity UUID (`beacon_uuid`), and device identity
 fields (`device_name`, `device_uuid`, `device_location`). `device_uuid` is
-generated on first start if it is empty. The HA keys are kept compatible with
-the existing legacy iOS naming so deployments can reuse the same configuration
-model.
+generated on first start if it is empty and can still be changed by authorized
+configuration flows for station/terminal identity. `appUUID` is generated once
+per native app installation and is returned read-only by `settingsGet`,
+`deviceInfoGet`, and config-pairing identity payloads. The HA keys are kept
+compatible with the existing legacy iOS naming so deployments can reuse the
+same configuration model.
 
 Optional token rotation:
 
@@ -321,7 +324,7 @@ For external setup, `configPairingShow` displays a short-lived QR code and
 starts a BLE GATT config session. Another device running the wrapper can scan
 that QR, call `configPairingConnect`, then send `configPairingSend` commands
 for status, URL/HA/beacon/device identity settings, WLAN setup, and reload. The
-pairing QR includes the target `deviceName`, `deviceUUID`, and
+pairing QR includes the target `appUUID`, `deviceName`, `deviceUUID`, and
 `deviceLocation`, but not the persistent security token. The same target UI opens
 with a two-finger long press in the center of the WebView for about 1.5 seconds.
 Large config commands and responses are chunked over BLE and reassembled by the

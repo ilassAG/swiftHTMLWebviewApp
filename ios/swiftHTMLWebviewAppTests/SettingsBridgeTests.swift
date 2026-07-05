@@ -43,6 +43,7 @@ final class SettingsBridgeTests: XCTestCase {
         XCTAssertEqual(response["success"] as? Bool, true)
         XCTAssertNil(snapshot?["securityToken"])
         XCTAssertEqual(snapshot?["securityTokenSet"] as? Bool, true)
+        XCTAssertNotNil(UUID(uuidString: snapshot?["appUUID"] as? String ?? ""))
     }
 
     func testSettingsSetRejectsMissingOrWrongToken() {
@@ -63,11 +64,13 @@ final class SettingsBridgeTests: XCTestCase {
     func testSettingsSetAppliesNestedSettingsWhenTokenMatches() {
         settings.securityToken = "current-token"
 
+        let originalAppUUID = settings.appUUIDString
         let response = bridge.setResponse(request: [
             "requestId": "req-3",
             "token": "current-token",
             "settings": [
                 "serverURL": "https://example.invalid/mobile/",
+                "appUUID": "11111111-2222-3333-4444-555555555555",
                 "deviceName": "Demo Tablet 03",
                 "appConfig": [
                     "siteKey": "Demo Site"
@@ -79,8 +82,10 @@ final class SettingsBridgeTests: XCTestCase {
 
         XCTAssertEqual(response["success"] as? Bool, true)
         XCTAssertEqual(settings.serverURL, "https://example.invalid/mobile/")
+        XCTAssertEqual(settings.appUUIDString, originalAppUUID)
         XCTAssertEqual(settings.deviceName, "Demo Tablet 03")
         XCTAssertEqual(snapshot?["serverURL"] as? String, "https://example.invalid/mobile/")
+        XCTAssertEqual(snapshot?["appUUID"] as? String, originalAppUUID)
         XCTAssertEqual(snapshot?["deviceName"] as? String, "Demo Tablet 03")
         XCTAssertEqual(appConfig?["siteKey"] as? String, "Demo Site")
     }

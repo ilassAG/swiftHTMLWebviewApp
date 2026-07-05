@@ -194,7 +194,7 @@ and maps those to generic lines and markers.
 ## Native runtime configuration
 
 Startup URL and iBeacon region settings are native app configuration, not bridge
-actions. On iOS they live in Settings.bundle:
+actions. On iOS the editable values live in Settings.bundle:
 
 - `server_url_preference`: primary web app URL, or `local` for bundled HTML.
 - `ha_enabled`: enables legacy-compatible URL failover.
@@ -202,9 +202,13 @@ actions. On iOS they live in Settings.bundle:
 - `ha_url2`, `ha_url3`, `ha_url4`: fallback URLs.
 - `beacon_uuid`: iBeacon Proximity UUID used by the continuous beacon bridge
   when that native module is enabled.
+- `appUUID`: read-only native app installation UUID. Native code generates one
+  on first start and ignores attempts to set it through config QR,
+  `settingsSet`, or pairing commands.
 - `device_name`: deployment-specific display name for this wrapper install.
 - `device_uuid`: persistent per-install identifier. Native code generates one
-  on first start if the value is empty.
+  on first start if the value is empty. Unlike `appUUID`, this remains writable
+  for product/station/terminal identity.
 - `device_location`: deployment-specific physical/logical location label.
 - `appConfig`: a persistent app-private JSON object for non-sensitive product or
   deployment values such as site keys, terminal identifiers, tenant labels, or
@@ -304,8 +308,8 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 The native app displays a QR code containing an ephemeral
 `swifthtml-config://pair?...` payload and advertises a BLE GATT service. The QR
 payload contains a short-lived session id, BLE service UUID, random session
-secret, and the target identity fields `deviceName`, `deviceUUID`, and
-`deviceLocation` so the config device can show which wrapper it is about to
+secret, and the target identity fields `appUUID`, `deviceName`, `deviceUUID`,
+and `deviceLocation` so the config device can show which wrapper it is about to
 configure. It does not contain the persistent `security_token_preference`.
 After the first config device connects and subscribes for responses, the target
 closes the QR pairing UI and stops advertising so another device cannot start a
@@ -361,7 +365,7 @@ Android show system confirmation UI, so WLAN changes are not silent.
 The local demo page includes a `Config Pairing` panel for both roles: show the
 target QR, scan a pairing QR, connect, fetch status/settings, set URL/HA/beacon
 settings, configure target WLAN, and reload the target. When a pairing QR is
-scanned or pasted, the demo copies `deviceName`, `deviceUUID`, and
+scanned or pasted, the demo copies `appUUID`, `deviceName`, `deviceUUID`, and
 `deviceLocation` from the QR into the config fields before connecting.
 
 The same settings are available locally through direct JS bridge actions:
@@ -387,7 +391,8 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 the existing UUID is kept. If it is explicitly set to an empty string, native
 code generates and stores a new UUID. `settings.appConfig` or `settings.store`
 is merged into the persistent `appConfig` object instead of replacing the whole
-object.
+object. `appUUID` is read-only and is ignored by `settingsSet` and config QR
+payloads.
 
 The same configuration can be provisioned by scanning a QR code. JSON payloads
 use the same key names as `settingsSet`; `wifi` optionally triggers

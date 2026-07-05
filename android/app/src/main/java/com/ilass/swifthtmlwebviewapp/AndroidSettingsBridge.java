@@ -13,6 +13,7 @@ final class AndroidSettingsBridge {
         String highAvailabilityURL3 = "";
         String highAvailabilityURL4 = "";
         String beaconUUID = "";
+        String appUUID = "";
         String deviceName = "";
         String deviceUUID = "";
         String deviceLocation = "";
@@ -65,6 +66,7 @@ final class AndroidSettingsBridge {
         settings.put("highAvailabilityURL3", stringOrEmpty(data.highAvailabilityURL3));
         settings.put("highAvailabilityURL4", stringOrEmpty(data.highAvailabilityURL4));
         settings.put("beaconUUID", stringOrEmpty(data.beaconUUID));
+        settings.put("appUUID", stringOrEmpty(data.appUUID));
         settings.put("deviceName", stringOrEmpty(data.deviceName));
         settings.put("deviceUUID", stringOrEmpty(data.deviceUUID));
         settings.put("deviceLocation", stringOrEmpty(data.deviceLocation));

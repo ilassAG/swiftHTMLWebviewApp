@@ -19,6 +19,7 @@ final class AndroidDeviceInfoPayload {
 
     static final class Snapshot {
         String name = "";
+        String appUUID = "";
         String configuredDeviceName = "";
         String configuredDeviceUUID = "";
         String configuredDeviceLocation = "";
@@ -57,6 +58,7 @@ final class AndroidDeviceInfoPayload {
         JSONObject response = BridgeResponse.base(source, "deviceInfoGet");
         response.put("success", true);
         response.put("name", stringOrEmpty(data.name));
+        response.put("appUUID", stringOrEmpty(data.appUUID));
         response.put("configuredDeviceName", stringOrEmpty(data.configuredDeviceName));
         response.put("configuredDeviceUUID", stringOrEmpty(data.configuredDeviceUUID));
         response.put("configuredDeviceLocation", stringOrEmpty(data.configuredDeviceLocation));

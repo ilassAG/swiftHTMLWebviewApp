@@ -113,6 +113,7 @@ struct ContentView: View {
     @State private var configPairingScannerCamera = "front"
     @State private var bridgeRouter: BridgeRouter?
     @State private var kioskReloadControl = KioskReloadControlConfig()
+    @State private var postWifiReloadGeneration = UUID()
 
     var body: some View {
         ZStack {
@@ -1099,9 +1100,43 @@ struct ContentView: View {
             return
         }
 
-        deviceBridge.waitForWifiReady(ssid: stringValue(wifiRequest["ssid"])) { readiness in
+        let generation = UUID()
+        postWifiReloadGeneration = generation
+        let deadline = Date().addingTimeInterval(90)
+        let ssid = stringValue(wifiRequest["ssid"])
+
+        deviceBridge.waitForWifiReady(ssid: ssid, timeout: 90) { readiness in
+            guard postWifiReloadGeneration == generation else { return }
             webViewStore.sendResultToWebView(result: readiness)
+            if boolValue(readiness["success"]) == true {
+                webViewStore.reloadCurrentOrNewURL()
+            }
+        }
+
+        schedulePostWifiReloadAttempt(generation: generation, deadline: deadline, delay: 2)
+    }
+
+    private func schedulePostWifiReloadAttempt(generation: UUID, deadline: Date, delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard postWifiReloadGeneration == generation, Date() < deadline else {
+                return
+            }
             webViewStore.reloadCurrentOrNewURL()
+            schedulePostWifiReloadCheck(generation: generation, deadline: deadline)
+        }
+    }
+
+    private func schedulePostWifiReloadCheck(generation: UUID, deadline: Date) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            guard postWifiReloadGeneration == generation, Date() < deadline else {
+                return
+            }
+
+            if webViewStore.isShowingRecoveryPage {
+                schedulePostWifiReloadAttempt(generation: generation, deadline: deadline, delay: 0)
+            } else if webViewStore.isLoading {
+                schedulePostWifiReloadCheck(generation: generation, deadline: deadline)
+            }
         }
     }
 

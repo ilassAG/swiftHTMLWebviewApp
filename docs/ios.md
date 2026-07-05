@@ -40,8 +40,9 @@ Runtime settings:
 | `active_server_url` | empty | Internal value updated after a successful load. |
 | `last_server_url` | empty | Internal value updated with the last successful URL. |
 | `beacon_uuid` | `00000000-0000-0000-0000-000000000000` | iBeacon Proximity UUID used by the continuous beacon bridge. |
+| `app_uuid` | generated on first start | Read-only native app installation UUID. It is returned as `appUUID` and is not changed by Settings, QR config, or `settingsSet`. |
 | `device_name` | empty | Deployment-specific display name for this wrapper install. |
-| `device_uuid` | generated on first start | Persistent per-install identifier exposed through settings APIs. |
+| `device_uuid` | generated on first start | Writable deployment/station identifier exposed through settings APIs. |
 | `device_location` | empty | Deployment-specific physical/logical location label. |
 
 When HA is enabled, the app tries `server_url_preference` first, then `ha_url2`,
@@ -169,9 +170,10 @@ center of the WebView for about 1.5 seconds. As config device, it scans or
 receives the QR payload, calls `configPairingConnect`, then sends
 `configPairingSend` commands.
 
-The pairing QR includes `deviceName`, `deviceUUID`, and `deviceLocation` from
-the target settings so the config device can identify the target before sending
-commands. It does not include the persistent security token.
+The pairing QR includes read-only `appUUID` plus `deviceName`, `deviceUUID`,
+and `deviceLocation` from the target settings so the config device can identify
+the target before sending commands. It does not include the persistent security
+token.
 
 Writable target commands require the current
 `security_token_preference`. `wifiConfigure` still uses
@@ -183,4 +185,5 @@ accept `appConfig` or `store` objects; URL/query payloads accept
 `store[key]=value` / `appConfig[key]=value` and `wifi[ssid]` plus
 `wifi[pw]` / `wifi[password]` / `wifi[passphrase]`. `appConfig` is stored as a
 persistent non-sensitive JSON object in `UserDefaults` and is returned by
-`settingsGet`.
+`settingsGet`. `appUUID` values in incoming config payloads are ignored because
+the native app owns that immutable installation identifier.

@@ -24,15 +24,41 @@ public class AndroidSettingsStoreTest {
         );
 
         JSONObject snapshot = store.snapshotPayload();
+        String appUUID = snapshot.getString("appUUID");
         String uuid = snapshot.getString("deviceUUID");
 
         assertEquals("https://default.example.invalid/app/", snapshot.getString("serverURL"));
         assertTrue(snapshot.getBoolean("securityTokenSet"));
         assertEquals("D57092AC-DFAA-446C-8EF3-C81AA22815B5", snapshot.getString("beaconUUID"));
         assertEquals(5, snapshot.getInt("highAvailabilityTimeoutSeconds"));
+        assertFalse(appUUID.isEmpty());
+        assertEquals(appUUID, UUID.fromString(appUUID).toString().toUpperCase(Locale.US));
+        assertEquals(appUUID, preferences.strings.get(AndroidSettingsStore.APP_UUID_KEY));
         assertFalse(uuid.isEmpty());
         assertEquals(uuid, UUID.fromString(uuid).toString().toUpperCase(Locale.US));
         assertEquals(uuid, preferences.strings.get(AndroidSettingsStore.DEVICE_UUID_KEY));
+    }
+
+    @Test
+    public void appUuidPersistsAndCannotBeChangedBySettings() throws Exception {
+        MemoryPreferences preferences = new MemoryPreferences();
+        AndroidSettingsStore store = new AndroidSettingsStore(
+                preferences,
+                "https://default.example.invalid/app/",
+                "default-token",
+                "default-beacon"
+        );
+
+        String originalAppUUID = store.snapshotPayload().getString("appUUID");
+        String replacementUUID = "11111111-2222-3333-4444-555555555555";
+        JSONObject snapshot = store.apply(new JSONObject()
+                .put("appUUID", replacementUUID)
+                .put("appUuid", replacementUUID)
+                .put("app_uuid", replacementUUID));
+
+        assertFalse(originalAppUUID.equals(replacementUUID));
+        assertEquals(originalAppUUID, snapshot.getString("appUUID"));
+        assertEquals(originalAppUUID, preferences.strings.get(AndroidSettingsStore.APP_UUID_KEY));
     }
 
     @Test

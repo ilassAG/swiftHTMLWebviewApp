@@ -33,7 +33,26 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.securityToken, AppVariant.demo.defaults.securityToken)
         XCTAssertEqual(settings.highAvailabilityTimeoutSeconds, AppVariant.demo.defaults.highAvailabilityTimeoutSeconds)
         XCTAssertEqual(settings.beaconUUIDString, AppVariant.demo.defaults.beaconUUID)
+        XCTAssertNotNil(UUID(uuidString: settings.appUUIDString))
         XCTAssertNotNil(UUID(uuidString: settings.deviceUUIDString))
+    }
+
+    func testAppUUIDPersistsAndCannotBeChangedByConfiguration() {
+        let settings = AppSettings(userDefaults: defaults, variant: .demo)
+        settings.registerDefaults()
+
+        let originalAppUUID = settings.appUUIDString
+        let replacementUUID = "11111111-2222-3333-4444-555555555555"
+        let snapshot = settings.applyConfiguration([
+            "appUUID": replacementUUID,
+            "appUuid": replacementUUID,
+            "app_uuid": replacementUUID
+        ])
+
+        XCTAssertNotEqual(originalAppUUID, replacementUUID)
+        XCTAssertEqual(settings.appUUIDString, originalAppUUID)
+        XCTAssertEqual(snapshot["appUUID"] as? String, originalAppUUID)
+        XCTAssertEqual(UUID(uuidString: originalAppUUID)?.uuidString, originalAppUUID)
     }
 
     func testResetMethodsRestoreVariantDefaults() {

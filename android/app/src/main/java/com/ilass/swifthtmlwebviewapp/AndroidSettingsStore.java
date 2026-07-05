@@ -17,6 +17,7 @@ final class AndroidSettingsStore {
     static final String HA_URL3_KEY = "ha_url3";
     static final String HA_URL4_KEY = "ha_url4";
     static final String BEACON_UUID_KEY = "beacon_uuid";
+    static final String APP_UUID_KEY = "app_uuid";
     static final String DEVICE_NAME_KEY = "device_name";
     static final String DEVICE_UUID_KEY = "device_uuid";
     static final String DEVICE_LOCATION_KEY = "device_location";
@@ -91,6 +92,11 @@ final class AndroidSettingsStore {
         return nonEmpty(preferences.getString(DEVICE_NAME_KEY, ""), "");
     }
 
+    String appUUID() {
+        ensureAppUUID();
+        return nonEmpty(preferences.getString(APP_UUID_KEY, ""), "");
+    }
+
     String deviceUUID() {
         ensureDeviceUUID();
         return nonEmpty(preferences.getString(DEVICE_UUID_KEY, ""), "");
@@ -110,6 +116,7 @@ final class AndroidSettingsStore {
         snapshot.highAvailabilityURL3 = nonEmpty(preferences.getString(HA_URL3_KEY, ""), "");
         snapshot.highAvailabilityURL4 = nonEmpty(preferences.getString(HA_URL4_KEY, ""), "");
         snapshot.beaconUUID = nonEmpty(preferences.getString(BEACON_UUID_KEY, defaultBeaconUUID), defaultBeaconUUID);
+        snapshot.appUUID = appUUID();
         snapshot.deviceName = deviceName();
         snapshot.deviceUUID = deviceUUID();
         snapshot.deviceLocation = deviceLocation();
@@ -135,6 +142,19 @@ final class AndroidSettingsStore {
         editor.apply();
         ensureDeviceUUID();
         return snapshotPayload();
+    }
+
+    private void ensureAppUUID() {
+        String value = nonEmpty(preferences.getString(APP_UUID_KEY, ""), "");
+        try {
+            if (!value.isEmpty()) {
+                UUID.fromString(value);
+                return;
+            }
+        } catch (Exception ignored) {
+            // Replace invalid persisted values with a usable UUID below.
+        }
+        preferences.edit().putString(APP_UUID_KEY, randomUUID()).apply();
     }
 
     private JSONObject appConfig() {
@@ -179,10 +199,10 @@ final class AndroidSettingsStore {
         } catch (Exception ignored) {
             // Replace invalid persisted values with a usable UUID below.
         }
-        preferences.edit().putString(DEVICE_UUID_KEY, randomDeviceUUID()).apply();
+        preferences.edit().putString(DEVICE_UUID_KEY, randomUUID()).apply();
     }
 
-    private String randomDeviceUUID() {
+    private String randomUUID() {
         return UUID.randomUUID().toString().toUpperCase(Locale.US);
     }
 
@@ -201,7 +221,7 @@ final class AndroidSettingsStore {
         try {
             editor.putString(DEVICE_UUID_KEY, UUID.fromString(value.trim()).toString().toUpperCase(Locale.US));
         } catch (Exception ignored) {
-            editor.putString(DEVICE_UUID_KEY, randomDeviceUUID());
+            editor.putString(DEVICE_UUID_KEY, randomUUID());
         }
     }
 
