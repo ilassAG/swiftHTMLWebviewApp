@@ -17,12 +17,31 @@ final class ScreenStreamPayloadTests: XCTestCase {
         ])
 
         XCTAssertEqual(request.targetUrl, "ws://example.invalid/screen")
+        XCTAssertEqual(request.transport, "websocket")
         XCTAssertEqual(request.format, "jpeg")
         XCTAssertEqual(request.fps, 10)
         XCTAssertEqual(request.quality, 0.25)
         XCTAssertEqual(request.maxWidth, 240)
         XCTAssertTrue(request.hasTargetUrl)
         XCTAssertTrue(request.isJpeg)
+    }
+
+    func testNATSStreamRequestUsesSubjectsAndNoTargetURL() {
+        let request = ScreenStreamPayload.streamRequest(from: [
+            "transport": "nats",
+            "subject": "swift.wrapper.APP.screen.frames",
+            "metaSubject": "swift.wrapper.APP.screen.meta",
+            "eventSubject": "swift.wrapper.APP.screen.events",
+            "quality": 65
+        ])
+
+        XCTAssertEqual(request.transport, "nats")
+        XCTAssertTrue(request.isNats)
+        XCTAssertFalse(request.hasTargetUrl)
+        XCTAssertEqual(request.subject, "swift.wrapper.APP.screen.frames")
+        XCTAssertEqual(request.metaSubject, "swift.wrapper.APP.screen.meta")
+        XCTAssertEqual(request.eventSubject, "swift.wrapper.APP.screen.events")
+        XCTAssertEqual(request.quality, 0.65)
     }
 
     func testStreamRequestKeepsUnsupportedFormatForErrorPath() {
@@ -76,9 +95,33 @@ final class ScreenStreamPayloadTests: XCTestCase {
         XCTAssertEqual(stop["bytes"] as? Int64, 3456)
     }
 
+    func testNATSStartAckIncludesSubjects() {
+        let source: [String: Any] = ["requestId": "req-nats-stream"]
+        let streamRequest = ScreenStreamPayload.streamRequest(from: [
+            "transport": "nats",
+            "subject": "swift.wrapper.APP.screen.frames",
+            "metaSubject": "swift.wrapper.APP.screen.meta",
+            "eventSubject": "swift.wrapper.APP.screen.events",
+            "fps": 3
+        ])
+
+        let start = ScreenStreamPayload.startAck(request: source, streamRequest: streamRequest)
+
+        XCTAssertEqual(start["transport"] as? String, "nats")
+        XCTAssertNil(start["targetUrl"])
+        XCTAssertEqual(start["subject"] as? String, "swift.wrapper.APP.screen.frames")
+        XCTAssertEqual(start["metaSubject"] as? String, "swift.wrapper.APP.screen.meta")
+        XCTAssertEqual(start["eventSubject"] as? String, "swift.wrapper.APP.screen.events")
+        XCTAssertEqual(start["fps"] as? Int, 3)
+    }
+
     func testMetaEventsAndStatsUseCatalogedEventShapes() {
         let request = ScreenStreamPayload.StreamRequest(
+            transport: "websocket",
             targetUrl: "ws://example.invalid/screen",
+            subject: "",
+            metaSubject: "",
+            eventSubject: "",
             format: "jpeg",
             fps: 2,
             quality: 0.65,

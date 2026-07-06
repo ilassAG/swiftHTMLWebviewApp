@@ -22,6 +22,11 @@ public class AndroidDeviceCapabilitiesTest {
         assertTrue(capabilities.getBoolean("wifiConfigure"));
         assertTrue(capabilities.getBoolean("screenStreamStart"));
         assertEquals("jpeg", capabilities.getJSONArray("screenStreamFormats").getString(0));
+        assertTrue(capabilities.getBoolean("natsProvision"));
+        assertTrue(capabilities.getBoolean("natsStatus"));
+        assertTrue(capabilities.getBoolean("natsConnect"));
+        assertTrue(capabilities.getBoolean("natsDisconnect"));
+        assertTrue(capabilities.getBoolean("natsPublish"));
         assertTrue(capabilities.getBoolean("notificationShow"));
         assertTrue(capabilities.getBoolean("sensorStreamStart"));
         assertTrue(capabilities.getBoolean("configPairingShow"));

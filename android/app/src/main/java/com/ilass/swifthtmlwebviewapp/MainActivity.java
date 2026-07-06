@@ -99,6 +99,9 @@ import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MainActivity extends ComponentActivity implements ConfettiView.ActivityHost, TapToPayBridgeHost, AndroidSettingsBridge.Host, AndroidPrinterBridge.Host, AndroidScreenOrientationBridge.Host, AndroidIdleTimerBridge.Host {
     private static final String DEFAULT_URL = "file:///android_asset/index.html";
@@ -164,6 +167,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private AndroidNativeStorageBridge nativeStorageBridge;
     private AndroidNativeFilesystemBridge nativeFilesystemBridge;
     private AndroidNativeSQLiteBridge nativeSQLiteBridge;
+    private AndroidNatsBridge natsBridge;
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     private final Handler loadHandler = new Handler(Looper.getMainLooper());
     private final AndroidStartupLoadCoordinator startupLoadCoordinator = new AndroidStartupLoadCoordinator(this::isLocalConfiguredUrl);
@@ -264,6 +268,36 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         sensorBridge = new AndroidSensorBridge(this, this::sendResult);
         notificationBridge = new AndroidNotificationBridge(this);
         settingsBridge = new AndroidSettingsBridge(this);
+        natsBridge = new AndroidNatsBridge(
+                new AndroidNatsBridge.Host() {
+                    @Override
+                    public String securityToken() {
+                        return configSecurityToken();
+                    }
+
+                    @Override
+                    public String appUUID() {
+                        return configAppUUID();
+                    }
+
+                    @Override
+                    public AndroidNatsSettings natsSettings() {
+                        return settingsStore().natsSettings();
+                    }
+
+                    @Override
+                    public void persistNatsSettings(AndroidNatsSettings settings) throws JSONException {
+                        settingsStore().persistNatsSettings(settings);
+                    }
+
+                    @Override
+                    public JSONObject executeNatsCommand(JSONObject command) throws JSONException {
+                        return MainActivity.this.executeNatsCommand(command);
+                    }
+                },
+                new AndroidNatsEncryptedCredentialStore(this),
+                new AndroidNatsClientConnectionDriver()
+        );
         printerBridge = new AndroidPrinterBridge(this);
         screenOrientationBridge = new AndroidScreenOrientationBridge(this);
         idleTimerBridge = new AndroidIdleTimerBridge(this);
@@ -419,6 +453,13 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         }
         if (nfcTagReaderBridge != null) {
             nfcTagReaderBridge.shutdown();
+        }
+        if (natsBridge != null) {
+            try {
+                natsBridge.disconnect(new JSONObject());
+            } catch (JSONException ignored) {
+                // Ignore shutdown response failures.
+            }
         }
         stopLocationUpdates();
         idleTimerBridge.stop();
@@ -577,6 +618,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 .on("idleActivity", message -> idleTimerBridge.recordActivity())
                 .on("screenStreamStart", message -> sendResult(screenStreamBridge.start(message)))
                 .on("screenStreamStop", message -> sendResult(screenStreamBridge.stop(message)))
+                .on("natsProvision", message -> sendResult(natsBridge.provision(message)))
+                .on("natsStatus", message -> sendResult(natsBridge.status(message)))
+                .on("natsConnect", message -> sendResult(natsBridge.connect(message)))
+                .on("natsDisconnect", message -> sendResult(natsBridge.disconnect(message)))
+                .on("natsPublish", message -> sendResult(natsBridge.publish(message)))
                 .on("sensorCapabilitiesGet", message -> sendResult(sensorBridge.capabilities(message)))
                 .on("sensorStreamStart", message -> sendResult(sensorBridge.start(message)))
                 .on("sensorStreamStop", message -> sendResult(sensorBridge.stop(message)))
@@ -797,6 +843,9 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         snapshot.cameras = cameraInfo();
         snapshot.sensors = sensorList();
         snapshot.capabilities = deviceCapabilities();
+        if (natsBridge != null) {
+            snapshot.nats = natsBridge.statusSnapshot();
+        }
         return AndroidDeviceInfoPayload.response(message, snapshot);
     }
 
@@ -1614,7 +1663,11 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     }
 
     public JSONObject configSettingsSnapshot() throws JSONException {
-        return settingsStore().snapshotPayload();
+        JSONObject snapshot = settingsStore().snapshotPayload();
+        if (natsBridge != null) {
+            snapshot.put("nats", natsBridge.statusSnapshot());
+        }
+        return snapshot;
     }
 
     public JSONObject applyConfigSettings(JSONObject values) throws JSONException {
@@ -1632,6 +1685,102 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject reload(JSONObject message) throws JSONException {
         JSONObject response = AndroidNativeCommandPayload.reloadResponse(message);
         loadHandler.postDelayed(this::reloadConfiguredUrlFromSettings, 120L);
+        return response;
+    }
+
+    private JSONObject executeNatsCommand(JSONObject command) throws JSONException {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return executeNatsCommandOnMain(command);
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<JSONObject> result = new AtomicReference<>();
+        AtomicReference<Exception> error = new AtomicReference<>();
+        runOnUiThread(() -> {
+            try {
+                result.set(executeNatsCommandOnMain(command));
+            } catch (Exception commandError) {
+                error.set(commandError);
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            if (!latch.await(15, TimeUnit.SECONDS)) {
+                return BridgeResponse.error(command, command.optString("action", "natsCommand"), "NATS command timed out.");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return BridgeResponse.error(command, command.optString("action", "natsCommand"), "NATS command was interrupted.");
+        }
+        if (error.get() instanceof JSONException) {
+            throw (JSONException) error.get();
+        }
+        if (error.get() != null) {
+            return BridgeResponse.error(command, command.optString("action", "natsCommand"), error.get().getMessage());
+        }
+        return result.get();
+    }
+
+    private JSONObject executeNatsCommandOnMain(JSONObject command) throws JSONException {
+        JSONObject message = copyRequest(command);
+        String action = message.optString("action", "").trim();
+        message.put("action", action);
+        switch (action) {
+            case "natsStatus":
+                return natsBridge.status(message);
+            case "deviceInfoGet":
+                return deviceInfo(message);
+            case "settingsGet":
+                return settingsGet(message);
+            case "settingsSet":
+                return natsSettingsSet(message);
+            case "screenshotGet":
+                if (!message.has("maxWidth")) {
+                    message.put("maxWidth", 720);
+                }
+                if (!message.has("quality")) {
+                    message.put("quality", 65);
+                }
+                return screenshotGet(message);
+            case "qrScanImage":
+                return AndroidQrImageScanner.response(message);
+            case "screenStreamStart":
+                JSONObject natsStreamRequest = natsScreenStreamRequest(message);
+                return screenStreamBridge.start(natsStreamRequest, (subject, payload) -> natsBridge.publishData(subject, payload));
+            case "screenStreamStop":
+                return screenStreamBridge.stop(message);
+            case "reload":
+                return reload(message);
+            default:
+                return BridgeResponse.error(message, action.isEmpty() ? "natsCommand" : action, "NATS command is not allowed: " + action);
+        }
+    }
+
+    private JSONObject natsScreenStreamRequest(JSONObject command) throws JSONException {
+        JSONObject request = new JSONObject(command.toString());
+        String appUUID = configAppUUID();
+        String prefix = settingsStore().natsSettings().devicePrefix(appUUID) + ".";
+        if (request.optString("transport", "").trim().isEmpty()) {
+            request.put("transport", "nats");
+        }
+        if (request.optString("subject", "").trim().isEmpty()) {
+            request.put("subject", prefix + "screen.frames");
+        }
+        if (request.optString("metaSubject", "").trim().isEmpty()) {
+            request.put("metaSubject", prefix + "screen.meta");
+        }
+        if (request.optString("eventSubject", "").trim().isEmpty()) {
+            request.put("eventSubject", prefix + "screen.events");
+        }
+        return request;
+    }
+
+    private JSONObject natsSettingsSet(JSONObject message) throws JSONException {
+        JSONObject values = message.optJSONObject("settings");
+        JSONObject snapshot = applyConfigSettings(values != null ? values : message);
+        JSONObject response = BridgeResponse.base(message, "settingsSet");
+        response.put("success", true);
+        response.put("settings", snapshot);
         return response;
     }
 

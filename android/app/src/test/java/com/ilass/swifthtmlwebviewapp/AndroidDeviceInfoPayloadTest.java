@@ -35,6 +35,7 @@ public class AndroidDeviceInfoPayloadTest {
         snapshot.cameras = new JSONArray().put(new JSONObject().put("id", "0"));
         snapshot.sensors = new JSONArray().put(new JSONObject().put("name", "Accelerometer"));
         snapshot.capabilities = new JSONObject().put("deviceInfoGet", true);
+        snapshot.nats = new JSONObject().put("connected", false);
 
         JSONObject response = AndroidDeviceInfoPayload.response(
                 new JSONObject().put("requestId", "req-device"),
@@ -69,6 +70,7 @@ public class AndroidDeviceInfoPayloadTest {
         assertEquals("0", response.getJSONArray("cameras").getJSONObject(0).getString("id"));
         assertEquals("Accelerometer", response.getJSONArray("sensors").getJSONObject(0).getString("name"));
         assertTrue(response.getJSONObject("capabilities").getBoolean("deviceInfoGet"));
+        assertFalse(response.getJSONObject("nats").getBoolean("connected"));
     }
 
     @Test

@@ -100,6 +100,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const screenStreamWidthInput = document.getElementById('screenStreamWidthInput');
     const screenStreamStartBtn = document.getElementById('screenStreamStartBtn');
     const screenStreamStopBtn = document.getElementById('screenStreamStopBtn');
+    const natsUrlsInput = document.getElementById('natsUrlsInput');
+    const natsCredentialInput = document.getElementById('natsCredentialInput');
+    const natsSubjectInput = document.getElementById('natsSubjectInput');
+    const natsPayloadInput = document.getElementById('natsPayloadInput');
+    const natsProvisionBtn = document.getElementById('natsProvisionBtn');
+    const natsStatusBtn = document.getElementById('natsStatusBtn');
+    const natsConnectBtn = document.getElementById('natsConnectBtn');
+    const natsDisconnectBtn = document.getElementById('natsDisconnectBtn');
+    const natsPublishBtn = document.getElementById('natsPublishBtn');
     const storageNamespaceInput = document.getElementById('storageNamespaceInput');
     const storageKeyInput = document.getElementById('storageKeyInput');
     const storageValueInput = document.getElementById('storageValueInput');
@@ -188,6 +197,11 @@ document.addEventListener('DOMContentLoaded', () => {
         "sensorStreamStop",
         "screenStreamStart",
         "screenStreamStop",
+        "natsProvision",
+        "natsStatus",
+        "natsConnect",
+        "natsDisconnect",
+        "natsPublish",
         "storageGet",
         "storageSet",
         "storageRemove",
@@ -532,6 +546,57 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBridgeMessage({ action: "screenStreamStop" });
     });
 
+    natsProvisionBtn?.addEventListener('click', () => {
+        const token = String(configSecurityTokenInput?.value || "").trim();
+        const creds = String(natsCredentialInput?.value || "").trim();
+        if (!token) {
+            displayError("Bitte den aktuellen Security Token eintragen.");
+            return;
+        }
+        if (!creds) {
+            displayError("Bitte NATS Credentials eintragen.");
+            return;
+        }
+        sendBridgeMessage({
+            action: "natsProvision",
+            token,
+            nats: {
+                enabled: true,
+                urls: natsUrlList(),
+                tlsFirst: true,
+                auth: {
+                    method: "creds",
+                    creds
+                }
+            }
+        });
+    });
+
+    natsStatusBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "natsStatus" });
+    });
+
+    natsConnectBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "natsConnect" });
+    });
+
+    natsDisconnectBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "natsDisconnect" });
+    });
+
+    natsPublishBtn?.addEventListener('click', () => {
+        const subject = natsPublishSubject();
+        if (!subject) {
+            displayError("Bitte eine NATS Subject oder eine geladene appUUID setzen.");
+            return;
+        }
+        sendBridgeMessage({
+            action: "natsPublish",
+            subject,
+            json: parseJsonish(natsPayloadInput?.value || "{}")
+        });
+    });
+
     storageSetBtn?.addEventListener('click', () => {
         sendBridgeMessage({
             action: "storageSet",
@@ -781,6 +846,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function nativeStorageNamespace() {
         return String(storageNamespaceInput?.value || "demo").trim() || "demo";
+    }
+
+    function natsUrlList() {
+        return String(natsUrlsInput?.value || "")
+            .split(/\s|,/)
+            .map(item => item.trim())
+            .filter(Boolean);
+    }
+
+    function natsPublishSubject() {
+        const explicitSubject = String(natsSubjectInput?.value || "").trim();
+        if (explicitSubject) {
+            return explicitSubject;
+        }
+        const appUUID = String(configAppUuidOutput?.value || "").trim();
+        return appUUID ? `swift.wrapper.${appUUID}.events.demo` : "";
     }
 
     function nativeStorageKey() {

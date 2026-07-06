@@ -233,6 +233,26 @@
             <button id="screenStreamStartBtn">Screenstream starten</button>
             <button id="screenStreamStopBtn">Screenstream stoppen</button>
             <div class="native-demo-panel">
+                <h2>NATS</h2>
+                <div class="native-demo-grid">
+                    <label for="natsUrlsInput">Server URLs</label>
+                    <textarea id="natsUrlsInput" rows="3">tls://nats.example.invalid:4222</textarea>
+                    <label for="natsCredentialInput">Credentials</label>
+                    <textarea id="natsCredentialInput" rows="4" placeholder="-----BEGIN NATS USER JWT-----"></textarea>
+                    <label for="natsSubjectInput">Publish Subject</label>
+                    <input type="text" id="natsSubjectInput" placeholder="swift.wrapper.APP-UUID.events.demo">
+                    <label for="natsPayloadInput">Publish JSON</label>
+                    <textarea id="natsPayloadInput" rows="3">{"source":"native-bridge-demo","ok":true}</textarea>
+                </div>
+                <div class="native-demo-actions">
+                    <button id="natsProvisionBtn" type="button">NATS provisionieren</button>
+                    <button id="natsStatusBtn" type="button">NATS Status</button>
+                    <button id="natsConnectBtn" type="button">NATS verbinden</button>
+                    <button id="natsDisconnectBtn" type="button">NATS trennen</button>
+                    <button id="natsPublishBtn" type="button">NATS publish</button>
+                </div>
+            </div>
+            <div class="native-demo-panel">
                 <h2>Native Persistence</h2>
                 <div class="native-demo-grid">
                     <label for="storageNamespaceInput">Store Namespace</label>

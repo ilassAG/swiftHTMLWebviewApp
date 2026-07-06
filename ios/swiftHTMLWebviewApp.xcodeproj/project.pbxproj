@@ -16,6 +16,10 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXBuildFile section */
+		A3D4D0022E1B000100E05003 /* Nats in Frameworks */ = {isa = PBXBuildFile; productRef = A3D4D0012E1B000100E05003 /* Nats */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = swiftHTMLWebviewApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3D4C9012E1A000100E05003 /* swiftHTMLWebviewAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiftHTMLWebviewAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A3D4D0022E1B000100E05003 /* Nats in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +102,9 @@
 				7569F3E82DDCD25E0029F4BC /* swiftHTMLWebviewApp */,
 			);
 			name = swiftHTMLWebviewApp;
+			packageProductDependencies = (
+				A3D4D0012E1B000100E05003 /* Nats */,
+			);
 			productName = swiftHTMLWebviewApp;
 			productReference = 75C511512D9D49FF003A8EBB /* swiftHTMLWebviewApp.app */;
 			productType = "com.apple.product-type.application";
@@ -155,6 +163,9 @@
 			);
 			mainGroup = 75C511482D9D49FF003A8EBB;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A3D4D0002E1B000100E05003 /* XCRemoteSwiftPackageReference "nats.swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 75C511522D9D49FF003A8EBB /* Products */;
 			projectDirPath = "";
@@ -207,6 +218,25 @@
 			targetProxy = A3D4C9072E1A000100E05003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A3D4D0002E1B000100E05003 /* XCRemoteSwiftPackageReference "nats.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/nats-io/nats.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A3D4D0012E1B000100E05003 /* Nats */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A3D4D0002E1B000100E05003 /* XCRemoteSwiftPackageReference "nats.swift" */;
+			productName = Nats;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		75C5115D2D9D4A01003A8EBB /* Debug */ = {

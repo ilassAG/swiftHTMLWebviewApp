@@ -41,6 +41,7 @@ final class AndroidDeviceInfoPayload {
         JSONArray cameras = new JSONArray();
         JSONArray sensors = new JSONArray();
         JSONObject capabilities = new JSONObject();
+        JSONObject nats = new JSONObject();
     }
 
     static final class DeviceSummary {
@@ -81,6 +82,7 @@ final class AndroidDeviceInfoPayload {
         response.put("cameras", arrayOrEmpty(data.cameras));
         response.put("sensors", arrayOrEmpty(data.sensors));
         response.put("capabilities", objectOrEmpty(data.capabilities));
+        response.put("nats", objectOrEmpty(data.nats));
         return response;
     }
 

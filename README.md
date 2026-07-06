@@ -126,7 +126,9 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
   `wifiConfigure`, `screenshotGet`, `reload`.
 - Location, sensors, and streaming: `geoLocationGet`, `geoLocationStart`,
   `geoLocationStop`, `sensorCapabilitiesGet`, `sensorStreamStart`,
-  `sensorStreamStop`, `screenStreamStart`, `screenStreamStop`.
+  `sensorStreamStop`, `screenStreamStart`, `screenStreamStop`,
+  `natsProvision`, `natsStatus`, `natsConnect`, `natsDisconnect`,
+  `natsPublish`.
 - ARKit and RoomPlan: `arPositionStart`, `arPositionStop`,
   `arGuidedMeasurementStart`, `arGuidedMeasurementSetAnchors`,
   `arGuidedMeasurementUpdateStats`, `arGuidedMeasurementStop`,
@@ -141,6 +143,12 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
 - Effects, payment, and printing: `launchConfetti`, `tapToPayAvailability`,
   `tapToPayCollect`, `printerDiscover`, `printerHelloWorld`, `printerPrint`,
   `printerEpsonHelloWorld`.
+
+When provisioned, the wrapper also opens a native NATS connection on iOS and
+Android, publishes redacted status, and listens on
+`swift.wrapper.<appUUID>.commands.*` for the first remote management commands:
+`status`, `settings`, `settingsSet`, `screenshot`, `qrScanImage`,
+`screenStreamStart`, `screenStreamStop`, `reload`, and `natsStatus`.
 
 ## Printer Core Smoke Test
 

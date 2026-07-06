@@ -11,12 +11,21 @@ final class AndroidScreenStreamPayload {
 
     static StreamRequest streamRequest(JSONObject request) {
         String targetUrl = nonEmpty(request.optString("targetUrl", ""), request.optString("url", ""));
+        String subject = request.optString("subject", "").trim();
+        String explicitTransport = request.optString("transport", "").trim().toLowerCase(Locale.US);
+        String transport = explicitTransport.isEmpty()
+                ? (subject.isEmpty() ? "websocket" : "nats")
+                : explicitTransport;
         String format = request.optString("format", "jpeg").toLowerCase(Locale.US);
         if ("jpg".equals(format)) {
             format = "jpeg";
         }
         return new StreamRequest(
+                "nats".equals(transport) ? "nats" : "websocket",
                 targetUrl,
+                subject,
+                request.optString("metaSubject", "").trim(),
+                request.optString("eventSubject", "").trim(),
                 format,
                 clamp(request.optInt("fps", 2), 1, 10),
                 clamp(request.optInt("quality", 65), 25, 95),
@@ -35,8 +44,14 @@ final class AndroidScreenStreamPayload {
 
     static JSONObject startAck(JSONObject request, StreamRequest streamRequest) throws JSONException {
         JSONObject ack = response(request, "screenStreamStart", true, null);
-        ack.put("targetUrl", streamRequest.targetUrl);
-        ack.put("transport", "websocket");
+        ack.put("transport", streamRequest.transport);
+        if (streamRequest.isWebSocket()) {
+            ack.put("targetUrl", streamRequest.targetUrl);
+        } else {
+            ack.put("subject", streamRequest.subject);
+            ack.put("metaSubject", streamRequest.metaSubject);
+            ack.put("eventSubject", streamRequest.eventSubject);
+        }
         ack.put("format", streamRequest.format);
         ack.put("fps", streamRequest.fps);
         ack.put("quality", streamRequest.quality);
@@ -51,14 +66,16 @@ final class AndroidScreenStreamPayload {
         return ack;
     }
 
-    static JSONObject meta(String format, int fps, int quality, int maxWidth) throws JSONException {
+    static JSONObject meta(StreamRequest request) throws JSONException {
         JSONObject meta = new JSONObject();
         meta.put("type", "screenStreamMeta");
         meta.put("platform", "android");
-        meta.put("format", format);
-        meta.put("fps", fps);
-        meta.put("quality", quality);
-        meta.put("maxWidth", maxWidth);
+        meta.put("transport", request.transport);
+        meta.put("format", request.format);
+        meta.put("fps", request.fps);
+        meta.put("quality", request.quality);
+        meta.put("maxWidth", request.maxWidth);
+        meta.put("subject", request.subject);
         return meta;
     }
 
@@ -102,13 +119,21 @@ final class AndroidScreenStreamPayload {
 
     static final class StreamRequest {
         final String targetUrl;
+        final String transport;
+        final String subject;
+        final String metaSubject;
+        final String eventSubject;
         final String format;
         final int fps;
         final int quality;
         final int maxWidth;
 
-        StreamRequest(String targetUrl, String format, int fps, int quality, int maxWidth) {
+        StreamRequest(String transport, String targetUrl, String subject, String metaSubject, String eventSubject, String format, int fps, int quality, int maxWidth) {
+            this.transport = transport;
             this.targetUrl = targetUrl;
+            this.subject = subject;
+            this.metaSubject = metaSubject;
+            this.eventSubject = eventSubject;
             this.format = format;
             this.fps = fps;
             this.quality = quality;
@@ -121,6 +146,14 @@ final class AndroidScreenStreamPayload {
 
         boolean isJpeg() {
             return "jpeg".equals(format);
+        }
+
+        boolean isNats() {
+            return "nats".equals(transport);
+        }
+
+        boolean isWebSocket() {
+            return "websocket".equals(transport);
         }
     }
 }

@@ -18,12 +18,31 @@ public class AndroidScreenStreamPayloadTest {
                 .put("maxWidth", 99));
 
         assertEquals("ws://example.invalid/screen", request.targetUrl);
+        assertEquals("websocket", request.transport);
         assertEquals("jpeg", request.format);
         assertEquals(10, request.fps);
         assertEquals(25, request.quality);
         assertEquals(240, request.maxWidth);
         assertTrue(request.hasTargetUrl());
         assertTrue(request.isJpeg());
+    }
+
+    @Test
+    public void natsStreamRequestUsesSubjectsAndNoTargetUrl() throws Exception {
+        AndroidScreenStreamPayload.StreamRequest request = AndroidScreenStreamPayload.streamRequest(new JSONObject()
+                .put("transport", "nats")
+                .put("subject", "swift.wrapper.APP.screen.frames")
+                .put("metaSubject", "swift.wrapper.APP.screen.meta")
+                .put("eventSubject", "swift.wrapper.APP.screen.events")
+                .put("quality", 65));
+
+        assertEquals("nats", request.transport);
+        assertTrue(request.isNats());
+        assertFalse(request.hasTargetUrl());
+        assertEquals("swift.wrapper.APP.screen.frames", request.subject);
+        assertEquals("swift.wrapper.APP.screen.meta", request.metaSubject);
+        assertEquals("swift.wrapper.APP.screen.events", request.eventSubject);
+        assertEquals(65, request.quality);
     }
 
     @Test
@@ -64,8 +83,30 @@ public class AndroidScreenStreamPayloadTest {
     }
 
     @Test
+    public void natsStartAckIncludesSubjects() throws Exception {
+        JSONObject source = new JSONObject().put("requestId", "req-nats-stream");
+        AndroidScreenStreamPayload.StreamRequest request = AndroidScreenStreamPayload.streamRequest(new JSONObject()
+                .put("transport", "nats")
+                .put("subject", "swift.wrapper.APP.screen.frames")
+                .put("metaSubject", "swift.wrapper.APP.screen.meta")
+                .put("eventSubject", "swift.wrapper.APP.screen.events")
+                .put("fps", 3));
+
+        JSONObject start = AndroidScreenStreamPayload.startAck(source, request);
+
+        assertEquals("nats", start.getString("transport"));
+        assertFalse(start.has("targetUrl"));
+        assertEquals("swift.wrapper.APP.screen.frames", start.getString("subject"));
+        assertEquals("swift.wrapper.APP.screen.meta", start.getString("metaSubject"));
+        assertEquals("swift.wrapper.APP.screen.events", start.getString("eventSubject"));
+        assertEquals(3, start.getInt("fps"));
+    }
+
+    @Test
     public void metaEventsAndStatsUseCatalogedEventShapes() throws Exception {
-        JSONObject meta = AndroidScreenStreamPayload.meta("jpeg", 2, 65, 720);
+        AndroidScreenStreamPayload.StreamRequest request = AndroidScreenStreamPayload.streamRequest(new JSONObject()
+                .put("targetUrl", "ws://example.invalid/screen"));
+        JSONObject meta = AndroidScreenStreamPayload.meta(request);
         assertEquals("screenStreamMeta", meta.getString("type"));
         assertEquals("android", meta.getString("platform"));
         assertEquals("jpeg", meta.getString("format"));

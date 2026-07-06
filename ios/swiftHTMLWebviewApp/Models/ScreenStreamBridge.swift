@@ -11,14 +11,21 @@ import WebKit
 
 @MainActor
 final class ScreenStreamBridge: ObservableObject {
+    typealias NATSPublisher = (_ subject: String, _ payload: Data) -> String?
+
     private var webSocket: URLSessionWebSocketTask?
+    private var natsPublisher: NATSPublisher?
     private var timer: Timer?
     private weak var webView: WKWebView?
     private var running = false
     private var captureInFlight = false
     private var request: [String: Any] = [:]
     private var streamRequest = ScreenStreamPayload.StreamRequest(
+        transport: "websocket",
         targetUrl: "",
+        subject: "",
+        metaSubject: "",
+        eventSubject: "",
         format: "jpeg",
         fps: 2,
         quality: 0.65,
@@ -33,19 +40,41 @@ final class ScreenStreamBridge: ObservableObject {
     private var lastStatsAt = Date.distantPast
     private var eventHandler: (([String: Any]) -> Void)?
 
-    func start(request: [String: Any], webView: WKWebView, eventHandler: @escaping ([String: Any]) -> Void) -> [String: Any] {
+    func start(
+        request: [String: Any],
+        webView: WKWebView,
+        eventHandler: @escaping ([String: Any]) -> Void,
+        natsPublisher: NATSPublisher? = nil
+    ) -> [String: Any] {
         stopInternal(closeSocket: true)
         self.request = request
         self.webView = webView
         self.eventHandler = eventHandler
+        self.natsPublisher = natsPublisher
 
         streamRequest = ScreenStreamPayload.streamRequest(from: request)
-        guard streamRequest.hasTargetUrl, let url = URL(string: streamRequest.targetUrl) else {
+        if streamRequest.isWebSocket && (!streamRequest.hasTargetUrl || URL(string: streamRequest.targetUrl) == nil) {
             return ScreenStreamPayload.response(
                 request: request,
                 action: "screenStreamStart",
                 success: false,
                 error: "targetUrl is required."
+            )
+        }
+        if streamRequest.isNats && streamRequest.subject.isEmpty {
+            return ScreenStreamPayload.response(
+                request: request,
+                action: "screenStreamStart",
+                success: false,
+                error: "subject is required for NATS screen streaming."
+            )
+        }
+        if streamRequest.isNats && natsPublisher == nil {
+            return ScreenStreamPayload.response(
+                request: request,
+                action: "screenStreamStart",
+                success: false,
+                error: "NATS publisher is required for NATS screen streaming."
             )
         }
 
@@ -67,9 +96,14 @@ final class ScreenStreamBridge: ObservableObject {
         lastStatsAt = .distantPast
         running = true
 
-        webSocket = URLSession.shared.webSocketTask(with: url)
-        webSocket?.resume()
-        sendTextMeta()
+        if streamRequest.isWebSocket, let url = URL(string: streamRequest.targetUrl) {
+            webSocket = URLSession.shared.webSocketTask(with: url)
+            webSocket?.resume()
+            sendTextMeta()
+        } else {
+            publishNatsMeta()
+            emit(action: "screenStreamOpen", success: true, message: nil)
+        }
         scheduleTimer()
 
         return ScreenStreamPayload.startAck(request: request, streamRequest: streamRequest)
@@ -114,15 +148,25 @@ final class ScreenStreamBridge: ObservableObject {
                     self.emit(action: "screenStreamError", success: false, message: "JPEG encoding failed.")
                     return
                 }
-                self.webSocket?.send(.data(data)) { error in
-                    Task { @MainActor in
-                        if let error {
-                            self.emit(action: "screenStreamError", success: false, message: error.localizedDescription)
-                            return
+                if self.streamRequest.isNats {
+                    if let error = self.natsPublisher?(self.streamRequest.subject, data) {
+                        self.emit(action: "screenStreamError", success: false, message: error)
+                        return
+                    }
+                    self.framesSent += 1
+                    self.bytesSent += Int64(data.count)
+                    self.emitStatsIfNeeded(lastFrameBytes: data.count)
+                } else {
+                    self.webSocket?.send(.data(data)) { error in
+                        Task { @MainActor in
+                            if let error {
+                                self.emit(action: "screenStreamError", success: false, message: error.localizedDescription)
+                                return
+                            }
+                            self.framesSent += 1
+                            self.bytesSent += Int64(data.count)
+                            self.emitStatsIfNeeded(lastFrameBytes: data.count)
                         }
-                        self.framesSent += 1
-                        self.bytesSent += Int64(data.count)
-                        self.emitStatsIfNeeded(lastFrameBytes: data.count)
                     }
                 }
             }
@@ -141,6 +185,16 @@ final class ScreenStreamBridge: ObservableObject {
                     self?.emit(action: "screenStreamError", success: false, message: error.localizedDescription)
                 }
             }
+        }
+    }
+
+    private func publishNatsMeta() {
+        guard !streamRequest.metaSubject.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: ScreenStreamPayload.meta(streamRequest: streamRequest)) else {
+            return
+        }
+        if let error = natsPublisher?(streamRequest.metaSubject, data) {
+            emit(action: "screenStreamError", success: false, message: error)
         }
     }
 
@@ -170,6 +224,7 @@ final class ScreenStreamBridge: ObservableObject {
             webSocket?.cancel(with: .normalClosure, reason: nil)
         }
         webSocket = nil
+        natsPublisher = nil
     }
 
     private func scale(image: UIImage, maxWidth: CGFloat) -> UIImage {

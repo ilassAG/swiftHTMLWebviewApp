@@ -44,6 +44,12 @@ Implemented:
   default notification channel creation, Android 13+ `POST_NOTIFICATIONS`
   permission, and `AlarmManager` time-based scheduling. Android 12 and older do
   not show a runtime notification prompt and are reported as authorized.
+- Native NATS provisioning, status, publish, and remote command transport via
+  JNATS. Credentials are encrypted through the Android Keystore, status is
+  redacted, and the connected client subscribes to
+  `swift.wrapper.<appUUID>.commands.*`. Remote QR image decoding and NATS
+  app-surface frame streaming are available through the same device-scoped
+  namespace.
 - Native SharedPreferences-backed startup URL settings with legacy-compatible
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
   `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity

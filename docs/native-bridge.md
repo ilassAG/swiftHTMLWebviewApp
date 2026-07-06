@@ -98,6 +98,8 @@ before platform builds.
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
+- `natsProvision` / `natsStatus` / `natsConnect` / `natsDisconnect` /
+  `natsPublish`
 - `configPairingShow` / `configPairingStop`
 - `configPairingConnect` / `configPairingDisconnect`
 - `configPairingSend`
@@ -109,6 +111,37 @@ before platform builds.
 - `printerHelloWorld` (selected-printer smoke test)
 - `printerPrint` (Android/Sunmi generic QR/text print payload)
 - `printerEpsonHelloWorld` (optional Go printer core)
+
+## NATS remote management
+
+`natsProvision` stores non-secret NATS settings and saves secret material only
+in native secret storage: Keychain on iOS, Android Keystore-backed encrypted
+storage on Android. `natsStatus`, `natsConnect`, `natsDisconnect`, and
+`natsPublish` expose the local control plane to web content without returning
+credentials.
+
+After a successful native connection the wrapper subscribes to:
+
+```text
+swift.wrapper.<appUUID>.commands.*
+```
+
+The first supported remote command set is deliberately small and scoped:
+`status`/`deviceInfoGet`, `settings`/`settingsGet`, `settingsSet`,
+`screenshot`/`screenshotGet`, `qrScan`/`qrScanImage`, `screenStreamStart`,
+`screenStreamStop`, `reload`, and `natsStatus`. Command responses are published
+to the NATS message reply subject, an explicit JSON `replyTo`, or the configured
+default response subject
+`swift.wrapper.<appUUID>.events.responses`.
+
+`qrScanImage` accepts an image as `imageBase64`, `imageData`, `dataURL`, or
+`image` and replies with the first decoded QR value as `code` plus a `codes`
+array. The image payload is not persisted or returned.
+
+`screenStreamStart` over NATS publishes JPEG frame bytes to
+`swift.wrapper.<appUUID>.screen.frames` by default, JSON metadata to
+`.screen.meta`, and stream events/stats to `.screen.events`. WebSocket streaming
+remains available for local tools.
 
 ## ARKit guided measurement
 
@@ -887,14 +920,30 @@ Android exposes the same action names with a structured unavailable response.
 ## Screen stream
 
 `screenStreamStart` starts native app-surface capture and streams JPEG frames to
-a target WebSocket URL. Frames do not pass through the JavaScript bridge. The
-bridge only controls start/stop and receives status/stats events.
+a target WebSocket URL or to NATS. Frames do not pass through the JavaScript
+bridge. The bridge only controls start/stop and receives status/stats events.
 
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({
   action: 'screenStreamStart',
   transport: 'websocket',
   targetUrl: 'ws://<viewer-host>:18090/screen',
+  format: 'jpeg',
+  fps: 2,
+  maxWidth: 720,
+  quality: 65
+});
+```
+
+NATS transport uses device-scoped subjects:
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'screenStreamStart',
+  transport: 'nats',
+  subject: 'swift.wrapper.<appUUID>.screen.frames',
+  metaSubject: 'swift.wrapper.<appUUID>.screen.meta',
+  eventSubject: 'swift.wrapper.<appUUID>.screen.events',
   format: 'jpeg',
   fps: 2,
   maxWidth: 720,

@@ -92,6 +92,7 @@ struct ContentView: View {
     @StateObject private var sensorBridge = SensorBridge()
     @StateObject private var configPairingBridge = ConfigPairingBridge()
     @StateObject private var nfcTagReaderBridge = NFCTagReaderBridge()
+    @StateObject private var natsBridge = NATSBridge()
     @StateObject private var notificationBridge = NotificationBridge.shared
     @Environment(\.scenePhase) private var scenePhase
     private let settingsBridge = SettingsBridge()
@@ -164,6 +165,7 @@ struct ContentView: View {
             installBridgeRouterIfNeeded()
             configureConfigPairingBridge()
             configureNotificationBridge()
+            configureNATSCommandExecutor()
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
@@ -183,6 +185,7 @@ struct ContentView: View {
             _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
             nfcTagReaderBridge.shutdown()
             beaconAdvertiserBridge.shutdown()
+            _ = natsBridge.disconnect(request: ["action": "natsDisconnect"])
         }
         .sheet(isPresented: $showDocumentScanner, onDismiss: handleSheetDismiss) {
             DocumentScannerView(isPresented: $showDocumentScanner) { result in
@@ -515,6 +518,26 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: screenStreamBridge.stop(request: message))
             currentRequest = nil
         }
+        .on("natsProvision") { message in
+            webViewStore.sendResultToWebView(result: natsBridge.provision(request: message))
+            currentRequest = nil
+        }
+        .on("natsStatus") { message in
+            webViewStore.sendResultToWebView(result: natsBridge.status(request: message))
+            currentRequest = nil
+        }
+        .on("natsConnect") { message in
+            webViewStore.sendResultToWebView(result: natsBridge.connect(request: message))
+            currentRequest = nil
+        }
+        .on("natsDisconnect") { message in
+            webViewStore.sendResultToWebView(result: natsBridge.disconnect(request: message))
+            currentRequest = nil
+        }
+        .on("natsPublish") { message in
+            webViewStore.sendResultToWebView(result: natsBridge.publish(request: message))
+            currentRequest = nil
+        }
         .on("sensorCapabilitiesGet") { message in
             webViewStore.sendResultToWebView(result: sensorBridge.capabilities(request: message))
             currentRequest = nil
@@ -806,7 +829,7 @@ struct ContentView: View {
                 webViewStore.sendResultToWebView(result: result)
             },
             settingsProvider: {
-                AppSettings.shared.configurationSnapshot()
+                settingsSnapshotWithNATS()
             },
             settingsApplier: { values in
                 AppSettings.shared.applyConfiguration(values)
@@ -829,12 +852,120 @@ struct ContentView: View {
         }
     }
 
+    private func configureNATSCommandExecutor() {
+        natsBridge.configureCommandExecutor { command, completion in
+            executeNATSCommand(command, completion: completion)
+        }
+    }
+
+    private func executeNATSCommand(_ command: [String: Any], completion: @escaping ([String: Any]) -> Void) {
+        var message = command
+        let action = stringValue(message["action"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        message["action"] = action
+
+        switch action {
+        case "natsStatus":
+            completion(natsBridge.status(request: message))
+        case "deviceInfoGet":
+            completion(deviceBridge.deviceInfo(request: message))
+        case "settingsGet":
+            completion(settingsGetResponse(request: message))
+        case "settingsSet":
+            completion(natsSettingsSetResponse(request: message))
+        case "screenshotGet":
+            if stringValue(message["maxWidth"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                message["maxWidth"] = 720
+            }
+            if stringValue(message["quality"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                message["quality"] = 65
+            }
+            deviceBridge.screenshot(request: message, webView: webViewStore.webView) { result in
+                completion(result)
+            }
+        case "qrScanImage":
+            completion(QRCodeImageScanner.response(request: message))
+        case "screenStreamStart":
+            let natsRequest = natsScreenStreamRequest(from: message)
+            let eventSubject = stringValue(natsRequest["eventSubject"]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = screenStreamBridge.start(
+                request: natsRequest,
+                webView: webViewStore.webView,
+                eventHandler: { event in
+                    guard !eventSubject.isEmpty else { return }
+                    _ = natsBridge.publishJSON(subject: eventSubject, payload: event)
+                },
+                natsPublisher: { subject, payload in
+                    natsBridge.publishData(subject: subject, payload: payload)
+                }
+            )
+            completion(response)
+        case "screenStreamStop":
+            completion(screenStreamBridge.stop(request: message))
+        case "reload":
+            completion(NativeCommandPayload.reloadResponse(request: message))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                webViewStore.reloadCurrentOrNewURL()
+            }
+        default:
+            completion(BridgeResponse.error(
+                request: message,
+                action: action.isEmpty ? "natsCommand" : action,
+                message: "NATS command is not allowed: \(action)."
+            ))
+        }
+    }
+
+    private func natsScreenStreamRequest(from command: [String: Any]) -> [String: Any] {
+        var request = command
+        let prefix = AppSettings.shared.natsConfiguration.devicePrefix(appUUID: AppSettings.shared.appUUIDString)
+        if stringValue(request["transport"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request["transport"] = "nats"
+        }
+        if stringValue(request["subject"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request["subject"] = "\(prefix).screen.frames"
+        }
+        if stringValue(request["metaSubject"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request["metaSubject"] = "\(prefix).screen.meta"
+        }
+        if stringValue(request["eventSubject"]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request["eventSubject"] = "\(prefix).screen.events"
+        }
+        return request
+    }
+
+    private func natsSettingsSetResponse(request: [String: Any]) -> [String: Any] {
+        let values = (request["settings"] as? [String: Any]) ?? request
+        let snapshot = AppSettings.shared.applyConfiguration(values)
+        var response = BridgeResponse.base(request: request, action: "settingsSet")
+        response["success"] = true
+        var settings = snapshot
+        settings["nats"] = natsBridge.statusSnapshot()
+        response["settings"] = settings
+        return response
+    }
+
     private func settingsGetResponse(request: [String: Any]) -> [String: Any] {
-        settingsBridge.getResponse(request: request)
+        var response = settingsBridge.getResponse(request: request)
+        if var settings = response["settings"] as? [String: Any] {
+            settings["nats"] = natsBridge.statusSnapshot()
+            response["settings"] = settings
+        }
+        return response
     }
 
     private func settingsSetResponse(request: [String: Any]) -> [String: Any] {
-        settingsBridge.setResponse(request: request)
+        var response = settingsBridge.setResponse(request: request)
+        if var settings = response["settings"] as? [String: Any] {
+            settings["nats"] = natsBridge.statusSnapshot()
+            response["settings"] = settings
+        }
+        return response
+    }
+
+    private func settingsSnapshotWithNATS() -> [String: Any] {
+        var snapshot = AppSettings.shared.configurationSnapshot()
+        snapshot["nats"] = natsBridge.statusSnapshot()
+        return snapshot
     }
 
     private func showConfigPairingFromGesture() {

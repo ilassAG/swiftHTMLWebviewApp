@@ -9,7 +9,11 @@ import Foundation
 
 enum ScreenStreamPayload {
     struct StreamRequest {
+        let transport: String
         let targetUrl: String
+        let subject: String
+        let metaSubject: String
+        let eventSubject: String
         let format: String
         let fps: Int
         let quality: Double
@@ -22,6 +26,14 @@ enum ScreenStreamPayload {
         var isJpeg: Bool {
             format == "jpeg"
         }
+
+        var isNats: Bool {
+            transport == "nats"
+        }
+
+        var isWebSocket: Bool {
+            transport == "websocket"
+        }
     }
 
     static func streamRequest(from request: [String: Any]) -> StreamRequest {
@@ -32,9 +44,18 @@ enum ScreenStreamPayload {
 
         let qualityInput = finiteDoubleValue(request["quality"]) ?? 65.0
         let normalizedQuality = qualityInput > 1 ? qualityInput / 100.0 : qualityInput
+        let explicitTransport = stringValue(request["transport"]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let subject = stringValue(request["subject"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let transport = explicitTransport.isEmpty
+            ? (subject.isEmpty ? "websocket" : "nats")
+            : explicitTransport
 
         return StreamRequest(
+            transport: transport == "nats" ? "nats" : "websocket",
             targetUrl: nonEmpty(stringValue(request["targetUrl"]), fallback: stringValue(request["url"])),
+            subject: subject,
+            metaSubject: stringValue(request["metaSubject"]).trimmingCharacters(in: .whitespacesAndNewlines),
+            eventSubject: stringValue(request["eventSubject"]).trimmingCharacters(in: .whitespacesAndNewlines),
             format: format,
             fps: clamp(intValue(request["fps"]) ?? 2, min: 1, max: 10),
             quality: clamp(normalizedQuality, min: 0.25, max: 0.95),
@@ -44,8 +65,14 @@ enum ScreenStreamPayload {
 
     static func startAck(request: [String: Any], streamRequest: StreamRequest) -> [String: Any] {
         var response = response(request: request, action: "screenStreamStart", success: true)
-        response["targetUrl"] = streamRequest.targetUrl
-        response["transport"] = "websocket"
+        response["transport"] = streamRequest.transport
+        if streamRequest.isWebSocket {
+            response["targetUrl"] = streamRequest.targetUrl
+        } else {
+            response["subject"] = streamRequest.subject
+            response["metaSubject"] = streamRequest.metaSubject
+            response["eventSubject"] = streamRequest.eventSubject
+        }
         response["format"] = "jpeg"
         response["fps"] = streamRequest.fps
         response["quality"] = streamRequest.quality
@@ -78,10 +105,12 @@ enum ScreenStreamPayload {
         [
             "type": "screenStreamMeta",
             "platform": "ios",
+            "transport": streamRequest.transport,
             "format": "jpeg",
             "fps": streamRequest.fps,
             "quality": streamRequest.quality,
-            "maxWidth": streamRequest.maxWidth
+            "maxWidth": streamRequest.maxWidth,
+            "subject": streamRequest.subject
         ]
     }
 

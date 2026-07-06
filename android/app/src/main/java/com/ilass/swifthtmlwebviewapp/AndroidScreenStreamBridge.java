@@ -27,6 +27,10 @@ final class AndroidScreenStreamBridge {
         void onScreenStreamEvent(JSONObject event);
     }
 
+    interface Publisher {
+        String publish(String subject, byte[] payload);
+    }
+
     private final Activity activity;
     private final Listener listener;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -36,6 +40,8 @@ final class AndroidScreenStreamBridge {
     private final Runnable captureRunnable = this::captureFrame;
 
     private WebSocket webSocket;
+    private Publisher natsPublisher;
+    private AndroidScreenStreamPayload.StreamRequest streamRequest;
     private boolean running;
     private String targetUrl = "";
     private String format = "jpeg";
@@ -53,11 +59,22 @@ final class AndroidScreenStreamBridge {
     }
 
     JSONObject start(JSONObject request) throws JSONException {
-        stopInternal(false);
+        return start(request, null);
+    }
 
-        AndroidScreenStreamPayload.StreamRequest streamRequest = AndroidScreenStreamPayload.streamRequest(request);
-        if (!streamRequest.hasTargetUrl()) {
+    JSONObject start(JSONObject request, Publisher publisher) throws JSONException {
+        stopInternal(true);
+
+        streamRequest = AndroidScreenStreamPayload.streamRequest(request);
+        natsPublisher = publisher;
+        if (streamRequest.isWebSocket() && !streamRequest.hasTargetUrl()) {
             return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "targetUrl is required.");
+        }
+        if (streamRequest.isNats() && streamRequest.subject.isEmpty()) {
+            return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "subject is required for NATS screen streaming.");
+        }
+        if (streamRequest.isNats() && natsPublisher == null) {
+            return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "NATS publisher is required for NATS screen streaming.");
         }
 
         if (!streamRequest.isJpeg()) {
@@ -74,28 +91,34 @@ final class AndroidScreenStreamBridge {
         lastStatsAtMs = 0;
         running = true;
 
-        Request wsRequest = new Request.Builder().url(targetUrl).build();
-        webSocket = client.newWebSocket(wsRequest, new WebSocketListener() {
-            @Override
-            public void onOpen(WebSocket socket, Response response) {
-                sendTextMeta(socket);
-                emitEvent("screenStreamOpen", true, null);
-                scheduleNextFrame();
-            }
+        if (streamRequest.isWebSocket()) {
+            Request wsRequest = new Request.Builder().url(targetUrl).build();
+            webSocket = client.newWebSocket(wsRequest, new WebSocketListener() {
+                @Override
+                public void onOpen(WebSocket socket, Response response) {
+                    sendTextMeta(socket);
+                    emitEvent("screenStreamOpen", true, null);
+                    scheduleNextFrame();
+                }
 
-            @Override
-            public void onFailure(WebSocket socket, Throwable throwable, Response response) {
-                String message = throwable != null ? throwable.getMessage() : "WebSocket failed.";
-                emitEvent("screenStreamError", false, message);
-                stopInternal(false);
-            }
+                @Override
+                public void onFailure(WebSocket socket, Throwable throwable, Response response) {
+                    String message = throwable != null ? throwable.getMessage() : "WebSocket failed.";
+                    emitEvent("screenStreamError", false, message);
+                    stopInternal(false);
+                }
 
-            @Override
-            public void onClosed(WebSocket socket, int code, String reason) {
-                emitEvent("screenStreamClosed", true, reason);
-                stopInternal(false);
-            }
-        });
+                @Override
+                public void onClosed(WebSocket socket, int code, String reason) {
+                    emitEvent("screenStreamClosed", true, reason);
+                    stopInternal(false);
+                }
+            });
+        } else {
+            publishNatsMeta();
+            emitEvent("screenStreamOpen", true, null);
+            scheduleNextFrame();
+        }
 
         return AndroidScreenStreamPayload.startAck(request, streamRequest);
     }
@@ -120,7 +143,7 @@ final class AndroidScreenStreamBridge {
     }
 
     private void captureFrame() {
-        if (!running || webSocket == null || !frameInFlight.compareAndSet(false, true)) {
+        if (!running || !hasActiveTransport() || !frameInFlight.compareAndSet(false, true)) {
             scheduleNextFrame();
             return;
         }
@@ -146,7 +169,18 @@ final class AndroidScreenStreamBridge {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             output.compress(Bitmap.CompressFormat.JPEG, quality, bytes);
             byte[] payload = bytes.toByteArray();
-            if (webSocket != null && running && webSocket.send(ByteString.of(payload))) {
+            boolean sent = false;
+            if (streamRequest != null && streamRequest.isNats() && natsPublisher != null && running) {
+                String error = natsPublisher.publish(streamRequest.subject, payload);
+                if (error != null && !error.isEmpty()) {
+                    emitEvent("screenStreamError", false, error);
+                } else {
+                    sent = true;
+                }
+            } else if (webSocket != null && running) {
+                sent = webSocket.send(ByteString.of(payload));
+            }
+            if (sent) {
                 framesSent += 1;
                 bytesSent += payload.length;
                 emitStatsIfNeeded(payload.length);
@@ -173,7 +207,23 @@ final class AndroidScreenStreamBridge {
 
     private void sendTextMeta(WebSocket socket) {
         try {
-            socket.send(AndroidScreenStreamPayload.meta(format, fps, quality, maxWidth).toString());
+            socket.send(AndroidScreenStreamPayload.meta(streamRequest).toString());
+        } catch (JSONException ignored) {
+            // Metadata is optional; binary frames still carry the stream.
+        }
+    }
+
+    private void publishNatsMeta() {
+        try {
+            if (streamRequest != null && !streamRequest.metaSubject.isEmpty() && natsPublisher != null) {
+                String error = natsPublisher.publish(
+                        streamRequest.metaSubject,
+                        AndroidScreenStreamPayload.meta(streamRequest).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                );
+                if (error != null && !error.isEmpty()) {
+                    emitEvent("screenStreamError", false, error);
+                }
+            }
         } catch (JSONException ignored) {
             // Metadata is optional; binary frames still carry the stream.
         }
@@ -186,7 +236,7 @@ final class AndroidScreenStreamBridge {
         }
         lastStatsAtMs = now;
         try {
-            listener.onScreenStreamEvent(AndroidScreenStreamPayload.stats(framesSent, bytesSent, lastFrameBytes, startedAtMs, now));
+            emitJSONObject(AndroidScreenStreamPayload.stats(framesSent, bytesSent, lastFrameBytes, startedAtMs, now));
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }
@@ -194,10 +244,18 @@ final class AndroidScreenStreamBridge {
 
     private void emitEvent(String action, boolean success, String message) {
         try {
-            listener.onScreenStreamEvent(AndroidScreenStreamPayload.event(action, success, message));
+            emitJSONObject(AndroidScreenStreamPayload.event(action, success, message));
         } catch (JSONException ignored) {
             // Ignore secondary JSON failure.
         }
+    }
+
+    private void emitJSONObject(JSONObject event) {
+        if (streamRequest != null && streamRequest.isNats() && natsPublisher != null && !streamRequest.eventSubject.isEmpty()) {
+            natsPublisher.publish(streamRequest.eventSubject, event.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return;
+        }
+        listener.onScreenStreamEvent(event);
     }
 
     private void stopInternal(boolean closeSocket) {
@@ -208,6 +266,12 @@ final class AndroidScreenStreamBridge {
             webSocket.close(1000, "screen stream stopped");
         }
         webSocket = null;
+        natsPublisher = null;
+        streamRequest = null;
+    }
+
+    private boolean hasActiveTransport() {
+        return (streamRequest != null && streamRequest.isNats() && natsPublisher != null) || webSocket != null;
     }
 
 }

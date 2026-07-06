@@ -37,6 +37,11 @@ final class AndroidDeviceCapabilities {
         capabilities.put("geoLocationGet", true);
         capabilities.put("screenStreamStart", true);
         capabilities.put("screenStreamFormats", new JSONArray(Arrays.asList("jpeg")));
+        capabilities.put("natsProvision", true);
+        capabilities.put("natsStatus", true);
+        capabilities.put("natsConnect", true);
+        capabilities.put("natsDisconnect", true);
+        capabilities.put("natsPublish", true);
         capabilities.put("soundPlay", true);
         capabilities.put("notificationPermissionGet", true);
         capabilities.put("notificationPermissionRequest", true);

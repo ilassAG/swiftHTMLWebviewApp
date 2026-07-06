@@ -30,6 +30,7 @@ class AppSettings {
     private let deviceUUIDKey = "device_uuid"
     private let deviceLocationKey = "device_location"
     private let appConfigKey = "app_config_json"
+    private let natsConfigKey = "nats_config_json"
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -133,6 +134,14 @@ class AppSettings {
         set { storeJSONObject(newValue, forKey: appConfigKey) }
     }
 
+    var natsConfiguration: NATSSettings {
+        get { NATSSettings.fromStoredJSONString(userDefaults.string(forKey: natsConfigKey)) }
+        set {
+            userDefaults.set(newValue.persistedJSONString(), forKey: natsConfigKey)
+            userDefaults.synchronize()
+        }
+    }
+
     var highAvailabilityURL2: String {
         get { normalizedOptionalValue(userDefaults.string(forKey: highAvailabilityUrl2Key)) ?? "" }
         set { userDefaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: highAvailabilityUrl2Key) }
@@ -196,7 +205,8 @@ class AppSettings {
             deviceNameKey: "",
             deviceUUIDKey: "",
             deviceLocationKey: "",
-            appConfigKey: "{}"
+            appConfigKey: "{}",
+            natsConfigKey: "{}"
         ])
         ensureAppUUID()
         ensureDeviceUUID()

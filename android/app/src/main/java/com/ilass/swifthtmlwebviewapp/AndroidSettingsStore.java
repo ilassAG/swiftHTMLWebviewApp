@@ -22,6 +22,7 @@ final class AndroidSettingsStore {
     static final String DEVICE_UUID_KEY = "device_uuid";
     static final String DEVICE_LOCATION_KEY = "device_location";
     static final String APP_CONFIG_KEY = "app_config_json";
+    static final String NATS_CONFIG_KEY = "nats_config_json";
 
     interface Preferences {
         String getString(String key, String fallback);
@@ -142,6 +143,15 @@ final class AndroidSettingsStore {
         editor.apply();
         ensureDeviceUUID();
         return snapshotPayload();
+    }
+
+    AndroidNatsSettings natsSettings() {
+        return AndroidNatsSettings.fromStoredJson(preferences.getString(NATS_CONFIG_KEY, "{}"));
+    }
+
+    void persistNatsSettings(AndroidNatsSettings settings) throws JSONException {
+        JSONObject payload = settings != null ? settings.toStoredJson() : new AndroidNatsSettings().toStoredJson();
+        preferences.edit().putString(NATS_CONFIG_KEY, payload.toString()).apply();
     }
 
     private void ensureAppUUID() {

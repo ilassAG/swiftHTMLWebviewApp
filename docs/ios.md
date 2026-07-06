@@ -136,6 +136,15 @@ iOS implements the shared runtime bridge actions:
 - `idleTimerStart` / `idleTimerReset` / `idleTimerStop`
 - `sensorCapabilitiesGet` / `sensorStreamStart` / `sensorStreamStop`
 - `screenStreamStart` / `screenStreamStop`
+- `natsProvision` / `natsStatus` / `natsConnect` / `natsDisconnect` /
+  `natsPublish`
+
+Provisioned NATS clients use the Swift Package `nats.swift` and subscribe to
+`swift.wrapper.<appUUID>.commands.*` for the generic remote management
+commands. Remote QR image decoding replies with scanned QR payloads, and
+`screenStreamStart` can publish JPEG app-surface frames over NATS subjects.
+`.creds` material is stored in Keychain and written only to a private temporary
+file while the iOS NATS client is connected.
 - `nfcTagRead`
 - `beaconAdvertiseStart` / `beaconAdvertiseStop`
 - `configPairingShow` / `configPairingStop`

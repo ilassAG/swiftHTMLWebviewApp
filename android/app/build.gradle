@@ -10,6 +10,12 @@ android {
         aidl true
     }
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+        coreLibraryDesugaringEnabled true
+    }
+
     defaultConfig {
         applicationId 'com.ilass.swifthtmlwebviewapp'
         minSdk 23
@@ -34,6 +40,8 @@ dependencies {
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'org.altbeacon:android-beacon-library:2.20.7'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'io.nats:jnats:2.21.1'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     def printercoreAar = file('libs/printercore.aar')
     if (printercoreAar.exists()) {
