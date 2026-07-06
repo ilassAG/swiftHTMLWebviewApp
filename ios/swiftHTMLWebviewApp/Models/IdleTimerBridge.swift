@@ -48,6 +48,15 @@ final class IdleTimerBridge: ObservableObject {
         resetActivity()
     }
 
+    func telemetrySnapshot(now: Date = Date()) -> [String: Any] {
+        [
+            "running": timer != nil,
+            "idleSeconds": max(0, now.timeIntervalSince(lastActivity)),
+            "timeoutSeconds": timeoutSeconds,
+            "timedOut": didTimeout
+        ]
+    }
+
     func shutdown() {
         timer?.invalidate()
         timer = nil

@@ -71,6 +71,7 @@ final class AndroidNatsBridge {
     private final CredentialStore credentialStore;
     private final ConnectionDriver connection;
     private String lastError = "";
+    private boolean autoConnectInFlight = false;
 
     AndroidNatsBridge(Host host, CredentialStore credentialStore, ConnectionDriver connection) {
         this.host = host;
@@ -87,6 +88,10 @@ final class AndroidNatsBridge {
         );
     }
 
+    boolean isConnected() {
+        return connection.isConnected();
+    }
+
     JSONObject provision(JSONObject message) throws JSONException {
         if (!hasValidToken(message)) {
             return BridgeResponse.error(message, "natsProvision", "securityToken is required for natsProvision.");
@@ -97,6 +102,10 @@ final class AndroidNatsBridge {
         }
         try {
             AndroidNatsSettings parsed = AndroidNatsSettings.fromPayload(nats, host.natsSettings());
+            if (!parsed.authMethodSupportedByTransport()) {
+                lastError = "NATS auth method is not supported by the native transport yet: " + parsed.authMethod + ".";
+                return BridgeResponse.error(message, "natsProvision", lastError);
+            }
             if (parsed.authRequiresSecret()) {
                 String secret = secretFromPayload(nats, parsed.authMethod);
                 if (secret.isEmpty()) {
@@ -125,6 +134,10 @@ final class AndroidNatsBridge {
             lastError = "NATS is not enabled.";
             return response(message, "natsConnect", false);
         }
+        if (!settings.authMethodSupportedByTransport()) {
+            lastError = "NATS auth method is not supported by the native transport yet: " + settings.authMethod + ".";
+            return response(message, "natsConnect", false);
+        }
         if (settings.urls.isEmpty()) {
             lastError = "At least one NATS URL is required.";
             return response(message, "natsConnect", false);
@@ -142,6 +155,36 @@ final class AndroidNatsBridge {
         lastError = "";
         publishStatusEvent();
         return response(message, "natsConnect", true);
+    }
+
+    synchronized boolean connectIfConfigured(String reason) {
+        if (connection.isConnected()) {
+            return true;
+        }
+        if (autoConnectInFlight) {
+            return false;
+        }
+        AndroidNatsSettings settings = host.natsSettings();
+        if (!settings.enabled || settings.urls.isEmpty() || !settings.authMethodSupportedByTransport()) {
+            return false;
+        }
+        if (settings.authRequiresSecret() && !credentialStore.hasCredential()) {
+            lastError = "NATS credential is not provisioned.";
+            return false;
+        }
+        autoConnectInFlight = true;
+        try {
+            JSONObject request = new JSONObject()
+                    .put("action", "natsConnect")
+                    .put("source", "auto")
+                    .put("reason", reason != null ? reason : "");
+            return connect(request).optBoolean("success", false);
+        } catch (JSONException error) {
+            lastError = error.getMessage() != null ? error.getMessage() : String.valueOf(error);
+            return false;
+        } finally {
+            autoConnectInFlight = false;
+        }
     }
 
     JSONObject disconnect(JSONObject message) throws JSONException {
@@ -206,6 +249,14 @@ final class AndroidNatsBridge {
         return publishData(subject, payload.toString().getBytes(StandardCharsets.UTF_8));
     }
 
+    String publishTelemetry(JSONObject payload) {
+        AndroidNatsSettings settings = host.natsSettings();
+        if (!settings.telemetryEnabled) {
+            return null;
+        }
+        return publishJson(settings.telemetrySubject(host.appUUID()), payload);
+    }
+
     private JSONObject response(JSONObject message, String action, boolean success) throws JSONException {
         JSONObject response = BridgeResponse.base(message, action);
         response.put("success", success);
@@ -258,7 +309,8 @@ final class AndroidNatsBridge {
             action = "settingsGet";
         } else if ("screenshot".equals(action)) {
             action = "screenshotGet";
-        } else if ("qrScan".equals(action) || "qrCodeScan".equals(action) || "qrScanImage".equals(action)) {
+        } else if ("qrScan".equals(action) || "qrCodeScan".equals(action) || "qrScanImage".equals(action)
+                || "qrScanJob".equals(action) || "qrCodeScanJob".equals(action) || "qrScanImageJob".equals(action)) {
             action = "qrScanImage";
         } else if ("screenStream".equals(action) || "videoStreamStart".equals(action)) {
             action = "screenStreamStart";
@@ -293,6 +345,12 @@ final class AndroidNatsBridge {
     private void publishCommandResponse(JSONObject command, String commandSubject, String transportReplyTo, JSONObject response) throws JSONException {
         JSONObject natsCommand = new JSONObject()
                 .put("subject", commandSubject != null ? commandSubject : "");
+        for (String key : new String[]{"jobId", "scanJobId", "taskId", "distributionId"}) {
+            String value = command.optString(key, "").trim();
+            if (!value.isEmpty()) {
+                natsCommand.put(key, value);
+            }
+        }
         if (transportReplyTo != null && !transportReplyTo.trim().isEmpty()) {
             natsCommand.put("transportReplyTo", transportReplyTo.trim());
         }

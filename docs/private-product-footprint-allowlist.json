@@ -25,7 +25,10 @@
         "ios/swiftHTMLWebviewAppTests/AppVariantTests.swift",
         "android/app/src/main/AndroidManifest.xml",
         "android/app/src/test/java/com/ilass/swifthtmlwebviewapp/DemoVariantTest.java",
-        "tools/validate_contracts.js"
+        "tools/validate_contracts.js",
+        "tools/natscontrol/README.md",
+        "tools/natscontrol/main.go",
+        "tools/natscontrol/config_test.go"
       ]
     },
     {

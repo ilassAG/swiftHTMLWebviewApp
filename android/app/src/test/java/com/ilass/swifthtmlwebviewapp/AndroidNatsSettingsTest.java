@@ -23,6 +23,9 @@ public class AndroidNatsSettingsTest {
         assertEquals("swift.wrapper.APP-123.commands.*", settings.commandSubject("APP-123"));
         assertEquals("swift.wrapper.APP-123.events.responses", settings.responseSubject("APP-123"));
         assertEquals("swift.wrapper.APP-123.status", settings.statusSubject("APP-123"));
+        assertEquals("swift.wrapper.APP-123.telemetry.status", settings.telemetrySubject("APP-123"));
+        assertTrue(settings.telemetryEnabled);
+        assertEquals(30, settings.telemetryIntervalSeconds);
     }
 
     @Test
@@ -67,8 +70,12 @@ public class AndroidNatsSettingsTest {
         assertEquals("swift-wrapper-APP-123", snapshot.getString("clientName"));
         assertEquals("creds", auth.getString("method"));
         assertTrue(auth.getBoolean("credentialSet"));
+        assertEquals("none", auth.getJSONArray("supportedMethods").getString(0));
+        assertEquals("userPassword", auth.getJSONArray("unsupportedMethods").getString(0));
         assertFalse(auth.has("creds"));
         assertEquals("offline", snapshot.getString("lastError"));
         assertEquals("swift.wrapper.APP-123.commands.*", snapshot.getJSONObject("subjects").getString("commandSubject"));
+        assertEquals("swift.wrapper.APP-123.telemetry.status", snapshot.getJSONObject("subjects").getString("telemetrySubject"));
+        assertEquals(30, snapshot.getJSONObject("telemetry").getInt("intervalSeconds"));
     }
 }

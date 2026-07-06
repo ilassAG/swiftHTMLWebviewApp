@@ -47,9 +47,10 @@ Implemented:
 - Native NATS provisioning, status, publish, and remote command transport via
   JNATS. Credentials are encrypted through the Android Keystore, status is
   redacted, and the connected client subscribes to
-  `swift.wrapper.<appUUID>.commands.*`. Remote QR image decoding and NATS
-  app-surface frame streaming are available through the same device-scoped
-  namespace.
+  `swift.wrapper.<appUUID>.commands.*`. The client auto-connects on launch or
+  resume when provisioned, publishes device telemetry on
+  `.telemetry.status`, and supports remote QR image jobs plus NATS app-surface
+  frame streaming through the same device-scoped namespace.
 - Native SharedPreferences-backed startup URL settings with legacy-compatible
   failover fields (`server_url_preference`, `ha_enabled`, `ha_timeout`,
   `ha_url2`, `ha_url3`, `ha_url4`), `beacon_uuid`, and deployment identity

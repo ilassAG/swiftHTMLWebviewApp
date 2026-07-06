@@ -114,6 +114,7 @@ final class NATSBridge: ObservableObject {
     private let connection: NATSConnectionDriver
     private var commandExecutor: NATSCommandExecutor?
     private var lastError = ""
+    private var autoConnectInFlight = false
 
     init(
         settings: AppSettings = .shared,
@@ -135,6 +136,10 @@ final class NATSBridge: ObservableObject {
 
     func configureCommandExecutor(_ executor: @escaping NATSCommandExecutor) {
         commandExecutor = executor
+    }
+
+    var isConnected: Bool {
+        connection.connected
     }
 
     func statusSnapshot() -> [String: Any] {
@@ -160,6 +165,10 @@ final class NATSBridge: ObservableObject {
 
         do {
             let parsed = try NATSSettings.fromPayload(natsPayload, fallback: settings.natsConfiguration)
+            guard parsed.authMethod.isTransportSupported else {
+                lastError = "NATS auth method is not supported by the native transport yet: \(parsed.authMethod.rawValue)."
+                return BridgeResponse.error(request: request, action: "natsProvision", message: lastError)
+            }
             if parsed.authMethod.requiresSecret {
                 guard let secret = secretFromPayload(natsPayload, method: parsed.authMethod), !secret.isEmpty else {
                     return BridgeResponse.error(
@@ -191,6 +200,10 @@ final class NATSBridge: ObservableObject {
             lastError = "NATS is not enabled."
             return response(request: request, action: "natsConnect", success: false)
         }
+        guard current.authMethod.isTransportSupported else {
+            lastError = "NATS auth method is not supported by the native transport yet: \(current.authMethod.rawValue)."
+            return response(request: request, action: "natsConnect", success: false)
+        }
         guard !current.urls.isEmpty else {
             lastError = "At least one NATS URL is required."
             return response(request: request, action: "natsConnect", success: false)
@@ -216,6 +229,46 @@ final class NATSBridge: ObservableObject {
         lastError = ""
         publishStatusEvent()
         return response(request: request, action: "natsConnect", success: true)
+    }
+
+    func connectIfConfigured(reason: String) {
+        guard !connection.connected, !autoConnectInFlight else { return }
+        let current = settings.natsConfiguration
+        guard current.enabled,
+              current.authMethod.isTransportSupported,
+              !current.urls.isEmpty else {
+            return
+        }
+        if current.authMethod.requiresSecret && !credentialStore.hasCredential() {
+            lastError = "NATS credential is not provisioned."
+            return
+        }
+        let credential = credentialStore.loadCredential()
+        let appUUID = settings.appUUIDString
+        let connection = connection
+        let bridge = self
+        autoConnectInFlight = true
+        Task.detached { [current, credential, appUUID, connection, bridge] in
+            let error = connection.connect(
+                settings: current,
+                appUUID: appUUID,
+                credential: credential,
+                commandHandler: { [weak bridge] subject, payload, replyTo in
+                    Task { @MainActor in
+                        bridge?.handleCommand(subject: subject, payload: payload, replyTo: replyTo)
+                    }
+                }
+            )
+            await MainActor.run {
+                bridge.autoConnectInFlight = false
+                if let error {
+                    bridge.lastError = error
+                } else {
+                    bridge.lastError = ""
+                    bridge.publishStatusEvent()
+                }
+            }
+        }
     }
 
     func disconnect(request: [String: Any]) -> [String: Any] {
@@ -278,6 +331,14 @@ final class NATSBridge: ObservableObject {
             return lastError
         }
         return publishData(subject: subject, payload: data)
+    }
+
+    func publishTelemetry(payload: [String: Any]) -> String? {
+        let current = settings.natsConfiguration
+        guard current.telemetryEnabled else {
+            return nil
+        }
+        return publishJSON(subject: current.telemetrySubject(appUUID: settings.appUUIDString), payload: payload)
     }
 
     private func response(request: [String: Any], action: String, success: Bool) -> [String: Any] {
@@ -366,6 +427,8 @@ final class NATSBridge: ObservableObject {
             action = "screenshotGet"
         case "qrScan", "qrCodeScan", "qrScanImage":
             action = "qrScanImage"
+        case "qrScanJob", "qrCodeScanJob", "qrScanImageJob":
+            action = "qrScanImage"
         case "screenStream", "videoStreamStart":
             action = "screenStreamStart"
         case "videoStreamStop":
@@ -408,6 +471,12 @@ final class NATSBridge: ObservableObject {
     ) {
         var payload = response
         var natsCommand: [String: Any] = ["subject": commandSubject]
+        for key in ["jobId", "scanJobId", "taskId", "distributionId"] {
+            let value = stringValue(command[key]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                natsCommand[key] = value
+            }
+        }
         if let transportReplyTo,
            !transportReplyTo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             natsCommand["transportReplyTo"] = transportReplyTo.trimmingCharacters(in: .whitespacesAndNewlines)

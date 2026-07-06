@@ -21,6 +21,7 @@ final class ScreenStreamBridge: ObservableObject {
     private var captureInFlight = false
     private var request: [String: Any] = [:]
     private var streamRequest = ScreenStreamPayload.StreamRequest(
+        source: "app",
         transport: "websocket",
         targetUrl: "",
         subject: "",
@@ -53,6 +54,13 @@ final class ScreenStreamBridge: ObservableObject {
         self.natsPublisher = natsPublisher
 
         streamRequest = ScreenStreamPayload.streamRequest(from: request)
+        if streamRequest.source == "device" {
+            return BridgeResponse.unavailable(
+                request: request,
+                action: "screenStreamStart",
+                message: "Full device-screen streaming requires a platform capture extension and is not implemented in this wrapper build. Use source: app for the WebView app surface."
+            )
+        }
         if streamRequest.isWebSocket && (!streamRequest.hasTargetUrl || URL(string: streamRequest.targetUrl) == nil) {
             return ScreenStreamPayload.response(
                 request: request,
@@ -113,6 +121,21 @@ final class ScreenStreamBridge: ObservableObject {
         self.request = request
         stopInternal(closeSocket: true)
         return ScreenStreamPayload.stopAck(request: request, framesSent: framesSent, bytesSent: bytesSent)
+    }
+
+    func telemetrySnapshot() -> [String: Any] {
+        [
+            "running": running,
+            "source": streamRequest.source,
+            "transport": streamRequest.transport,
+            "subject": streamRequest.isNats ? streamRequest.subject : "",
+            "targetUrl": streamRequest.isWebSocket ? streamRequest.targetUrl : "",
+            "fps": fps,
+            "maxWidth": Int(maxWidth),
+            "frames": framesSent,
+            "bytes": bytesSent,
+            "captureInFlight": captureInFlight
+        ]
     }
 
     func shutdown() {

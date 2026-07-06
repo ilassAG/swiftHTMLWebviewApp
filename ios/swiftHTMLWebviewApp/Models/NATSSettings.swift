@@ -22,6 +22,23 @@ enum NATSAuthMethod: String, CaseIterable {
     var requiresSecret: Bool {
         self != .none
     }
+
+    var isTransportSupported: Bool {
+        switch self {
+        case .none, .token, .nkey, .creds:
+            return true
+        case .userPassword, .tlsCertificate:
+            return false
+        }
+    }
+
+    static var supportedTransportMethods: [String] {
+        allCases.filter(\.isTransportSupported).map(\.rawValue)
+    }
+
+    static var unsupportedTransportMethods: [String] {
+        allCases.filter { !$0.isTransportSupported }.map(\.rawValue)
+    }
 }
 
 enum NATSSettingsError: Error, Equatable, CustomStringConvertible {
@@ -55,6 +72,9 @@ struct NATSSettings: Equatable {
     var commandSubjectTemplate = "swift.wrapper.${appUUID}.commands.*"
     var responseSubjectTemplate = "swift.wrapper.${appUUID}.events.responses"
     var statusSubjectTemplate = "swift.wrapper.${appUUID}.status"
+    var telemetrySubjectTemplate = "swift.wrapper.${appUUID}.telemetry.status"
+    var telemetryEnabled = true
+    var telemetryIntervalSeconds = 30
 
     static func fromStoredJSONString(_ rawValue: String?) -> NATSSettings {
         guard let rawValue,
@@ -111,6 +131,14 @@ struct NATSSettings: Equatable {
                 settings.pingIntervalSeconds = min(300, max(1, value))
             }
         }
+        if let telemetry = source["telemetry"] as? [String: Any] {
+            if let enabled = boolValue(telemetry["enabled"]) {
+                settings.telemetryEnabled = enabled
+            }
+            if let value = intValue(telemetry["intervalSeconds"] ?? telemetry["interval_seconds"]) {
+                settings.telemetryIntervalSeconds = min(300, max(5, value))
+            }
+        }
         if let subjects = source["subjects"] as? [String: Any] {
             if let value = normalizedString(subjects["namespace"]) {
                 settings.namespace = value
@@ -126,6 +154,9 @@ struct NATSSettings: Equatable {
             }
             if let value = normalizedString(subjects["statusSubjectTemplate"] ?? subjects["status_subject_template"]) {
                 settings.statusSubjectTemplate = value
+            }
+            if let value = normalizedString(subjects["telemetrySubjectTemplate"] ?? subjects["telemetry_subject_template"]) {
+                settings.telemetrySubjectTemplate = value
             }
         }
 
@@ -154,12 +185,17 @@ struct NATSSettings: Equatable {
                 "reconnectWaitMs": reconnectWaitMs,
                 "pingIntervalSeconds": pingIntervalSeconds
             ],
+            "telemetry": [
+                "enabled": telemetryEnabled,
+                "intervalSeconds": telemetryIntervalSeconds
+            ],
             "subjects": [
                 "namespace": namespace,
                 "devicePrefixTemplate": devicePrefixTemplate,
                 "commandSubjectTemplate": commandSubjectTemplate,
                 "responseSubjectTemplate": responseSubjectTemplate,
-                "statusSubjectTemplate": statusSubjectTemplate
+                "statusSubjectTemplate": statusSubjectTemplate,
+                "telemetrySubjectTemplate": telemetrySubjectTemplate
             ]
         ]
     }
@@ -173,7 +209,13 @@ struct NATSSettings: Equatable {
             "identitySource": identitySource,
             "auth": [
                 "method": authMethod.rawValue,
-                "credentialSet": credentialSet
+                "credentialSet": credentialSet,
+                "supportedMethods": NATSAuthMethod.supportedTransportMethods,
+                "unsupportedMethods": NATSAuthMethod.unsupportedTransportMethods
+            ],
+            "telemetry": [
+                "enabled": telemetryEnabled,
+                "intervalSeconds": telemetryIntervalSeconds
             ],
             "connected": connected,
             "lastError": lastError,
@@ -182,7 +224,8 @@ struct NATSSettings: Equatable {
                 "devicePrefix": devicePrefix(appUUID: appUUID),
                 "commandSubject": commandSubject(appUUID: appUUID),
                 "responseSubject": responseSubject(appUUID: appUUID),
-                "statusSubject": statusSubject(appUUID: appUUID)
+                "statusSubject": statusSubject(appUUID: appUUID),
+                "telemetrySubject": telemetrySubject(appUUID: appUUID)
             ]
         ]
     }
@@ -205,6 +248,10 @@ struct NATSSettings: Equatable {
 
     func statusSubject(appUUID: String) -> String {
         replacingIdentityPlaceholders(in: statusSubjectTemplate, appUUID: appUUID)
+    }
+
+    func telemetrySubject(appUUID: String) -> String {
+        replacingIdentityPlaceholders(in: telemetrySubjectTemplate, appUUID: appUUID)
     }
 
     private func replacingIdentityPlaceholders(in template: String, appUUID: String) -> String {

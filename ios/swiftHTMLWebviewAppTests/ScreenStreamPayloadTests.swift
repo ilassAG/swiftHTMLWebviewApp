@@ -17,6 +17,7 @@ final class ScreenStreamPayloadTests: XCTestCase {
         ])
 
         XCTAssertEqual(request.targetUrl, "ws://example.invalid/screen")
+        XCTAssertEqual(request.source, "app")
         XCTAssertEqual(request.transport, "websocket")
         XCTAssertEqual(request.format, "jpeg")
         XCTAssertEqual(request.fps, 10)
@@ -36,6 +37,7 @@ final class ScreenStreamPayloadTests: XCTestCase {
         ])
 
         XCTAssertEqual(request.transport, "nats")
+        XCTAssertEqual(request.source, "app")
         XCTAssertTrue(request.isNats)
         XCTAssertFalse(request.hasTargetUrl)
         XCTAssertEqual(request.subject, "swift.wrapper.APP.screen.frames")
@@ -79,6 +81,7 @@ final class ScreenStreamPayloadTests: XCTestCase {
         XCTAssertEqual(start["action"] as? String, "screenStreamStart")
         XCTAssertEqual(start["requestId"] as? String, "req-stream")
         XCTAssertEqual(start["success"] as? Bool, true)
+        XCTAssertEqual(start["source"] as? String, "app")
         XCTAssertEqual(start["targetUrl"] as? String, "ws://example.invalid/screen")
         XCTAssertEqual(start["transport"] as? String, "websocket")
         XCTAssertEqual(start["format"] as? String, "jpeg")
@@ -117,6 +120,7 @@ final class ScreenStreamPayloadTests: XCTestCase {
 
     func testMetaEventsAndStatsUseCatalogedEventShapes() {
         let request = ScreenStreamPayload.StreamRequest(
+            source: "app",
             transport: "websocket",
             targetUrl: "ws://example.invalid/screen",
             subject: "",
@@ -130,6 +134,7 @@ final class ScreenStreamPayloadTests: XCTestCase {
         let meta = ScreenStreamPayload.meta(streamRequest: request)
         XCTAssertEqual(meta["type"] as? String, "screenStreamMeta")
         XCTAssertEqual(meta["platform"] as? String, "ios")
+        XCTAssertEqual(meta["source"] as? String, "app")
         XCTAssertEqual(meta["format"] as? String, "jpeg")
         XCTAssertEqual(meta["fps"] as? Int, 2)
         XCTAssertEqual(meta["quality"] as? Double, 0.65)

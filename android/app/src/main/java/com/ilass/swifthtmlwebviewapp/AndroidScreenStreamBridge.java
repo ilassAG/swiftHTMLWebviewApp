@@ -67,6 +67,13 @@ final class AndroidScreenStreamBridge {
 
         streamRequest = AndroidScreenStreamPayload.streamRequest(request);
         natsPublisher = publisher;
+        if ("device".equals(streamRequest.source)) {
+            return BridgeResponse.unavailable(
+                    request,
+                    "screenStreamStart",
+                    "Full device-screen streaming requires MediaProjection plus a foreground service and is not implemented in this wrapper build. Use source: app for the WebView app surface."
+            );
+        }
         if (streamRequest.isWebSocket() && !streamRequest.hasTargetUrl()) {
             return AndroidScreenStreamPayload.response(request, "screenStreamStart", false, "targetUrl is required.");
         }
@@ -126,6 +133,21 @@ final class AndroidScreenStreamBridge {
     JSONObject stop(JSONObject request) throws JSONException {
         stopInternal(true);
         return AndroidScreenStreamPayload.stopAck(request, framesSent, bytesSent);
+    }
+
+    JSONObject telemetrySnapshot() throws JSONException {
+        JSONObject snapshot = new JSONObject()
+                .put("running", running)
+                .put("source", streamRequest != null ? streamRequest.source : "")
+                .put("transport", streamRequest != null ? streamRequest.transport : "")
+                .put("subject", streamRequest != null && streamRequest.isNats() ? streamRequest.subject : "")
+                .put("targetUrl", streamRequest != null && streamRequest.isWebSocket() ? streamRequest.targetUrl : "")
+                .put("fps", fps)
+                .put("maxWidth", maxWidth)
+                .put("frames", framesSent)
+                .put("bytes", bytesSent)
+                .put("captureInFlight", frameInFlight.get());
+        return snapshot;
     }
 
     void shutdown() {

@@ -18,6 +18,7 @@ public class AndroidScreenStreamPayloadTest {
                 .put("maxWidth", 99));
 
         assertEquals("ws://example.invalid/screen", request.targetUrl);
+        assertEquals("app", request.source);
         assertEquals("websocket", request.transport);
         assertEquals("jpeg", request.format);
         assertEquals(10, request.fps);
@@ -37,6 +38,7 @@ public class AndroidScreenStreamPayloadTest {
                 .put("quality", 65));
 
         assertEquals("nats", request.transport);
+        assertEquals("app", request.source);
         assertTrue(request.isNats());
         assertFalse(request.hasTargetUrl());
         assertEquals("swift.wrapper.APP.screen.frames", request.subject);
@@ -69,6 +71,7 @@ public class AndroidScreenStreamPayloadTest {
         assertEquals("screenStreamStart", start.getString("action"));
         assertEquals("req-stream", start.getString("requestId"));
         assertTrue(start.getBoolean("success"));
+        assertEquals("app", start.getString("source"));
         assertEquals("websocket", start.getString("transport"));
         assertEquals("jpeg", start.getString("format"));
         assertEquals(4, start.getInt("fps"));
@@ -109,6 +112,7 @@ public class AndroidScreenStreamPayloadTest {
         JSONObject meta = AndroidScreenStreamPayload.meta(request);
         assertEquals("screenStreamMeta", meta.getString("type"));
         assertEquals("android", meta.getString("platform"));
+        assertEquals("app", meta.getString("source"));
         assertEquals("jpeg", meta.getString("format"));
 
         JSONObject closed = AndroidScreenStreamPayload.event("screenStreamClosed", true, "finished");

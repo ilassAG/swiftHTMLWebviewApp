@@ -44,7 +44,10 @@ swiftHTMLWebviewApp/
 - Optional kiosk reload control that web apps can show, hide, and configure.
   A tap reloads the WebView; a long press terminates the app for kiosk setups
   that relaunch it automatically.
-- Screen streaming over WebSocket for diagnostics and remote viewing.
+- Screen streaming over WebSocket or NATS for diagnostics and remote viewing.
+- Native NATS remote management with auto-connect, status/telemetry events,
+  screenshots, QR image scan jobs, app-surface video frames, and reload/settings
+  commands.
 - ARKit local position stream.
 - ARKit guided measurement with start-anchor confirmation, anchor capture,
   relocalization events, and position updates.
@@ -145,10 +148,13 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
   `printerEpsonHelloWorld`.
 
 When provisioned, the wrapper also opens a native NATS connection on iOS and
-Android, publishes redacted status, and listens on
+Android, auto-connects on launch/resume, publishes redacted status/telemetry,
+and listens on
 `swift.wrapper.<appUUID>.commands.*` for the first remote management commands:
-`status`, `settings`, `settingsSet`, `screenshot`, `qrScanImage`,
-`screenStreamStart`, `screenStreamStop`, `reload`, and `natsStatus`.
+`status`, `settings`, `settingsSet`, `screenshot`, `qrScanImage` /
+`qrScanJob`, `screenStreamStart`, `screenStreamStop`, `reload`, and
+`natsStatus`. `tools/natscontrol` can watch NATS frames/events/replies and send
+screen-stream or QR scan commands.
 
 ## Printer Core Smoke Test
 
@@ -186,6 +192,15 @@ and the latest frame:
 ```sh
 cd tools/screenstreamviewer
 go run . -addr :18090
+```
+
+For NATS-based viewing and remote commands use:
+
+```sh
+cd tools/natscontrol
+go run . watch -app APP-UUID -creds /path/to/admin.creds
+go run . start -app APP-UUID -creds /path/to/admin.creds
+go run . qr -app APP-UUID -creds /path/to/admin.creds -image ./qr.png
 ```
 
 Open `http://<mac-ip>:18090/` in a browser and set the app demo page target to

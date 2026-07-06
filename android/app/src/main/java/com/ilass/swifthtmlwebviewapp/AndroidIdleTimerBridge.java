@@ -60,6 +60,15 @@ final class AndroidIdleTimerBridge {
         timedOut = false;
     }
 
+    JSONObject telemetrySnapshot() throws JSONException {
+        long idleMs = Math.max(0L, host.currentTimeMillis() - lastActivityMs);
+        return new JSONObject()
+                .put("running", running)
+                .put("idleSeconds", idleMs / 1000.0)
+                .put("timeoutSeconds", timeoutMs / 1000.0)
+                .put("timedOut", timedOut);
+    }
+
     void stop() {
         running = false;
         host.cancelIdleCheck(idleRunnable);

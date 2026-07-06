@@ -28,6 +28,9 @@ final class AndroidNatsSettings {
     String commandSubjectTemplate = "swift.wrapper.${appUUID}.commands.*";
     String responseSubjectTemplate = "swift.wrapper.${appUUID}.events.responses";
     String statusSubjectTemplate = "swift.wrapper.${appUUID}.status";
+    String telemetrySubjectTemplate = "swift.wrapper.${appUUID}.telemetry.status";
+    boolean telemetryEnabled = true;
+    int telemetryIntervalSeconds = 30;
 
     static AndroidNatsSettings fromStoredJson(String rawValue) {
         if (rawValue == null || rawValue.trim().isEmpty()) {
@@ -76,6 +79,11 @@ final class AndroidNatsSettings {
             settings.reconnectWaitMs = Math.max(100, Math.min(60000, intValue(reconnect.opt("reconnectWaitMs"), intValue(reconnect.opt("reconnect_wait_ms"), settings.reconnectWaitMs))));
             settings.pingIntervalSeconds = Math.max(1, Math.min(300, intValue(reconnect.opt("pingIntervalSeconds"), intValue(reconnect.opt("ping_interval_seconds"), settings.pingIntervalSeconds))));
         }
+        JSONObject telemetry = source.optJSONObject("telemetry");
+        if (telemetry != null) {
+            settings.telemetryEnabled = boolValue(telemetry.opt("enabled"), settings.telemetryEnabled);
+            settings.telemetryIntervalSeconds = Math.max(5, Math.min(300, intValue(telemetry.opt("intervalSeconds"), intValue(telemetry.opt("interval_seconds"), settings.telemetryIntervalSeconds))));
+        }
 
         JSONObject subjects = source.optJSONObject("subjects");
         if (subjects != null) {
@@ -84,6 +92,7 @@ final class AndroidNatsSettings {
             settings.commandSubjectTemplate = nonEmpty(subjects.optString("commandSubjectTemplate", subjects.optString("command_subject_template", settings.commandSubjectTemplate)), settings.commandSubjectTemplate);
             settings.responseSubjectTemplate = nonEmpty(subjects.optString("responseSubjectTemplate", subjects.optString("response_subject_template", settings.responseSubjectTemplate)), settings.responseSubjectTemplate);
             settings.statusSubjectTemplate = nonEmpty(subjects.optString("statusSubjectTemplate", subjects.optString("status_subject_template", settings.statusSubjectTemplate)), settings.statusSubjectTemplate);
+            settings.telemetrySubjectTemplate = nonEmpty(subjects.optString("telemetrySubjectTemplate", subjects.optString("telemetry_subject_template", settings.telemetrySubjectTemplate)), settings.telemetrySubjectTemplate);
         }
         return settings;
     }
@@ -100,12 +109,16 @@ final class AndroidNatsSettings {
                 .put("maxReconnects", maxReconnects)
                 .put("reconnectWaitMs", reconnectWaitMs)
                 .put("pingIntervalSeconds", pingIntervalSeconds));
+        object.put("telemetry", new JSONObject()
+                .put("enabled", telemetryEnabled)
+                .put("intervalSeconds", telemetryIntervalSeconds));
         object.put("subjects", new JSONObject()
                 .put("namespace", namespace)
                 .put("devicePrefixTemplate", devicePrefixTemplate)
                 .put("commandSubjectTemplate", commandSubjectTemplate)
                 .put("responseSubjectTemplate", responseSubjectTemplate)
-                .put("statusSubjectTemplate", statusSubjectTemplate));
+                .put("statusSubjectTemplate", statusSubjectTemplate)
+                .put("telemetrySubjectTemplate", telemetrySubjectTemplate));
         return object;
     }
 
@@ -118,7 +131,12 @@ final class AndroidNatsSettings {
         snapshot.put("identitySource", identitySource);
         snapshot.put("auth", new JSONObject()
                 .put("method", authMethod)
-                .put("credentialSet", credentialSet));
+                .put("credentialSet", credentialSet)
+                .put("supportedMethods", new JSONArray(supportedAuthMethods()))
+                .put("unsupportedMethods", new JSONArray(unsupportedAuthMethods())));
+        snapshot.put("telemetry", new JSONObject()
+                .put("enabled", telemetryEnabled)
+                .put("intervalSeconds", telemetryIntervalSeconds));
         snapshot.put("connected", connected);
         snapshot.put("lastError", lastError != null ? lastError : "");
         snapshot.put("subjects", new JSONObject()
@@ -126,12 +144,25 @@ final class AndroidNatsSettings {
                 .put("devicePrefix", devicePrefix(appUUID))
                 .put("commandSubject", commandSubject(appUUID))
                 .put("responseSubject", responseSubject(appUUID))
-                .put("statusSubject", statusSubject(appUUID)));
+                .put("statusSubject", statusSubject(appUUID))
+                .put("telemetrySubject", telemetrySubject(appUUID)));
         return snapshot;
     }
 
     boolean authRequiresSecret() {
         return !"none".equals(authMethod);
+    }
+
+    boolean authMethodSupportedByTransport() {
+        return supportedAuthMethods().contains(authMethod);
+    }
+
+    static List<String> supportedAuthMethods() {
+        return Arrays.asList("none", "token", "nkey", "creds");
+    }
+
+    static List<String> unsupportedAuthMethods() {
+        return Arrays.asList("userPassword", "tlsCertificate");
     }
 
     String clientName(String appUUID) {
@@ -154,6 +185,10 @@ final class AndroidNatsSettings {
         return replaceAppUUID(statusSubjectTemplate, appUUID);
     }
 
+    String telemetrySubject(String appUUID) {
+        return replaceAppUUID(telemetrySubjectTemplate, appUUID);
+    }
+
     private static AndroidNatsSettings copyOf(AndroidNatsSettings source) {
         AndroidNatsSettings settings = new AndroidNatsSettings();
         settings.enabled = source.enabled;
@@ -170,6 +205,9 @@ final class AndroidNatsSettings {
         settings.commandSubjectTemplate = source.commandSubjectTemplate;
         settings.responseSubjectTemplate = source.responseSubjectTemplate;
         settings.statusSubjectTemplate = source.statusSubjectTemplate;
+        settings.telemetrySubjectTemplate = source.telemetrySubjectTemplate;
+        settings.telemetryEnabled = source.telemetryEnabled;
+        settings.telemetryIntervalSeconds = source.telemetryIntervalSeconds;
         return settings;
     }
 

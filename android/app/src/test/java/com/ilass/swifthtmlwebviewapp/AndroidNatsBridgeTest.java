@@ -58,6 +58,28 @@ public class AndroidNatsBridgeTest {
     }
 
     @Test
+    public void provisionRejectsAuthMethodsNotSupportedByNativeTransport() throws Exception {
+        FakeHost host = new FakeHost();
+        MockCredentialStore credentials = new MockCredentialStore();
+        AndroidNatsBridge bridge = new AndroidNatsBridge(host, credentials, new MockConnectionDriver());
+
+        JSONObject response = bridge.provision(new JSONObject()
+                .put("requestId", "req-unsupported-auth")
+                .put("token", "current-token")
+                .put("nats", new JSONObject()
+                        .put("enabled", true)
+                        .put("urls", new org.json.JSONArray().put("tls://nats.example.invalid:4222"))
+                        .put("auth", new JSONObject()
+                                .put("method", "userPassword")
+                                .put("password", "SECRET"))));
+
+        assertEquals("natsProvision", response.getString("action"));
+        assertFalse(response.getBoolean("success"));
+        assertEquals("NATS auth method is not supported by the native transport yet: userPassword.", response.getString("error"));
+        assertFalse(credentials.hasCredential());
+    }
+
+    @Test
     public void connectUsesProvisionedCredentialThroughDriver() throws Exception {
         FakeHost host = new FakeHost();
         MockCredentialStore credentials = new MockCredentialStore();
@@ -149,6 +171,9 @@ public class AndroidNatsBridgeTest {
         bridge.connect(new JSONObject());
 
         connection.commandHandler.onCommand("swift.wrapper.APP-123.commands.qrScan", "{}".getBytes(StandardCharsets.UTF_8), "swift.wrapper.APP-123.reply.qr");
+        assertEquals("qrScanImage", host.lastCommandAction);
+
+        connection.commandHandler.onCommand("swift.wrapper.APP-123.commands.qrScanJob", "{}".getBytes(StandardCharsets.UTF_8), "swift.wrapper.APP-123.reply.qr-job");
         assertEquals("qrScanImage", host.lastCommandAction);
 
         connection.commandHandler.onCommand("swift.wrapper.APP-123.commands.videoStreamStart", "{}".getBytes(StandardCharsets.UTF_8), "swift.wrapper.APP-123.reply.video-start");

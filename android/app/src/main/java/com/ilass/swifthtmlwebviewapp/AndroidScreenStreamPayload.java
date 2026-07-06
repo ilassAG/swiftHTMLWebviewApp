@@ -21,6 +21,7 @@ final class AndroidScreenStreamPayload {
             format = "jpeg";
         }
         return new StreamRequest(
+                normalizedSource(request.optString("source", request.optString("captureSource", ""))),
                 "nats".equals(transport) ? "nats" : "websocket",
                 targetUrl,
                 subject,
@@ -44,6 +45,7 @@ final class AndroidScreenStreamPayload {
 
     static JSONObject startAck(JSONObject request, StreamRequest streamRequest) throws JSONException {
         JSONObject ack = response(request, "screenStreamStart", true, null);
+        ack.put("source", streamRequest.source);
         ack.put("transport", streamRequest.transport);
         if (streamRequest.isWebSocket()) {
             ack.put("targetUrl", streamRequest.targetUrl);
@@ -70,6 +72,7 @@ final class AndroidScreenStreamPayload {
         JSONObject meta = new JSONObject();
         meta.put("type", "screenStreamMeta");
         meta.put("platform", "android");
+        meta.put("source", request.source);
         meta.put("transport", request.transport);
         meta.put("format", request.format);
         meta.put("fps", request.fps);
@@ -117,7 +120,19 @@ final class AndroidScreenStreamPayload {
         return value.trim();
     }
 
+    static String normalizedSource(String value) {
+        String source = value == null ? "" : value.trim().toLowerCase(Locale.US);
+        if (source.isEmpty() || "app".equals(source) || "webview".equals(source) || "surface".equals(source)) {
+            return "app";
+        }
+        if ("device".equals(source) || "screen".equals(source) || "system".equals(source)) {
+            return "device";
+        }
+        return source;
+    }
+
     static final class StreamRequest {
+        final String source;
         final String targetUrl;
         final String transport;
         final String subject;
@@ -128,7 +143,8 @@ final class AndroidScreenStreamPayload {
         final int quality;
         final int maxWidth;
 
-        StreamRequest(String transport, String targetUrl, String subject, String metaSubject, String eventSubject, String format, int fps, int quality, int maxWidth) {
+        StreamRequest(String source, String transport, String targetUrl, String subject, String metaSubject, String eventSubject, String format, int fps, int quality, int maxWidth) {
+            this.source = source;
             this.transport = transport;
             this.targetUrl = targetUrl;
             this.subject = subject;

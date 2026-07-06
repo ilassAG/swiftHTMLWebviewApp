@@ -17,9 +17,15 @@ Implemented first pass:
 - Initial remote commands: `status`, `settings`, `settingsSet`, `screenshot`,
   `qrScanImage`, `screenStreamStart`, `screenStreamStop`, `reload`, and
   `natsStatus`.
+- Auto-connect on app start/resume when `nats.enabled` is true and credentials
+  are present.
+- Periodic device telemetry on
+  `swift.wrapper.<appUUID>.telemetry.status`.
+- NATS screen-stream tooling in `tools/natscontrol`.
 
-Not in the first pass: arbitrary web-exposed subscribe/unsubscribe, NATS screen
-video transport, and automatic NATS user provisioning.
+Not in the generic wrapper: arbitrary web-exposed subscribe/unsubscribe and
+automatic production NATS user provisioning. Product backends should own user
+creation and credential issuance.
 
 ## Infrastructure Boundary
 
@@ -129,7 +135,12 @@ Suggested persisted non-secret settings:
     },
     "subjects": {
       "namespace": "swift.wrapper",
-      "devicePrefixTemplate": "swift.wrapper.${appUUID}"
+      "devicePrefixTemplate": "swift.wrapper.${appUUID}",
+      "telemetrySubjectTemplate": "swift.wrapper.${appUUID}.telemetry.status"
+    },
+    "telemetry": {
+      "enabled": true,
+      "intervalSeconds": 30
     }
   }
 }
@@ -193,11 +204,11 @@ Recommended storage mapping:
 | Method | Non-secret config | Secret storage |
 | --- | --- | --- |
 | `none` | method only; dev/local only | none |
-| `token` | method, optional token label | token in Keychain |
-| `userPassword` | username may be non-secret | password in Keychain |
-| `nkey` | public NKey optional | NKey seed in Keychain |
-| `creds` | method, credential present flag | full `.creds` content in Keychain |
-| `tlsCertificate` | certificate label/fingerprint | private key or PKCS#12 in Keychain |
+| `token` | method, optional token label | token in Keychain / encrypted store |
+| `nkey` | public NKey optional | NKey seed in Keychain / encrypted store |
+| `creds` | method, credential present flag | full `.creds` content in Keychain / encrypted store |
+| `userPassword` | modeled only | currently rejected by native transport |
+| `tlsCertificate` | modeled only | currently rejected by native transport |
 
 Production should prefer `creds`.
 
@@ -323,7 +334,8 @@ Response:
 ### `natsConnect` / `natsDisconnect`
 
 Explicitly starts or stops the native NATS client. The wrapper may also connect
-automatically on launch when `nats.enabled` is true and credentials are present.
+automatically on launch/resume when `nats.enabled` is true and credentials are
+present. Auto-connect is best-effort and must not block the WebView.
 
 ### `natsPublish`
 
@@ -359,13 +371,14 @@ swift.wrapper.<appUUID>.events.*
 swift.wrapper.<appUUID>.commands.*
 swift.wrapper.<appUUID>.screen.frames
 swift.wrapper.<appUUID>.screen.meta
+swift.wrapper.<appUUID>.telemetry.status
 ```
 
 Example client permissions:
 
 | Direction | Subjects |
 | --- | --- |
-| publish | `swift.wrapper.<appUUID>.status`, `swift.wrapper.<appUUID>.events.*`, `swift.wrapper.<appUUID>.screen.*` |
+| publish | `swift.wrapper.<appUUID>.status`, `swift.wrapper.<appUUID>.events.*`, `swift.wrapper.<appUUID>.screen.*`, `swift.wrapper.<appUUID>.telemetry.status` |
 | subscribe | `swift.wrapper.<appUUID>.commands.*` |
 
 Management/backend users can have broader permissions, but mobile app
@@ -390,6 +403,7 @@ JSON metadata/events to companion subjects:
 ```json
 {
   "action": "screenStreamStart",
+  "source": "app",
   "transport": "nats",
   "subject": "swift.wrapper.${appUUID}.screen.frames",
   "metaSubject": "swift.wrapper.${appUUID}.screen.meta",
@@ -407,6 +421,9 @@ Implementation detail:
 - do not include credentials in stream metadata
 - rate-limit and stop streaming on disconnect or app background if required by
   platform policy
+- `source: "app"` captures the wrapper app/WebView surface. `source: "device"`
+  is reserved for a future ReplayKit/MediaProjection implementation and returns
+  a structured unavailable response in the current generic wrapper.
 
 ## QR Image Scan Over NATS
 
@@ -417,24 +434,69 @@ by sending a NATS command with an image payload:
 {
   "action": "qrScanImage",
   "requestId": "scan-1",
+  "jobId": "qr-job-1",
   "dataURL": "data:image/png;base64,..."
 }
 ```
 
 The command also accepts `imageBase64`, `imageData`, or `image`. The reply
 contains `success`, `format: "qr"`, `code` for the first match, and `codes` for
-all matches the platform decoder returns. The image is decoded in memory only
-and is not persisted or echoed back.
+all matches the platform decoder returns. Job fields such as `jobId`, `taskId`,
+`scanJobId`, and `distributionId` are echoed, and replies include the
+`workerAppUUID`. The image is decoded in memory only and is not persisted or
+echoed back.
+
+## Telemetry And Heartbeats
+
+When NATS is enabled and connected, the wrapper publishes periodic telemetry to:
+
+```text
+swift.wrapper.<appUUID>.telemetry.status
+```
+
+The payload includes:
+
+- `appUUID`, configured device name/UUID/location
+- app/activity state
+- idle timer state
+- current screen-stream state
+- redacted NATS status
+- battery, screen, network, and capability snapshot
+
+Telemetry is best-effort and contains no NATS credentials.
+
+## NATS Control Tool
+
+`tools/natscontrol` is a small Go operator tool for development and admin
+diagnostics. It can:
+
+- watch `.screen.frames`, `.screen.meta`, `.screen.events`, `.events.responses`,
+  `.status`, and telemetry subjects
+- serve a local HTTP viewer for the latest NATS frame stream
+- send `screenStreamStart` / `screenStreamStop`
+- send QR image scan jobs
+- send arbitrary allowed commands
+
+Example:
+
+```sh
+cd tools/natscontrol
+go run . watch -app APP-UUID -creds /path/to/admin.creds
+go run . start -app APP-UUID -creds /path/to/admin.creds
+go run . qr -app APP-UUID -creds /path/to/admin.creds -image ./qr.png
+```
 
 ## Swift Implementation Notes
 
-Expected new native components:
+Implemented native components:
 
 - `NATSSettings.swift`: parse, validate, redact, persist non-secret settings.
-- `NATSKeychainStore.swift`: store/delete/load credential material.
-- `NATSClientService.swift`: own connection lifecycle and reconnect behavior.
+- `NATSKeychainStore`: store/delete/load iOS credential material.
+- `AndroidNatsEncryptedCredentialStore`: store/delete/load Android credential
+  material.
+- `NATSSwiftConnectionDriver` / `AndroidNatsClientConnectionDriver`: own
+  connection lifecycle, command subscription, and publish behavior.
 - `NATSBridge.swift`: bridge actions and response payloads.
-- `NATSPayload.swift`: pure payload parsing/response builders for tests.
 
 Current app architecture already favors testable payload/helper structs. Follow
 that pattern and add unit tests before wiring into `ContentView`.
@@ -451,8 +513,7 @@ Important integration points:
   Keychain and only return redacted status.
 - `DeviceBridge.deviceInfo`: may expose NATS capability and connection status,
   never secrets.
-- `ScreenStreamBridge`: add NATS transport only after `NATSClientService` is
-  available.
+- `ScreenStreamBridge`: supports WebSocket and NATS app-surface transport.
 
 ## Tests To Add
 
@@ -469,6 +530,7 @@ iOS unit tests:
   and `tlsCertificate`.
 - Screen-stream NATS payload generation builds subjects from `appUUID` and does
   not include secrets.
+- Telemetry subject generation and redacted payloads contain no credentials.
 
 Bridge contract/doc tests:
 
@@ -483,22 +545,22 @@ Android parity:
 - Store secrets outside SharedPreferences unless encrypted.
 - Keep response names and redaction behavior identical.
 
-## Rollout Plan
+## Remaining Rollout Work
 
-1. Add config and Keychain storage types with tests.
-2. Add bridge payloads/actions with redacted status only.
-3. Add Swift NATS connection spike against a non-production test credential.
-4. Wire product-specific cluster defaults in private variants that need NATS.
-5. Add provisioning backend/tool support for issuing per-`appUUID` `.creds`.
-6. Add NATS screen-stream transport as a separate step.
-7. Add Android parity only after the iOS bridge contract is stable.
+1. Wire product-specific cluster defaults in private variants that need NATS.
+2. Add production provisioning backend/tool support for issuing per-`appUUID`
+   `.creds` in the consuming product implementation.
+3. Add a true full-device screen capture implementation only if product policy
+   requires it: ReplayKit/Broadcast Extension on iOS and MediaProjection plus a
+   foreground service on Android.
+4. Run real-cluster smoke tests in CI with short-lived non-production
+   credentials.
 
 ## Non-Goals For First Implementation
 
 - Do not auto-create NATS users from unauthenticated app launches.
 - Do not put NATS credentials in `appConfig`, UserDefaults, local HTML, or
   variant manifests.
-- Do not expose arbitrary subscribe/publish to JavaScript without a clear
-  subject policy.
-- Do not replace existing WebSocket screen streaming in the first NATS pass.
+- Do not expose arbitrary subscribe to JavaScript without a clear subject
+  policy.
 - Do not use `deviceUUID` as the immutable NATS identity.

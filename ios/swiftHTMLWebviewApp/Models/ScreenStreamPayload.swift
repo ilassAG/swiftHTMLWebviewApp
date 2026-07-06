@@ -9,6 +9,7 @@ import Foundation
 
 enum ScreenStreamPayload {
     struct StreamRequest {
+        let source: String
         let transport: String
         let targetUrl: String
         let subject: String
@@ -51,6 +52,7 @@ enum ScreenStreamPayload {
             : explicitTransport
 
         return StreamRequest(
+            source: normalizedSource(stringValue(request["source"] ?? request["captureSource"])),
             transport: transport == "nats" ? "nats" : "websocket",
             targetUrl: nonEmpty(stringValue(request["targetUrl"]), fallback: stringValue(request["url"])),
             subject: subject,
@@ -65,6 +67,7 @@ enum ScreenStreamPayload {
 
     static func startAck(request: [String: Any], streamRequest: StreamRequest) -> [String: Any] {
         var response = response(request: request, action: "screenStreamStart", success: true)
+        response["source"] = streamRequest.source
         response["transport"] = streamRequest.transport
         if streamRequest.isWebSocket {
             response["targetUrl"] = streamRequest.targetUrl
@@ -105,6 +108,7 @@ enum ScreenStreamPayload {
         [
             "type": "screenStreamMeta",
             "platform": "ios",
+            "source": streamRequest.source,
             "transport": streamRequest.transport,
             "format": "jpeg",
             "fps": streamRequest.fps,
@@ -162,5 +166,17 @@ enum ScreenStreamPayload {
             return nil
         }
         return value
+    }
+
+    private static func normalizedSource(_ value: String) -> String {
+        let source = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch source {
+        case "", "app", "webview", "surface":
+            return "app"
+        case "device", "screen", "system":
+            return "device"
+        default:
+            return source
+        }
     }
 }

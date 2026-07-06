@@ -21,6 +21,9 @@ final class NATSSettingsTests: XCTestCase {
         XCTAssertEqual(settings.commandSubject(appUUID: "APP-123"), "swift.wrapper.APP-123.commands.*")
         XCTAssertEqual(settings.responseSubject(appUUID: "APP-123"), "swift.wrapper.APP-123.events.responses")
         XCTAssertEqual(settings.statusSubject(appUUID: "APP-123"), "swift.wrapper.APP-123.status")
+        XCTAssertEqual(settings.telemetrySubject(appUUID: "APP-123"), "swift.wrapper.APP-123.telemetry.status")
+        XCTAssertTrue(settings.telemetryEnabled)
+        XCTAssertEqual(settings.telemetryIntervalSeconds, 30)
     }
 
     func testRejectsInvalidURLSchemes() {
@@ -41,6 +44,8 @@ final class NATSSettingsTests: XCTestCase {
         XCTAssertEqual(NATSAuthMethod.parse("creds"), NATSAuthMethod.creds)
         XCTAssertEqual(NATSAuthMethod.parse("tlsCertificate"), NATSAuthMethod.tlsCertificate)
         XCTAssertNil(NATSAuthMethod.parse("jwt"))
+        XCTAssertEqual(NATSAuthMethod.supportedTransportMethods, ["none", "token", "nkey", "creds"])
+        XCTAssertEqual(NATSAuthMethod.unsupportedTransportMethods, ["userPassword", "tlsCertificate"])
     }
 
     func testPersistedJSONDoesNotContainSecrets() throws {
@@ -76,8 +81,11 @@ final class NATSSettingsTests: XCTestCase {
         XCTAssertEqual(snapshot["clientName"] as? String, "swift-wrapper-APP-123")
         XCTAssertEqual(auth?["method"] as? String, "creds")
         XCTAssertEqual(auth?["credentialSet"] as? Bool, true)
+        XCTAssertEqual(auth?["supportedMethods"] as? [String], ["none", "token", "nkey", "creds"])
         XCTAssertNil(auth?["creds"])
         XCTAssertEqual(snapshot["lastError"] as? String, "offline")
         XCTAssertEqual((snapshot["subjects"] as? [String: Any])?["commandSubject"] as? String, "swift.wrapper.APP-123.commands.*")
+        XCTAssertEqual((snapshot["subjects"] as? [String: Any])?["telemetrySubject"] as? String, "swift.wrapper.APP-123.telemetry.status")
+        XCTAssertEqual((snapshot["telemetry"] as? [String: Any])?["intervalSeconds"] as? Int, 30)
     }
 }

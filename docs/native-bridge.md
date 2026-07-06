@@ -118,7 +118,9 @@ before platform builds.
 in native secret storage: Keychain on iOS, Android Keystore-backed encrypted
 storage on Android. `natsStatus`, `natsConnect`, `natsDisconnect`, and
 `natsPublish` expose the local control plane to web content without returning
-credentials.
+credentials. When NATS is enabled and credentials are present, the wrapper
+auto-connects on app launch/resume and publishes best-effort telemetry to
+`swift.wrapper.<appUUID>.telemetry.status`.
 
 After a successful native connection the wrapper subscribes to:
 
@@ -128,20 +130,25 @@ swift.wrapper.<appUUID>.commands.*
 
 The first supported remote command set is deliberately small and scoped:
 `status`/`deviceInfoGet`, `settings`/`settingsGet`, `settingsSet`,
-`screenshot`/`screenshotGet`, `qrScan`/`qrScanImage`, `screenStreamStart`,
-`screenStreamStop`, `reload`, and `natsStatus`. Command responses are published
-to the NATS message reply subject, an explicit JSON `replyTo`, or the configured
-default response subject
+`screenshot`/`screenshotGet`, `qrScan`/`qrScanImage`, `qrScanJob`,
+`screenStreamStart`, `screenStreamStop`, `reload`, and `natsStatus`. Command
+responses are published to the NATS message reply subject, an explicit JSON
+`replyTo`, or the configured default response subject
 `swift.wrapper.<appUUID>.events.responses`.
 
 `qrScanImage` accepts an image as `imageBase64`, `imageData`, `dataURL`, or
 `image` and replies with the first decoded QR value as `code` plus a `codes`
-array. The image payload is not persisted or returned.
+array. Job metadata fields such as `jobId`, `scanJobId`, `taskId`, and
+`distributionId` are echoed and the reply includes `workerAppUUID`. The image
+payload is not persisted or returned.
 
 `screenStreamStart` over NATS publishes JPEG frame bytes to
 `swift.wrapper.<appUUID>.screen.frames` by default, JSON metadata to
 `.screen.meta`, and stream events/stats to `.screen.events`. WebSocket streaming
-remains available for local tools.
+remains available for local tools. `source: "app"` captures the wrapper
+app/WebView surface. `source: "device"` is reserved for future ReplayKit /
+MediaProjection support and returns a structured unavailable response in this
+generic build.
 
 ## ARKit guided measurement
 
@@ -926,6 +933,7 @@ bridge. The bridge only controls start/stop and receives status/stats events.
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({
   action: 'screenStreamStart',
+  source: 'app',
   transport: 'websocket',
   targetUrl: 'ws://<viewer-host>:18090/screen',
   format: 'jpeg',
@@ -940,6 +948,7 @@ NATS transport uses device-scoped subjects:
 ```js
 window.webkit.messageHandlers.swiftBridge.postMessage({
   action: 'screenStreamStart',
+  source: 'app',
   transport: 'nats',
   subject: 'swift.wrapper.<appUUID>.screen.frames',
   metaSubject: 'swift.wrapper.<appUUID>.screen.meta',

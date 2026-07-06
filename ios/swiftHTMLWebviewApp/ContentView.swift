@@ -115,6 +115,7 @@ struct ContentView: View {
     @State private var bridgeRouter: BridgeRouter?
     @State private var kioskReloadControl = KioskReloadControlConfig()
     @State private var postWifiReloadGeneration = UUID()
+    @State private var natsTelemetryTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -166,11 +167,14 @@ struct ContentView: View {
             configureConfigPairingBridge()
             configureNotificationBridge()
             configureNATSCommandExecutor()
+            startNATSRuntime(reason: "appStart")
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
                 print("App became active. Checking for URL updates.")
                 webViewStore.reloadCurrentOrNewURL()
+                connectNATSIfConfigured(reason: "sceneActive")
+                publishNATSTelemetry(reason: "sceneActive")
             }
         }
         .onDisappear {
@@ -185,6 +189,7 @@ struct ContentView: View {
             _ = configPairingBridge.stopTargetSession(request: ["action": "configPairingStop"])
             nfcTagReaderBridge.shutdown()
             beaconAdvertiserBridge.shutdown()
+            stopNATSTelemetry()
             _ = natsBridge.disconnect(request: ["action": "natsDisconnect"])
         }
         .sheet(isPresented: $showDocumentScanner, onDismiss: handleSheetDismiss) {
@@ -519,7 +524,11 @@ struct ContentView: View {
             currentRequest = nil
         }
         .on("natsProvision") { message in
-            webViewStore.sendResultToWebView(result: natsBridge.provision(request: message))
+            let response = natsBridge.provision(request: message)
+            webViewStore.sendResultToWebView(result: response)
+            if (response["success"] as? Bool) == true {
+                startNATSRuntime(reason: "provisioned")
+            }
             currentRequest = nil
         }
         .on("natsStatus") { message in
@@ -858,6 +867,94 @@ struct ContentView: View {
         }
     }
 
+    private func startNATSRuntime(reason: String) {
+        connectNATSIfConfigured(reason: reason)
+        scheduleNATSTelemetry()
+        publishNATSTelemetry(reason: reason)
+    }
+
+    private func connectNATSIfConfigured(reason: String) {
+        natsBridge.connectIfConfigured(reason: reason)
+    }
+
+    private func scheduleNATSTelemetry() {
+        let settings = AppSettings.shared.natsConfiguration
+        guard settings.telemetryEnabled else {
+            stopNATSTelemetry()
+            return
+        }
+        let interval = TimeInterval(max(5, settings.telemetryIntervalSeconds))
+        if natsTelemetryTimer?.isValid == true,
+           natsTelemetryTimer?.timeInterval == interval {
+            return
+        }
+        stopNATSTelemetry()
+        natsTelemetryTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            Task { @MainActor in
+                publishNATSTelemetry(reason: "interval")
+            }
+        }
+    }
+
+    private func stopNATSTelemetry() {
+        natsTelemetryTimer?.invalidate()
+        natsTelemetryTimer = nil
+    }
+
+    private func publishNATSTelemetry(reason: String) {
+        connectNATSIfConfigured(reason: "telemetry-\(reason)")
+        guard natsBridge.isConnected else { return }
+        _ = natsBridge.publishTelemetry(payload: natsTelemetryPayload(reason: reason))
+    }
+
+    private func natsTelemetryPayload(reason: String) -> [String: Any] {
+        var device = deviceBridge.deviceInfo(request: ["action": "deviceInfoGet", "source": "natsTelemetry"])
+        device["nats"] = NSNull()
+        let formatter = ISO8601DateFormatter()
+        return [
+            "type": "natsTelemetry",
+            "action": "natsTelemetry",
+            "platform": "ios",
+            "timestamp": formatter.string(from: Date()),
+            "reason": reason,
+            "appUUID": AppSettings.shared.appUUIDString,
+            "deviceName": AppSettings.shared.deviceName,
+            "deviceUUID": AppSettings.shared.deviceUUIDString,
+            "deviceLocation": AppSettings.shared.deviceLocation,
+            "scenePhase": scenePhaseName(scenePhase),
+            "idle": idleTimerBridge.telemetrySnapshot(),
+            "screenStream": screenStreamBridge.telemetrySnapshot(),
+            "nats": natsBridge.statusSnapshot(),
+            "device": device
+        ]
+    }
+
+    private func scenePhaseName(_ phase: ScenePhase) -> String {
+        switch phase {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private func natsQRScanImageResponse(request: [String: Any]) -> [String: Any] {
+        var response = QRCodeImageScanner.response(request: request)
+        response["workerAppUUID"] = AppSettings.shared.appUUIDString
+        response["completedAt"] = ISO8601DateFormatter().string(from: Date())
+        for key in ["jobId", "scanJobId", "taskId", "distributionId"] {
+            let value = stringValue(request[key]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                response[key] = value
+            }
+        }
+        return response
+    }
+
     private func executeNATSCommand(_ command: [String: Any], completion: @escaping ([String: Any]) -> Void) {
         var message = command
         let action = stringValue(message["action"]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -883,7 +980,7 @@ struct ContentView: View {
                 completion(result)
             }
         case "qrScanImage":
-            completion(QRCodeImageScanner.response(request: message))
+            completion(natsQRScanImageResponse(request: message))
         case "screenStreamStart":
             let natsRequest = natsScreenStreamRequest(from: message)
             let eventSubject = stringValue(natsRequest["eventSubject"]).trimmingCharacters(in: .whitespacesAndNewlines)

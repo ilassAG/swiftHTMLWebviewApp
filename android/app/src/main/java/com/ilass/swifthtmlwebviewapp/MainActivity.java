@@ -189,6 +189,13 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
     private JSONObject pendingTapToPayRequest;
     private Runnable loadTimeoutRunnable;
     private boolean webBridgeReady = false;
+    private final Runnable natsTelemetryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            publishNatsTelemetry("interval");
+            scheduleNatsTelemetry();
+        }
+    };
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -398,6 +405,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             loadConfiguredUrlFromSettings();
         }
         handleNotificationIntent(getIntent());
+        startNatsRuntime("appStart");
     }
 
     @Override
@@ -409,6 +417,12 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             webView.loadUrl(nextUrl.trim());
         }
         handleNotificationIntent(intent);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        startNatsRuntime("activityResume");
     }
 
     @Override
@@ -454,6 +468,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         if (nfcTagReaderBridge != null) {
             nfcTagReaderBridge.shutdown();
         }
+        loadHandler.removeCallbacks(natsTelemetryRunnable);
         if (natsBridge != null) {
             try {
                 natsBridge.disconnect(new JSONObject());
@@ -618,7 +633,13 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 .on("idleActivity", message -> idleTimerBridge.recordActivity())
                 .on("screenStreamStart", message -> sendResult(screenStreamBridge.start(message)))
                 .on("screenStreamStop", message -> sendResult(screenStreamBridge.stop(message)))
-                .on("natsProvision", message -> sendResult(natsBridge.provision(message)))
+                .on("natsProvision", message -> {
+                    JSONObject response = natsBridge.provision(message);
+                    sendResult(response);
+                    if (response.optBoolean("success", false)) {
+                        startNatsRuntime("provisioned");
+                    }
+                })
                 .on("natsStatus", message -> sendResult(natsBridge.status(message)))
                 .on("natsConnect", message -> sendResult(natsBridge.connect(message)))
                 .on("natsDisconnect", message -> sendResult(natsBridge.disconnect(message)))
@@ -754,6 +775,71 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
         public void postMessage(String rawMessage) {
             bridgeRouter.postMessage(rawMessage);
         }
+    }
+
+    private void startNatsRuntime(String reason) {
+        connectNatsIfConfigured(reason);
+        scheduleNatsTelemetry();
+        publishNatsTelemetry(reason);
+    }
+
+    private void connectNatsIfConfigured(String reason) {
+        if (natsBridge != null && !natsBridge.isConnected()) {
+            new Thread(() -> natsBridge.connectIfConfigured(reason), "NATS-AutoConnect").start();
+        }
+    }
+
+    private void scheduleNatsTelemetry() {
+        loadHandler.removeCallbacks(natsTelemetryRunnable);
+        if (natsBridge == null) {
+            return;
+        }
+        AndroidNatsSettings settings = settingsStore().natsSettings();
+        if (!settings.telemetryEnabled) {
+            return;
+        }
+        long intervalMs = Math.max(5000L, settings.telemetryIntervalSeconds * 1000L);
+        loadHandler.postDelayed(natsTelemetryRunnable, intervalMs);
+    }
+
+    private void publishNatsTelemetry(String reason) {
+        if (natsBridge == null) {
+            return;
+        }
+        JSONObject payload;
+        try {
+            payload = natsTelemetryPayload(reason);
+        } catch (JSONException error) {
+            // Telemetry is best-effort and must not affect the WebView.
+            return;
+        }
+        new Thread(() -> {
+            natsBridge.connectIfConfigured("telemetry-" + (reason != null ? reason : ""));
+            if (natsBridge.isConnected()) {
+                natsBridge.publishTelemetry(payload);
+            }
+        }, "NATS-Telemetry").start();
+    }
+
+    private JSONObject natsTelemetryPayload(String reason) throws JSONException {
+        JSONObject device = deviceInfo(new JSONObject()
+                .put("action", "deviceInfoGet")
+                .put("source", "natsTelemetry"));
+        return new JSONObject()
+                .put("type", "natsTelemetry")
+                .put("action", "natsTelemetry")
+                .put("platform", "android")
+                .put("timestamp", java.time.Instant.now().toString())
+                .put("reason", reason != null ? reason : "")
+                .put("appUUID", configAppUUID())
+                .put("deviceName", configDeviceName())
+                .put("deviceUUID", configDeviceUUID())
+                .put("deviceLocation", configDeviceLocation())
+                .put("activityState", "resumed")
+                .put("idle", idleTimerBridge.telemetrySnapshot())
+                .put("screenStream", screenStreamBridge.telemetrySnapshot())
+                .put("nats", natsBridge.statusSnapshot())
+                .put("device", device);
     }
 
     private void launchConfetti(JSONObject message) throws JSONException {
@@ -1743,7 +1829,7 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 }
                 return screenshotGet(message);
             case "qrScanImage":
-                return AndroidQrImageScanner.response(message);
+                return natsQrScanImageResponse(message);
             case "screenStreamStart":
                 JSONObject natsStreamRequest = natsScreenStreamRequest(message);
                 return screenStreamBridge.start(natsStreamRequest, (subject, payload) -> natsBridge.publishData(subject, payload));
@@ -1754,6 +1840,19 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
             default:
                 return BridgeResponse.error(message, action.isEmpty() ? "natsCommand" : action, "NATS command is not allowed: " + action);
         }
+    }
+
+    private JSONObject natsQrScanImageResponse(JSONObject request) throws JSONException {
+        JSONObject response = AndroidQrImageScanner.response(request);
+        response.put("workerAppUUID", configAppUUID());
+        response.put("completedAt", java.time.Instant.now().toString());
+        for (String key : new String[]{"jobId", "scanJobId", "taskId", "distributionId"}) {
+            String value = request.optString(key, "").trim();
+            if (!value.isEmpty()) {
+                response.put(key, value);
+            }
+        }
+        return response;
     }
 
     private JSONObject natsScreenStreamRequest(JSONObject command) throws JSONException {

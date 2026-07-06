@@ -78,6 +78,26 @@ final class NATSBridgeTests: XCTestCase {
         XCTAssertFalse("\(response)".contains("SECRET-CREDS"))
     }
 
+    func testProvisionRejectsAuthMethodsNotSupportedByNativeTransport() {
+        let response = bridge.provision(request: [
+            "requestId": "req-unsupported-auth",
+            "token": "current-token",
+            "nats": [
+                "enabled": true,
+                "urls": ["tls://nats.example.invalid:4222"],
+                "auth": [
+                    "method": "userPassword",
+                    "password": "SECRET"
+                ]
+            ]
+        ])
+
+        XCTAssertEqual(response["action"] as? String, "natsProvision")
+        XCTAssertEqual(response["success"] as? Bool, false)
+        XCTAssertEqual(response["error"] as? String, "NATS auth method is not supported by the native transport yet: userPassword.")
+        XCTAssertFalse(credentialStore.hasCredential())
+    }
+
     func testConnectUsesProvisionedCredentialThroughDriver() {
         _ = bridge.provision(request: [
             "token": "current-token",
@@ -163,7 +183,7 @@ final class NATSBridgeTests: XCTestCase {
         }
         _ = bridge.connect(request: [:])
 
-        for subjectAction in ["qrScan", "videoStreamStart", "videoStreamStop"] {
+        for subjectAction in ["qrScan", "qrScanJob", "videoStreamStart", "videoStreamStop"] {
             let published = expectation(description: "published \(subjectAction)")
             connection.publishExpectation = published
             connection.commandHandler?(
@@ -174,7 +194,7 @@ final class NATSBridgeTests: XCTestCase {
             await fulfillment(of: [published], timeout: 1)
         }
 
-        XCTAssertEqual(actions, ["qrScanImage", "screenStreamStart", "screenStreamStop"])
+        XCTAssertEqual(actions, ["qrScanImage", "qrScanImage", "screenStreamStart", "screenStreamStop"])
     }
 
     func testInternalBinaryPublishIsScopedToDeviceNamespace() {
