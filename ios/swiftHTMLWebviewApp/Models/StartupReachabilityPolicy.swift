@@ -39,6 +39,10 @@ enum StartupReachabilityPolicy {
         highAvailabilityEnabled ? TimeInterval(max(seconds, 1)) : 60
     }
 
+    static func isSuccessfulProbeStatusCode(_ statusCode: Int) -> Bool {
+        (200..<400).contains(statusCode)
+    }
+
     static func failoverDelay(seconds: Int) -> DispatchTimeInterval {
         .seconds(max(seconds, 1))
     }

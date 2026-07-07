@@ -1081,7 +1081,7 @@ struct ContentView: View {
                     Spacer()
                     HStack {
                         Button {
-                            webViewStore.reloadCurrentOrNewURL()
+                            webViewStore.reloadCurrentPageFromUserAction()
                         } label: {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 22, weight: .bold))

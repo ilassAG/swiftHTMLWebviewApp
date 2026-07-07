@@ -60,6 +60,12 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         let newWebView = WKWebView(frame: .zero, configuration: configuration)
         newWebView.allowsBackForwardNavigationGestures = false
         newWebView.navigationDelegate = self
+        newWebView.scrollView.contentInsetAdjustmentBehavior = .never
+        newWebView.scrollView.contentInset = .zero
+        newWebView.scrollView.scrollIndicatorInsets = .zero
+        if #available(iOS 13.0, *) {
+            newWebView.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+        }
         return newWebView
     }
 
@@ -180,6 +186,17 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
+    func reloadCurrentPageFromUserAction() {
+        guard hasStartedInitialLoad, webView.url != nil else {
+            loadConfiguredURLIfNeeded()
+            return
+        }
+
+        print("Reloading current web page natively: \(String(describing: webView.url))")
+        hasReloadedFromOrigin = false
+        webView.reload()
+    }
+
     private func loadLocalHTML() {
         guard let url = Configuration.localHTMLURL() else {
             print(String(format: NSLocalizedString("error.webView.localHTMLNotFound", comment: "Local HTML file not found error format"), Configuration.localHTMLFileName))
@@ -262,7 +279,7 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
             guard let httpResponse = response as? HTTPURLResponse else {
                 return true
             }
-            return (200..<500).contains(httpResponse.statusCode)
+            return StartupReachabilityPolicy.isSuccessfulProbeStatusCode(httpResponse.statusCode)
         } catch {
             print("Availability probe failed for \(url.absoluteString): \(error.localizedDescription)")
             return false
