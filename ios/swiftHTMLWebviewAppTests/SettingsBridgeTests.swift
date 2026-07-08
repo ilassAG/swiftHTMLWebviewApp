@@ -61,6 +61,27 @@ final class SettingsBridgeTests: XCTestCase {
         XCTAssertEqual(settings.serverURL, AppVariant.demo.defaults.serverURL)
     }
 
+    func testSettingsSetAllowsInitialConfigurationWhenStoredTokenIsEmpty() {
+        settings.securityToken = ""
+
+        let response = bridge.setResponse(request: [
+            "requestId": "req-initial",
+            "settings": [
+                "serverURL": "https://example.invalid/mobile/",
+                "appConfig": [
+                    "siteKey": "Demo Site"
+                ]
+            ]
+        ])
+        let snapshot = response["settings"] as? [String: Any]
+        let appConfig = snapshot?["appConfig"] as? [String: Any]
+
+        XCTAssertEqual(response["action"] as? String, "settingsSet")
+        XCTAssertEqual(response["success"] as? Bool, true)
+        XCTAssertEqual(settings.serverURL, "https://example.invalid/mobile/")
+        XCTAssertEqual(appConfig?["siteKey"] as? String, "Demo Site")
+    }
+
     func testSettingsSetAppliesNestedSettingsWhenTokenMatches() {
         settings.securityToken = "current-token"
 

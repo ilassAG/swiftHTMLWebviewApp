@@ -638,7 +638,7 @@ struct ContentView: View {
         .on("reload") { message in
             webViewStore.sendResultToWebView(result: NativeCommandPayload.reloadResponse(request: message))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                webViewStore.reloadCurrentOrNewURL()
+                webViewStore.reloadCurrentPageFromUserAction()
             }
             currentRequest = nil
         }
@@ -1001,7 +1001,7 @@ struct ContentView: View {
         case "reload":
             completion(NativeCommandPayload.reloadResponse(request: message))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                webViewStore.reloadCurrentOrNewURL()
+                webViewStore.reloadCurrentPageFromUserAction()
             }
         default:
             completion(BridgeResponse.error(
@@ -1081,7 +1081,7 @@ struct ContentView: View {
                     Spacer()
                     HStack {
                         Button {
-                            webViewStore.reloadCurrentOrNewURL()
+                            webViewStore.reloadCurrentPageFromUserAction()
                         } label: {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 22, weight: .bold))

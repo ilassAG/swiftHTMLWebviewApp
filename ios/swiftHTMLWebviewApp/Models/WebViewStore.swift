@@ -180,6 +180,17 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
+    func reloadCurrentPageFromUserAction() {
+        guard hasStartedInitialLoad, webView.url != nil else {
+            loadConfiguredURLIfNeeded()
+            return
+        }
+
+        print("Reloading current web page natively: \(String(describing: webView.url))")
+        hasReloadedFromOrigin = false
+        webView.reload()
+    }
+
     private func loadLocalHTML() {
         guard let url = Configuration.localHTMLURL() else {
             print(String(format: NSLocalizedString("error.webView.localHTMLNotFound", comment: "Local HTML file not found error format"), Configuration.localHTMLFileName))

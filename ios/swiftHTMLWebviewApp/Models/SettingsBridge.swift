@@ -23,7 +23,9 @@ struct SettingsBridge {
 
     func setResponse(request: [String: Any]) -> [String: Any] {
         let token = stringValue(request["token"] ?? request["securityToken"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty, token == settings.securityToken else {
+        let storedToken = settings.securityToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokenAccepted = storedToken.isEmpty ? token.isEmpty : token == storedToken
+        guard tokenAccepted else {
             return BridgeResponse.error(
                 request: request,
                 action: "settingsSet",
