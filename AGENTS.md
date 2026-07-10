@@ -17,6 +17,38 @@ bridge behavior, optional native modules, demo/example config, validation tools,
 and sanitized fixtures here. Do not add new real product data to this
 repository unless the user explicitly asks for a temporary migration step.
 
+## Downstream Product Sync
+
+The ZeltPOS/Kassa native wrapper client is a separate product repository at
+`/Users/raistlin/Dropbox/1 ilass AG/Projekte/KassaRunnigDevelopment/kassa-zeltpos-native-wrapper`.
+It consumes this repository as a vendored/subtree-style upstream under
+`vendor/swiftHTMLWebviewApp/` and keeps product-specific iOS/Android copies
+under `native/kassa/ios/` and `native/kassa/android/`.
+
+When shared wrapper behavior changes, make the generic change in this global
+`ilassAG/swiftHTMLWebviewApp` repository first and commit it here. Then import
+that commit into the product repository with the appropriate git vendor/subtree
+sync and mirror it into the product copy. Do not leave shared wrapper fixes only
+in a downstream product repo. Product repos should only own app identity,
+bundle/application IDs, signing, store metadata, icons, splash/loading assets,
+deployment URLs, and product configuration.
+
+## iOS Device Screenshots
+
+For screenshots from a USB-connected physical iPad/iPhone, prefer the DVT
+screenshot path. `idevicescreenshot` / `screenshotr` can fail on iOS 17.x.
+
+1. Get the USB UDID: `idevice_id -l`.
+2. Start an RSD tunnel and keep it running:
+   `sudo pymobiledevice3 remote start-tunnel --udid <UDID> --script-mode`.
+   The command prints `<RSD_HOST> <RSD_PORT>`.
+3. Capture the screenshot:
+   `pymobiledevice3 developer dvt screenshot --rsd <RSD_HOST> <RSD_PORT> output/ipad-screenshots/<name>.png`.
+4. Stop the tunnel with Ctrl-C.
+
+If sudo is needed on this Mac, the local password is stored at
+`/Users/raistlin/Dropbox/1 ilass AG/Projekte/natsViewer/sudo.txt`.
+
 ## Current Native Bridge Contract
 Web apps call native features by posting messages into the platform bridge. Keep the web-facing API stable across iOS and Android.
 
