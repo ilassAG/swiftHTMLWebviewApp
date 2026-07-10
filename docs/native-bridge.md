@@ -537,6 +537,7 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
   camera: 'back',
   mode: 'data',
   repeatDelaySeconds: 1.2,
+  showCloseButton: true,
   types: ['qr', 'ean13', 'ean8', 'code128', 'datamatrix'],
   previewRect: { top: 0.18, left: 0.1, width: 0.8, height: 0.36 }
 });
@@ -544,6 +545,8 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 
 The preview rectangle accepts relative values from `0` to `1`. Percent-like
 values from `0` to `100` are also accepted by the native iOS bridge.
+`showCloseButton` controls whether the scanner can be stopped from its native
+overlay and defaults to `true`; the legacy alias `closeButton` is also accepted.
 
 Scanner events are pushed through `window.handleNativeResult(...)`:
 

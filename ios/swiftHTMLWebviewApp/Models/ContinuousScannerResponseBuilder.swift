@@ -24,6 +24,9 @@ enum ContinuousScannerResponseBuilder {
             ?? numericValue(request["repeatDelay"])
             ?? config.repeatDelaySeconds
         config.previewRect = previewRect(from: request["previewRect"] as? [String: Any]) ?? config.previewRect
+        config.showCloseButton = boolValue(request["showCloseButton"])
+            ?? boolValue(request["closeButton"])
+            ?? config.showCloseButton
         config.showFlipButton = boolValue(request["showFlipButton"])
             ?? boolValue(request["flipButton"])
             ?? boolValue(request["allowCameraFlip"])
@@ -42,6 +45,7 @@ enum ContinuousScannerResponseBuilder {
             "types": config.types,
             "repeatDelaySeconds": config.repeatDelaySeconds,
             "previewRect": previewRectPayload(config.previewRect),
+            "showCloseButton": config.showCloseButton,
             "showFlipButton": config.showFlipButton
         ]
     }

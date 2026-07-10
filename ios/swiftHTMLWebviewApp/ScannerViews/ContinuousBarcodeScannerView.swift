@@ -16,6 +16,7 @@ struct ContinuousBarcodeScannerConfig {
     var types: [String] = ["qr", "ean13", "ean8", "code128", "datamatrix"]
     var repeatDelaySeconds: TimeInterval = 1.5
     var previewRect = CGRect(x: 0.1, y: 0.18, width: 0.8, height: 0.36)
+    var showCloseButton = true
     var showFlipButton = false
 
     var isConfigPairing: Bool {

@@ -1161,16 +1161,18 @@ struct ContentView: View {
                             .stroke(.yellow, lineWidth: 2)
                     )
 
-                    Button {
-                        stopContinuousScanner(action: "continuousScanStop", request: ["action": "continuousScanStop"])
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .shadow(radius: 3)
-                            .padding(6)
+                    if config.showCloseButton {
+                        Button {
+                            stopContinuousScanner(action: "continuousScanStop", request: ["action": "continuousScanStop"])
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .shadow(radius: 3)
+                                .padding(6)
+                        }
+                        .accessibilityLabel("Stop scanner")
                     }
-                    .accessibilityLabel("Stop scanner")
                 }
                 .frame(width: frame.width, height: frame.height)
                 .position(x: frame.midX, y: frame.midY)

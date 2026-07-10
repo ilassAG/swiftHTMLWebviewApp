@@ -19,6 +19,7 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
         XCTAssertEqual(config.mode, "login")
         XCTAssertEqual(config.camera, "front")
         XCTAssertEqual(config.types, ["qr", "ean13", "ean8", "code128", "datamatrix"])
+        XCTAssertTrue(config.showCloseButton)
     }
 
     func testConfigPairingDefaultsToQRFrontCameraAndFlipButton() {
@@ -44,6 +45,7 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
                 "mode": "inventory",
                 "types": ["qr", "code128"],
                 "repeatDelay": "2.25",
+                "showCloseButton": false,
                 "previewRect": ["x": 80, "y": -10, "width": 35, "height": 200]
             ],
             current: nil
@@ -53,6 +55,7 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
         XCTAssertEqual(config.camera, "front")
         XCTAssertEqual(config.types, ["qr", "code128"])
         XCTAssertEqual(config.repeatDelaySeconds, 2.25)
+        XCTAssertFalse(config.showCloseButton)
         XCTAssertEqual(config.previewRect.minX, 0.65, accuracy: 0.0001)
         XCTAssertEqual(config.previewRect.minY, 0, accuracy: 0.0001)
         XCTAssertEqual(config.previewRect.width, 0.35, accuracy: 0.0001)
@@ -76,6 +79,7 @@ final class ContinuousScannerResponseBuilderTests: XCTestCase {
         XCTAssertEqual(response["repeatDelaySeconds"] as? TimeInterval, 1.75)
         XCTAssertEqual(response["purpose"] as? String, "")
         XCTAssertEqual(response["camera"] as? String, "back")
+        XCTAssertEqual(response["showCloseButton"] as? Bool, true)
         XCTAssertEqual(response["showFlipButton"] as? Bool, false)
         XCTAssertNotNil(response["previewRect"] as? [String: Double])
     }
