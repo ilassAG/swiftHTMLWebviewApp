@@ -606,6 +606,20 @@ final class AROverlayViewController: UIViewController, ARSessionDelegate {
         let node = SCNNode(geometry: geometry)
         node.name = "arOverlayItem:\(item.id)"
         node.simdPosition = item.position
+        if item.isNearbyMarker, let frame = sceneView.session.currentFrame {
+            let cameraTransform = frame.camera.transform
+            let cameraPosition = SIMD3<Float>(
+                cameraTransform.columns.3.x,
+                cameraTransform.columns.3.y,
+                cameraTransform.columns.3.z
+            )
+            let cameraForward = simd_normalize(SIMD3<Float>(
+                -cameraTransform.columns.2.x,
+                -cameraTransform.columns.2.y,
+                -cameraTransform.columns.2.z
+            ))
+            node.simdPosition = cameraPosition + cameraForward * 2.0
+        }
         if item.kind == "speed" || item.kind == "diamond" {
             node.eulerAngles = SCNVector3(Float.pi / 6, Float.pi / 4, 0)
         }
@@ -618,7 +632,7 @@ final class AROverlayViewController: UIViewController, ARSessionDelegate {
 
     private func itemLabelNode(for item: AROverlayItem, distanceMeters: Double) -> SCNNode {
         let distanceText = formatDistance(distanceMeters)
-        let directionSuffix = item.isDirectionMarker ? " · Richtung" : ""
+        let directionSuffix = item.isNearbyMarker ? " · In der Nähe" : (item.isDirectionMarker ? " · Richtung" : "")
         let text = SCNText(string: "\(item.title)\n\(distanceText)\(directionSuffix)", extrusionDepth: 0.35)
         text.alignmentMode = CATextLayerAlignmentMode.center.rawValue
         text.containerFrame = CGRect(x: 0, y: 0, width: 220, height: 62)

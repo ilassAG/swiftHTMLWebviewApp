@@ -236,6 +236,27 @@ final class AROverlayPayloadTests: XCTestCase {
         XCTAssertTrue(scene.items.isEmpty)
     }
 
+    func testWGS84TargetInsideOriginAccuracyIsMarkedNearby() {
+        let scene = AROverlayScene(request: [
+            "coordinateSystem": "wgs84",
+            "origin": [
+                "latitude": 48.12898,
+                "longitude": 11.60202,
+                "accuracyMeters": 8.0
+            ],
+            "items": [[
+                "id": "printer-79",
+                "latitude": 48.12898,
+                "longitude": 11.60202
+            ]]
+        ])
+
+        XCTAssertEqual(scene.items.count, 1)
+        XCTAssertTrue(scene.items[0].isNearbyMarker)
+        XCTAssertFalse(scene.items[0].isDirectionMarker)
+        XCTAssertEqual(scene.items[0].distanceMeters ?? .nan, 0.0, accuracy: 0.01)
+    }
+
     func testEventsAndErrorsUseCommonBridgeShape() {
         let request: [String: Any] = ["requestId": "req-event"]
         let item = AROverlayItem(

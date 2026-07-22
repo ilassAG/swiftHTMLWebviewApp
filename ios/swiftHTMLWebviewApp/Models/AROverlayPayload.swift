@@ -221,7 +221,8 @@ struct AROverlayScene {
                 headingYaw: floatValue(item["headingYawRadians"]) ?? floatValue(item["yawRadians"]),
                 payload: item["payload"] as? [String: Any] ?? item,
                 distanceMeters: geographicProjection?.distanceMeters,
-                isDirectionMarker: geographicProjection?.isDirectionMarker ?? false
+                isDirectionMarker: geographicProjection?.isDirectionMarker ?? false,
+                isNearbyMarker: geographicProjection?.isNearbyMarker ?? false
             )
         }
     }
@@ -254,7 +255,8 @@ struct AROverlayScene {
         return AROverlayGeoCoordinate(
             latitude: latitude,
             longitude: longitude,
-            altitudeMeters: firstDouble(source["altitudeMeters"], source["altitude"])
+            altitudeMeters: firstDouble(source["altitudeMeters"], source["altitude"]),
+            accuracyMeters: firstDouble(source["accuracyMeters"], source["horizontalAccuracyMeters"])
         )
     }
 
@@ -499,6 +501,7 @@ struct AROverlayItem {
     var payload: [String: Any]
     var distanceMeters: Double?
     var isDirectionMarker: Bool
+    var isNearbyMarker: Bool
 
     init(
         id: String,
@@ -511,7 +514,8 @@ struct AROverlayItem {
         headingYaw: Float?,
         payload: [String: Any],
         distanceMeters: Double? = nil,
-        isDirectionMarker: Bool = false
+        isDirectionMarker: Bool = false,
+        isNearbyMarker: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -524,6 +528,7 @@ struct AROverlayItem {
         self.payload = payload
         self.distanceMeters = distanceMeters
         self.isDirectionMarker = isDirectionMarker
+        self.isNearbyMarker = isNearbyMarker
     }
 }
 
@@ -538,6 +543,7 @@ struct AROverlayGeoCoordinate {
     var latitude: Double
     var longitude: Double
     var altitudeMeters: Double?
+    var accuracyMeters: Double?
 }
 
 struct AROverlayGeoProjection {
@@ -546,6 +552,7 @@ struct AROverlayGeoProjection {
     var position: SIMD3<Float>
     var distanceMeters: Double
     var isDirectionMarker: Bool
+    var isNearbyMarker: Bool
 
     static func project(
         origin: AROverlayGeoCoordinate,
@@ -568,6 +575,8 @@ struct AROverlayGeoProjection {
             - sin(latitude1) * cos(latitude2) * cos(deltaLongitude)
         let bearingRadians = atan2(bearingY, bearingX)
         let isDirectionMarker = distanceMeters > maxDisplayDistanceMeters
+        let nearbyThreshold = min(50.0, max(3.0, (origin.accuracyMeters ?? 0.0) * 1.25))
+        let isNearbyMarker = distanceMeters <= nearbyThreshold
         let displayDistance = max(1.25, min(distanceMeters, maxDisplayDistanceMeters))
         let eastMeters = sin(bearingRadians) * displayDistance
         let northMeters = cos(bearingRadians) * displayDistance
@@ -586,7 +595,8 @@ struct AROverlayGeoProjection {
                 Float(-northMeters)
             ),
             distanceMeters: distanceMeters,
-            isDirectionMarker: isDirectionMarker
+            isDirectionMarker: isDirectionMarker,
+            isNearbyMarker: isNearbyMarker
         )
     }
 
