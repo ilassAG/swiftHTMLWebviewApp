@@ -42,4 +42,11 @@ final class StartupReachabilityPolicyTests: XCTestCase {
         XCTAssertEqual(StartupReachabilityPolicy.loadTimeout(seconds: 7, highAvailabilityEnabled: true), 7)
         XCTAssertEqual(StartupReachabilityPolicy.loadTimeout(seconds: 7, highAvailabilityEnabled: false), 60)
     }
+
+    func testSuccessfulProbeStatusCodesExcludeClientAndServerErrors() {
+        XCTAssertTrue(StartupReachabilityPolicy.isSuccessfulProbeStatusCode(200))
+        XCTAssertTrue(StartupReachabilityPolicy.isSuccessfulProbeStatusCode(302))
+        XCTAssertFalse(StartupReachabilityPolicy.isSuccessfulProbeStatusCode(404))
+        XCTAssertFalse(StartupReachabilityPolicy.isSuccessfulProbeStatusCode(500))
+    }
 }

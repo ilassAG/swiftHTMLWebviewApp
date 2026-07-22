@@ -60,6 +60,12 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
         let newWebView = WKWebView(frame: .zero, configuration: configuration)
         newWebView.allowsBackForwardNavigationGestures = false
         newWebView.navigationDelegate = self
+        newWebView.scrollView.contentInsetAdjustmentBehavior = .never
+        newWebView.scrollView.contentInset = .zero
+        newWebView.scrollView.scrollIndicatorInsets = .zero
+        if #available(iOS 13.0, *) {
+            newWebView.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+        }
         return newWebView
     }
 
@@ -273,7 +279,7 @@ class WebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
             guard let httpResponse = response as? HTTPURLResponse else {
                 return true
             }
-            return (200..<500).contains(httpResponse.statusCode)
+            return StartupReachabilityPolicy.isSuccessfulProbeStatusCode(httpResponse.statusCode)
         } catch {
             print("Availability probe failed for \(url.absoluteString): \(error.localizedDescription)")
             return false
