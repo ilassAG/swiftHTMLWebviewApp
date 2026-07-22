@@ -91,6 +91,7 @@ enum DeviceBridgePayload {
             "arOverlayOpen": arOverlaySupported,
             "arOverlayClose": true,
             "arOverlaySupported": arOverlaySupported,
+            "arOverlayWGS84": arOverlaySupported,
             "arReplayOpen": arOverlaySupported,
             "arReplayClose": true,
             "roomPlanScanStart": roomPlanSupported,

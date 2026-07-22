@@ -67,6 +67,7 @@ final class AndroidDeviceCapabilities {
         capabilities.put("arOverlayOpen", false);
         capabilities.put("arOverlayClose", false);
         capabilities.put("arOverlaySupported", false);
+        capabilities.put("arOverlayWGS84", false);
         capabilities.put("arReplayOpen", false);
         capabilities.put("arReplayClose", false);
         capabilities.put("configPairingShow", true);

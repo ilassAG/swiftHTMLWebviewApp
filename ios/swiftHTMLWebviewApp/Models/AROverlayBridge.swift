@@ -402,7 +402,10 @@ final class AROverlayViewController: UIViewController, ARSessionDelegate {
 
         guard !Task.isCancelled else { return }
         let configuration = ARWorldTrackingConfiguration()
-        configuration.worldAlignment = .gravity
+        let coordinateSystem = bridge?.scene.coordinateSystem.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        configuration.worldAlignment = coordinateSystem == "wgs84" || coordinateSystem == "geo-wgs84" || coordinateSystem == "geographic-wgs84"
+            ? .gravityAndHeading
+            : .gravity
         configuration.planeDetection = [.horizontal, .vertical]
         configuration.initialWorldMap = initialWorldMap
         sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
@@ -606,8 +609,46 @@ final class AROverlayViewController: UIViewController, ARSessionDelegate {
         if item.kind == "speed" || item.kind == "diamond" {
             node.eulerAngles = SCNVector3(Float.pi / 6, Float.pi / 4, 0)
         }
+        if let distanceMeters = item.distanceMeters {
+            node.addChildNode(itemLabelNode(for: item, distanceMeters: distanceMeters))
+        }
         itemByNodeName[node.name ?? ""] = item
         return node
+    }
+
+    private func itemLabelNode(for item: AROverlayItem, distanceMeters: Double) -> SCNNode {
+        let distanceText = formatDistance(distanceMeters)
+        let directionSuffix = item.isDirectionMarker ? " · Richtung" : ""
+        let text = SCNText(string: "\(item.title)\n\(distanceText)\(directionSuffix)", extrusionDepth: 0.35)
+        text.alignmentMode = CATextLayerAlignmentMode.center.rawValue
+        text.containerFrame = CGRect(x: 0, y: 0, width: 220, height: 62)
+        text.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+        text.flatness = 0.15
+        text.firstMaterial?.diffuse.contents = UIColor.white
+        text.firstMaterial?.emission.contents = UIColor.white.withAlphaComponent(0.72)
+        text.firstMaterial?.isDoubleSided = true
+
+        let node = SCNNode(geometry: text)
+        let displayDistance = hypot(Double(item.position.x), Double(item.position.z))
+        let scale = Float(max(0.006, min(0.018, displayDistance * 0.0015)))
+        node.scale = SCNVector3(scale, scale, scale)
+        node.pivot = SCNMatrix4MakeTranslation(110, 31, 0)
+        node.position = SCNVector3(0, item.radius * 2.0 + 0.12, 0)
+        let billboard = SCNBillboardConstraint()
+        billboard.freeAxes = .all
+        node.constraints = [billboard]
+        return node
+    }
+
+    private func formatDistance(_ distanceMeters: Double) -> String {
+        if distanceMeters < 1_000 {
+            return "\(Int(distanceMeters.rounded())) m"
+        }
+        let kilometers = distanceMeters / 1_000.0
+        if kilometers < 10 {
+            return String(format: "%.1f km", kilometers)
+        }
+        return "\(Int(kilometers.rounded())) km"
     }
 
     private func lineNode(from start: SIMD3<Float>, to end: SIMD3<Float>, radius: CGFloat, color: UIColor, name: String) -> SCNNode? {

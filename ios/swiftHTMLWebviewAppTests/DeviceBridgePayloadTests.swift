@@ -36,6 +36,7 @@ final class DeviceBridgePayloadTests: XCTestCase {
         XCTAssertEqual(capabilities["arPositionStart"] as? Bool, false)
         XCTAssertEqual(capabilities["arGuidedMeasurementStart"] as? Bool, true)
         XCTAssertEqual(capabilities["arOverlayOpen"] as? Bool, false)
+        XCTAssertEqual(capabilities["arOverlayWGS84"] as? Bool, false)
         XCTAssertEqual(capabilities["roomPlanScanStart"] as? Bool, true)
         XCTAssertEqual(capabilities["nfcTagRead"] as? Bool, false)
         XCTAssertEqual(capabilities["beaconAdvertiseStart"] as? Bool, true)

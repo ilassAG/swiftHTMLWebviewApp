@@ -178,6 +178,64 @@ final class AROverlayPayloadTests: XCTestCase {
         XCTAssertEqual(close["source"] as? String, "arkit-overlay")
     }
 
+    func testWGS84ItemsProjectToHeadingAlignedLocalMeters() {
+        let scene = AROverlayScene(request: [
+            "title": "Asset finder",
+            "coordinateSystem": "wgs84",
+            "origin": [
+                "latitude": 48.13155,
+                "longitude": 11.54965,
+                "altitudeMeters": 520.0
+            ],
+            "maxDisplayDistanceMeters": 15.0,
+            "items": [
+                [
+                    "id": "east",
+                    "title": "East target",
+                    "geoPosition": [
+                        "latitude": 48.13155,
+                        "longitude": 11.55005,
+                        "altitudeMeters": 521.0
+                    ]
+                ],
+                [
+                    "id": "north",
+                    "title": "North target",
+                    "latitude": 48.13164,
+                    "longitude": 11.54965,
+                    "altitude": 520.0
+                ]
+            ]
+        ])
+
+        XCTAssertEqual(scene.coordinateSystem, "wgs84")
+        XCTAssertEqual(scene.items.count, 2)
+
+        let east = scene.items.first { $0.id == "east" }
+        XCTAssertNotNil(east)
+        XCTAssertGreaterThan(east?.position.x ?? 0, 14.0)
+        XCTAssertEqual(east?.position.z ?? .nan, 0, accuracy: 0.05)
+        XCTAssertEqual(east?.position.y ?? .nan, 0.08, accuracy: 0.001)
+        XCTAssertGreaterThan(east?.distanceMeters ?? 0, 25.0)
+        XCTAssertEqual(east?.isDirectionMarker, true)
+
+        let north = scene.items.first { $0.id == "north" }
+        XCTAssertNotNil(north)
+        XCTAssertEqual(north?.position.x ?? .nan, 0, accuracy: 0.05)
+        XCTAssertLessThan(north?.position.z ?? 0, -9.0)
+        XCTAssertGreaterThan(north?.distanceMeters ?? 0, 9.0)
+        XCTAssertEqual(north?.isDirectionMarker, false)
+    }
+
+    func testWGS84ItemsRequireAnOrigin() {
+        let scene = AROverlayScene(request: [
+            "coordinateSystem": "wgs84",
+            "items": [["id": "target", "latitude": 48.1, "longitude": 11.5]]
+        ])
+
+        XCTAssertTrue(scene.items.isEmpty)
+    }
+
     func testEventsAndErrorsUseCommonBridgeShape() {
         let request: [String: Any] = ["requestId": "req-event"]
         let item = AROverlayItem(

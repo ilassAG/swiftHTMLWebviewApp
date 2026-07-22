@@ -111,6 +111,10 @@ enum AROverlayPayload {
             "z": Double(item.position.z),
             "unit": "meters"
         ]
+        if let distanceMeters = item.distanceMeters {
+            response["distanceMeters"] = distanceMeters
+            response["directionMarker"] = item.isDirectionMarker
+        }
         response["payload"] = item.payload
         return response
     }
@@ -148,11 +152,25 @@ struct AROverlayScene {
         )
         let coordinateSystem = arOverlayFirstNonEmpty(stringValue(request["coordinateSystem"]), "arkit-gravity-local")
         let floorY = AROverlayScene.floorY(from: request, overlay: overlay)
+        let geographicOrigin = AROverlayScene.geographicOrigin(from: request)
+        let maxDisplayDistanceMeters = max(2.0, doubleValue(request["maxDisplayDistanceMeters"]) ?? 15.0)
         var items: [AROverlayItem] = []
         var lines: [AROverlayLine] = []
 
-        items.append(contentsOf: AROverlayScene.genericItems(from: request["items"], defaultY: floorY + 0.08))
-        items.append(contentsOf: AROverlayScene.genericItems(from: request["points"], defaultY: floorY + 0.08))
+        items.append(contentsOf: AROverlayScene.genericItems(
+            from: request["items"],
+            defaultY: floorY + 0.08,
+            coordinateSystem: coordinateSystem,
+            geographicOrigin: geographicOrigin,
+            maxDisplayDistanceMeters: maxDisplayDistanceMeters
+        ))
+        items.append(contentsOf: AROverlayScene.genericItems(
+            from: request["points"],
+            defaultY: floorY + 0.08,
+            coordinateSystem: coordinateSystem,
+            geographicOrigin: geographicOrigin,
+            maxDisplayDistanceMeters: maxDisplayDistanceMeters
+        ))
         lines.append(contentsOf: AROverlayScene.genericLines(from: request["lines"], defaultY: floorY + 0.045))
         lines.append(contentsOf: AROverlayScene.planLines(from: request, overlay: overlay, floorY: floorY))
 
@@ -165,10 +183,31 @@ struct AROverlayScene {
         self.init(title: title, coordinateSystem: coordinateSystem, items: items, lines: lines)
     }
 
-    private static func genericItems(from raw: Any?, defaultY: Float) -> [AROverlayItem] {
+    private static func genericItems(
+        from raw: Any?,
+        defaultY: Float,
+        coordinateSystem: String,
+        geographicOrigin: AROverlayGeoCoordinate?,
+        maxDisplayDistanceMeters: Double
+    ) -> [AROverlayItem] {
         guard let dictionaries = raw as? [[String: Any]] else { return [] }
         return dictionaries.enumerated().compactMap { index, item in
-            guard let position = position(from: item, defaultY: defaultY) else { return nil }
+            let usesGeographicCoordinates = isGeographicCoordinateSystem(coordinateSystem)
+            let geographicProjection: AROverlayGeoProjection?
+            if usesGeographicCoordinates,
+               let geographicOrigin,
+               let target = geographicCoordinate(from: item) {
+                geographicProjection = AROverlayGeoProjection.project(
+                    origin: geographicOrigin,
+                    target: target,
+                    defaultY: defaultY,
+                    maxDisplayDistanceMeters: maxDisplayDistanceMeters
+                )
+            } else {
+                geographicProjection = nil
+            }
+            let localPosition = usesGeographicCoordinates ? nil : position(from: item, defaultY: defaultY)
+            guard let position = geographicProjection?.position ?? localPosition else { return nil }
             let id = arOverlayFirstNonEmpty(stringValue(item["id"]), "item_\(index)")
             let kind = arOverlayFirstNonEmpty(stringValue(item["kind"]), "point")
             return AROverlayItem(
@@ -180,9 +219,43 @@ struct AROverlayScene {
                 radius: Float(doubleValue(item["radius"]) ?? 0.055),
                 color: color(value: item["color"], severity: stringValue(item["severity"])),
                 headingYaw: floatValue(item["headingYawRadians"]) ?? floatValue(item["yawRadians"]),
-                payload: item["payload"] as? [String: Any] ?? item
+                payload: item["payload"] as? [String: Any] ?? item,
+                distanceMeters: geographicProjection?.distanceMeters,
+                isDirectionMarker: geographicProjection?.isDirectionMarker ?? false
             )
         }
+    }
+
+    private static func isGeographicCoordinateSystem(_ coordinateSystem: String) -> Bool {
+        let normalized = coordinateSystem.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "wgs84" || normalized == "geo-wgs84" || normalized == "geographic-wgs84"
+    }
+
+    private static func geographicOrigin(from request: [String: Any]) -> AROverlayGeoCoordinate? {
+        if let origin = request["origin"] as? [String: Any] {
+            return geographicCoordinate(from: origin)
+        }
+        if let origin = request["geoOrigin"] as? [String: Any] {
+            return geographicCoordinate(from: origin)
+        }
+        return nil
+    }
+
+    private static func geographicCoordinate(from dictionary: [String: Any]) -> AROverlayGeoCoordinate? {
+        let source = dictionary["geoPosition"] as? [String: Any]
+            ?? dictionary["coordinate"] as? [String: Any]
+            ?? dictionary
+        guard let latitude = firstDouble(source["latitude"], source["lat"]),
+              let longitude = firstDouble(source["longitude"], source["lng"], source["lon"]),
+              (-90.0...90.0).contains(latitude),
+              (-180.0...180.0).contains(longitude) else {
+            return nil
+        }
+        return AROverlayGeoCoordinate(
+            latitude: latitude,
+            longitude: longitude,
+            altitudeMeters: firstDouble(source["altitudeMeters"], source["altitude"])
+        )
     }
 
     private static func genericLines(from raw: Any?, defaultY: Float) -> [AROverlayLine] {
@@ -424,6 +497,34 @@ struct AROverlayItem {
     var color: UIColor
     var headingYaw: Float?
     var payload: [String: Any]
+    var distanceMeters: Double?
+    var isDirectionMarker: Bool
+
+    init(
+        id: String,
+        kind: String,
+        title: String,
+        detail: String,
+        position: SIMD3<Float>,
+        radius: Float,
+        color: UIColor,
+        headingYaw: Float?,
+        payload: [String: Any],
+        distanceMeters: Double? = nil,
+        isDirectionMarker: Bool = false
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.position = position
+        self.radius = radius
+        self.color = color
+        self.headingYaw = headingYaw
+        self.payload = payload
+        self.distanceMeters = distanceMeters
+        self.isDirectionMarker = isDirectionMarker
+    }
 }
 
 struct AROverlayLine {
@@ -431,6 +532,70 @@ struct AROverlayLine {
     var points: [SIMD3<Float>]
     var radius: Float
     var color: UIColor
+}
+
+struct AROverlayGeoCoordinate {
+    var latitude: Double
+    var longitude: Double
+    var altitudeMeters: Double?
+}
+
+struct AROverlayGeoProjection {
+    static let earthRadiusMeters = 6_371_000.0
+
+    var position: SIMD3<Float>
+    var distanceMeters: Double
+    var isDirectionMarker: Bool
+
+    static func project(
+        origin: AROverlayGeoCoordinate,
+        target: AROverlayGeoCoordinate,
+        defaultY: Float,
+        maxDisplayDistanceMeters: Double
+    ) -> AROverlayGeoProjection {
+        let latitude1 = origin.latitude * .pi / 180.0
+        let latitude2 = target.latitude * .pi / 180.0
+        let deltaLatitude = latitude2 - latitude1
+        let deltaLongitude = normalizedLongitudeDelta(target.longitude - origin.longitude) * .pi / 180.0
+
+        let haversine = pow(sin(deltaLatitude / 2.0), 2.0)
+            + cos(latitude1) * cos(latitude2) * pow(sin(deltaLongitude / 2.0), 2.0)
+        let angularDistance = 2.0 * atan2(sqrt(haversine), sqrt(max(0.0, 1.0 - haversine)))
+        let distanceMeters = earthRadiusMeters * angularDistance
+
+        let bearingY = sin(deltaLongitude) * cos(latitude2)
+        let bearingX = cos(latitude1) * sin(latitude2)
+            - sin(latitude1) * cos(latitude2) * cos(deltaLongitude)
+        let bearingRadians = atan2(bearingY, bearingX)
+        let isDirectionMarker = distanceMeters > maxDisplayDistanceMeters
+        let displayDistance = max(1.25, min(distanceMeters, maxDisplayDistanceMeters))
+        let eastMeters = sin(bearingRadians) * displayDistance
+        let northMeters = cos(bearingRadians) * displayDistance
+
+        var verticalMeters = 0.0
+        if !isDirectionMarker,
+           let originAltitude = origin.altitudeMeters,
+           let targetAltitude = target.altitudeMeters {
+            verticalMeters = max(-3.0, min(3.0, targetAltitude - originAltitude))
+        }
+
+        return AROverlayGeoProjection(
+            position: SIMD3<Float>(
+                Float(eastMeters),
+                defaultY + Float(verticalMeters),
+                Float(-northMeters)
+            ),
+            distanceMeters: distanceMeters,
+            isDirectionMarker: isDirectionMarker
+        )
+    }
+
+    private static func normalizedLongitudeDelta(_ delta: Double) -> Double {
+        var normalized = delta.truncatingRemainder(dividingBy: 360.0)
+        if normalized > 180.0 { normalized -= 360.0 }
+        if normalized < -180.0 { normalized += 360.0 }
+        return normalized
+    }
 }
 
 private func arOverlayFirstNonEmpty(_ values: String...) -> String {

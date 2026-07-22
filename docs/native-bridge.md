@@ -225,6 +225,41 @@ the saved physical space. Supported item colors include `green`, `yellow`,
 Tapping a rendered item emits `arOverlayItemSelected` with the item's id,
 position, detail, and original `payload`.
 
+For geographic asset finders, use `coordinateSystem: 'wgs84'`, provide the
+device location as `origin`, and put a `geoPosition` on each item. iOS aligns
+the AR world to gravity and magnetic heading. Targets farther away than
+`maxDisplayDistanceMeters` are rendered as direction markers at that radius
+while their label and selection event keep the real geographic distance.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'arOverlayOpen',
+  requestId: crypto.randomUUID(),
+  title: 'Asset finder',
+  coordinateSystem: 'wgs84',
+  maxDisplayDistanceMeters: 15,
+  origin: {
+    latitude: 48.13155,
+    longitude: 11.54965,
+    altitudeMeters: 520
+  },
+  items: [
+    {
+      id: 'asset-1',
+      kind: 'asset',
+      title: 'Asset 1',
+      geoPosition: {
+        latitude: 48.13155,
+        longitude: 11.55005,
+        altitudeMeters: 520
+      },
+      color: 'blue',
+      payload: { domainId: 'asset-1' }
+    }
+  ]
+});
+```
+
 `arReplayOpen` and `arReplayClose` are compatibility aliases for existing web
 apps. New integrations should prefer `arOverlayOpen` and pass generic `items`
 and `lines`. For legacy overlay payloads, iOS also accepts an `overlay`
