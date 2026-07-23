@@ -202,6 +202,50 @@
                     <button id="configReloadBtn" type="button">Ziel neu laden</button>
                 </div>
             </div>
+            <div class="config-panel">
+                <h2>ESP-Geräte</h2>
+                <div class="config-grid">
+                    <label for="espDeviceSelect">Gerät</label>
+                    <select id="espDeviceSelect" disabled>
+                        <option value="">Noch nicht gesucht</option>
+                    </select>
+                    <label for="espDeviceUuidOutput">Device UUID</label>
+                    <input type="text" id="espDeviceUuidOutput" readonly>
+                    <label for="espDeviceIpOutput">IP-Adresse</label>
+                    <input type="text" id="espDeviceIpOutput" readonly>
+                    <label for="espDeviceNameInput">Gerätename</label>
+                    <input type="text" id="espDeviceNameInput" placeholder="z.B. VoucherATM1">
+                    <label for="espDeviceLocationInput">Standort</label>
+                    <input type="text" id="espDeviceLocationInput" placeholder="optional">
+                    <label for="espDeviceTokenInput">Token</label>
+                    <input type="password" id="espDeviceTokenInput" autocomplete="off">
+                    <label for="espDeviceNewTokenInput">Neuer Token</label>
+                    <input type="password" id="espDeviceNewTokenInput" autocomplete="off">
+                    <label for="espDeviceClearTokenInput">Token entfernen</label>
+                    <label class="inline-check">
+                        <input type="checkbox" id="espDeviceClearTokenInput">
+                        entfernen
+                    </label>
+                    <label for="espDeviceTokenStatusOutput">Tokenstatus</label>
+                    <input type="text" id="espDeviceTokenStatusOutput" readonly>
+                    <label for="espDeviceWifiSsidInput">WLAN</label>
+                    <input type="text" id="espDeviceWifiSsidInput" placeholder="SSID">
+                    <label for="espDeviceWifiPasswordInput">WLAN-Passwort</label>
+                    <input type="password" id="espDeviceWifiPasswordInput" autocomplete="off">
+                </div>
+                <div class="config-actions">
+                    <button id="espDeviceScanBtn" type="button">ESPs suchen</button>
+                    <button id="espDeviceScanStopBtn" type="button">Suche stoppen</button>
+                    <button id="espDeviceConnectBtn" type="button">Verbinden</button>
+                    <button id="espDeviceDisconnectBtn" type="button">Trennen</button>
+                    <button id="espDeviceStatusBtn" type="button">Status</button>
+                    <button id="espDeviceIdentifyBtn" type="button">Identifizieren</button>
+                    <button id="espDeviceSettingsBtn" type="button">Einstellungen speichern</button>
+                    <button id="espDeviceWifiBtn" type="button">WLAN setzen</button>
+                    <button id="espDeviceWifiResetBtn" type="button">WLAN zurücksetzen</button>
+                    <button id="espDeviceRestartBtn" type="button">ESP neu starten</button>
+                </div>
+            </div>
             <button id="deviceInfoBtn">Geräteinfos abrufen</button>
             <button id="wifiStatusBtn">WLAN Status</button>
             <button id="screenshotBtn">Screenshot holen</button>

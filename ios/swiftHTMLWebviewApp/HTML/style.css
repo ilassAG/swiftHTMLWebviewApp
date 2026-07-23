@@ -237,6 +237,7 @@ button:disabled {
 }
 
 .config-grid input,
+.config-grid select,
 .config-grid textarea {
     width: 100%;
     min-width: 0;

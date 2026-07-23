@@ -75,6 +75,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const configSettingsSetBtn = document.getElementById('configSettingsSetBtn');
     const configWifiConfigureBtn = document.getElementById('configWifiConfigureBtn');
     const configReloadBtn = document.getElementById('configReloadBtn');
+    const espDeviceSelect = document.getElementById('espDeviceSelect');
+    const espDeviceUuidOutput = document.getElementById('espDeviceUuidOutput');
+    const espDeviceIpOutput = document.getElementById('espDeviceIpOutput');
+    const espDeviceNameInput = document.getElementById('espDeviceNameInput');
+    const espDeviceLocationInput = document.getElementById('espDeviceLocationInput');
+    const espDeviceTokenInput = document.getElementById('espDeviceTokenInput');
+    const espDeviceNewTokenInput = document.getElementById('espDeviceNewTokenInput');
+    const espDeviceClearTokenInput = document.getElementById('espDeviceClearTokenInput');
+    const espDeviceTokenStatusOutput = document.getElementById('espDeviceTokenStatusOutput');
+    const espDeviceWifiSsidInput = document.getElementById('espDeviceWifiSsidInput');
+    const espDeviceWifiPasswordInput = document.getElementById('espDeviceWifiPasswordInput');
+    const espDeviceScanBtn = document.getElementById('espDeviceScanBtn');
+    const espDeviceScanStopBtn = document.getElementById('espDeviceScanStopBtn');
+    const espDeviceConnectBtn = document.getElementById('espDeviceConnectBtn');
+    const espDeviceDisconnectBtn = document.getElementById('espDeviceDisconnectBtn');
+    const espDeviceStatusBtn = document.getElementById('espDeviceStatusBtn');
+    const espDeviceIdentifyBtn = document.getElementById('espDeviceIdentifyBtn');
+    const espDeviceSettingsBtn = document.getElementById('espDeviceSettingsBtn');
+    const espDeviceWifiBtn = document.getElementById('espDeviceWifiBtn');
+    const espDeviceWifiResetBtn = document.getElementById('espDeviceWifiResetBtn');
+    const espDeviceRestartBtn = document.getElementById('espDeviceRestartBtn');
     const deviceInfoBtn = document.getElementById('deviceInfoBtn');
     const wifiStatusBtn = document.getElementById('wifiStatusBtn');
     const wifiConfigureBtn = document.getElementById('wifiConfigureBtn');
@@ -148,6 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const confettiMoreLabel = "mehr Konfetti";
     const debugBridgeMessages = false;
     let discoveredPrinters = [];
+    const discoveredEspDevices = new Map();
+    let connectedEspScanId = "";
     const liveEventActions = new Set([
         "barcodeData",
         "barcodeLogin",
@@ -161,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
         "screenStreamError",
         "screenStreamClosed",
         "configPairingEvent",
+        "configDeviceEvent",
         "notificationReceived",
         "notificationOpened"
     ]);
@@ -218,6 +242,11 @@ document.addEventListener('DOMContentLoaded', () => {
         "configPairingConnect",
         "configPairingDisconnect",
         "configPairingSend",
+        "configDeviceScanStart",
+        "configDeviceScanStop",
+        "configDeviceConnect",
+        "configDeviceDisconnect",
+        "configDeviceSend",
         "configPairingResponse"
     ]);
 
@@ -438,6 +467,82 @@ document.addEventListener('DOMContentLoaded', () => {
 
     configReloadBtn?.addEventListener('click', () => {
         sendConfigPairingCommand("reload");
+    });
+
+    espDeviceScanBtn?.addEventListener('click', () => {
+        discoveredEspDevices.clear();
+        connectedEspScanId = "";
+        renderEspDeviceOptions();
+        sendBridgeMessage({ action: "configDeviceScanStart" });
+    });
+
+    espDeviceScanStopBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "configDeviceScanStop" });
+    });
+
+    espDeviceConnectBtn?.addEventListener('click', () => {
+        const device = currentSelectedEspDevice();
+        if (!device) {
+            displayError("Bitte zuerst einen ESP auswählen.");
+            return;
+        }
+        connectedEspScanId = device.scanId;
+        sendBridgeMessage({
+            action: "configDeviceConnect",
+            scanId: device.scanId,
+            deviceId: device.deviceId || ""
+        });
+    });
+
+    espDeviceDisconnectBtn?.addEventListener('click', () => {
+        sendBridgeMessage({ action: "configDeviceDisconnect" });
+    });
+
+    espDeviceStatusBtn?.addEventListener('click', () => {
+        sendEspDeviceCommand("statusGet");
+    });
+
+    espDeviceIdentifyBtn?.addEventListener('click', () => {
+        sendEspDeviceCommand("identify", { durationMs: 5000 });
+    });
+
+    espDeviceSettingsBtn?.addEventListener('click', () => {
+        const settings = {
+            deviceName: String(espDeviceNameInput?.value || "").trim(),
+            deviceLocation: String(espDeviceLocationInput?.value || "").trim()
+        };
+        const newSecurityToken = String(espDeviceNewTokenInput?.value || "");
+        if (espDeviceClearTokenInput?.checked) {
+            settings.newSecurityToken = "";
+        } else if (newSecurityToken) {
+            settings.newSecurityToken = newSecurityToken;
+        }
+        sendEspDeviceCommand("settingsSet", { settings });
+    });
+
+    espDeviceWifiBtn?.addEventListener('click', () => {
+        const ssid = String(espDeviceWifiSsidInput?.value || "").trim();
+        if (!ssid) {
+            displayError("Bitte eine WLAN-SSID für den ESP eingeben.");
+            return;
+        }
+        sendEspDeviceCommand("wifiConfigure", {
+            ssid,
+            passphrase: String(espDeviceWifiPasswordInput?.value || ""),
+            persist: true
+        });
+    });
+
+    espDeviceWifiResetBtn?.addEventListener('click', () => {
+        if (window.confirm("Gespeicherte WLAN-Zugangsdaten dieses ESP löschen?")) {
+            sendEspDeviceCommand("factoryResetWifi");
+        }
+    });
+
+    espDeviceRestartBtn?.addEventListener('click', () => {
+        if (window.confirm("Diesen ESP neu starten?")) {
+            sendEspDeviceCommand("reload");
+        }
     });
 
     screenshotBtn?.addEventListener('click', () => {
@@ -937,6 +1042,121 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.round(numericInputRange(input, fallback, min, max));
     }
 
+    function renderEspDeviceOptions() {
+        if (!espDeviceSelect) {
+            return;
+        }
+        const selected = espDeviceSelect.value || connectedEspScanId;
+        const devices = Array.from(discoveredEspDevices.values())
+            .sort((left, right) => String(left.name).localeCompare(String(right.name)));
+        espDeviceSelect.replaceChildren();
+        if (!devices.length) {
+            const option = document.createElement("option");
+            option.value = "";
+            option.textContent = "Keine ESPs gefunden";
+            espDeviceSelect.appendChild(option);
+            espDeviceSelect.disabled = true;
+            return;
+        }
+
+        for (const device of devices) {
+            const option = document.createElement("option");
+            option.value = device.scanId;
+            option.textContent = `${device.name || "ESP32"} (${device.rssi} dBm)`;
+            espDeviceSelect.appendChild(option);
+        }
+        espDeviceSelect.disabled = false;
+        if (selected && discoveredEspDevices.has(selected)) {
+            espDeviceSelect.value = selected;
+        }
+    }
+
+    function currentSelectedEspDevice() {
+        const scanId = String(espDeviceSelect?.value || "");
+        return discoveredEspDevices.get(scanId) || null;
+    }
+
+    function sendEspDeviceCommand(command, extra = {}) {
+        sendBridgeMessage({
+            action: "configDeviceSend",
+            command,
+            token: String(espDeviceTokenInput?.value || ""),
+            ...extra
+        });
+    }
+
+    function handleEspDeviceEvent(result) {
+        if (result.event === "discovered" && result.scanId) {
+            const existing = discoveredEspDevices.get(result.scanId) || {};
+            discoveredEspDevices.set(result.scanId, {
+                ...existing,
+                scanId: result.scanId,
+                name: result.name || existing.name || "ESP32",
+                rssi: Number(result.rssi ?? existing.rssi ?? 0),
+                deviceId: result.deviceId || existing.deviceId || ""
+            });
+            renderEspDeviceOptions();
+        } else if (result.event === "ready") {
+            connectedEspScanId = result.scanId || connectedEspScanId;
+            sendEspDeviceCommand("statusGet");
+        } else if (result.event === "disconnected") {
+            connectedEspScanId = "";
+        }
+    }
+
+    function updateEspDeviceForm(result) {
+        const settings = result?.settings && typeof result.settings === "object" ? result.settings : {};
+        const deviceInfo = result?.deviceInfo && typeof result.deviceInfo === "object" ? result.deviceInfo : {};
+        const deviceId = result?.deviceId || settings.deviceUUID || deviceInfo.id || "";
+        if (espDeviceUuidOutput && deviceId) {
+            espDeviceUuidOutput.value = deviceId;
+        }
+        if (espDeviceIpOutput && typeof deviceInfo.ip === "string") {
+            espDeviceIpOutput.value = deviceInfo.ip;
+        }
+        if (espDeviceNameInput) {
+            const name = settings.deviceName || deviceInfo.name;
+            if (typeof name === "string") {
+                espDeviceNameInput.value = name;
+            }
+        }
+        if (espDeviceLocationInput) {
+            const location = settings.deviceLocation || deviceInfo.deviceLocation;
+            if (typeof location === "string") {
+                espDeviceLocationInput.value = location;
+            }
+        }
+        if (espDeviceWifiSsidInput && typeof deviceInfo.ssid === "string") {
+            espDeviceWifiSsidInput.value = deviceInfo.ssid;
+        }
+        const securityTokenSet = settings.securityTokenSet ?? deviceInfo.securityTokenSet;
+        if (espDeviceTokenStatusOutput && typeof securityTokenSet === "boolean") {
+            espDeviceTokenStatusOutput.value = securityTokenSet ? "gesetzt" : "nicht gesetzt";
+        }
+        if (connectedEspScanId && discoveredEspDevices.has(connectedEspScanId)) {
+            const device = discoveredEspDevices.get(connectedEspScanId);
+            device.deviceId = deviceId || device.deviceId;
+            device.name = settings.deviceName || deviceInfo.name || device.name;
+            discoveredEspDevices.set(connectedEspScanId, device);
+            renderEspDeviceOptions();
+        }
+        if (result?.success && result?.command === "settingsSet" && espDeviceNewTokenInput) {
+            const configuredToken = String(espDeviceNewTokenInput.value || "");
+            const clearedToken = Boolean(espDeviceClearTokenInput?.checked);
+            if (espDeviceTokenInput) {
+                if (clearedToken) {
+                    espDeviceTokenInput.value = "";
+                } else if (configuredToken) {
+                    espDeviceTokenInput.value = configuredToken;
+                }
+            }
+            espDeviceNewTokenInput.value = "";
+            if (espDeviceClearTokenInput) {
+                espDeviceClearTokenInput.checked = false;
+            }
+        }
+    }
+
     function pairingPayloadFromInput() {
         return String(configPairingPayloadInput?.value || "").trim();
     }
@@ -1107,6 +1327,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Globale Funktion, die von Native aufgerufen wird
     window.handleNativeResult = function(result) {
         logDebug("Received native bridge result:", result);
+        if (result.action === "configDeviceEvent") {
+            handleEspDeviceEvent(result);
+            appendLiveEvent(result);
+            return;
+        }
         if (liveEventActions.has(result.action)) {
             appendLiveEvent(result);
             return;
@@ -1158,7 +1383,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayPrinterDiscoveryResult(result);
                 break;
             case "configPairingResponse":
-                if (result.settings) {
+                if (result.role === "persistentDevice" || result.platform === "esp32") {
+                    updateEspDeviceForm(result);
+                } else if (result.settings) {
                     updateConfigFormFromSettings(result.settings);
                 }
                 displayCommandResult(result);
@@ -1214,6 +1441,11 @@ document.addEventListener('DOMContentLoaded', () => {
             case "configPairingStop":
             case "configPairingDisconnect":
             case "configPairingSend":
+            case "configDeviceScanStart":
+            case "configDeviceScanStop":
+            case "configDeviceConnect":
+            case "configDeviceDisconnect":
+            case "configDeviceSend":
                 displayCommandResult(result);
                 break;
             case "configPairingShow":
