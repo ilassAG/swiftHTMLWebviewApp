@@ -14,7 +14,14 @@ import SwiftUI
 import UIKit
 
 final class ConfigPairingBridge: NSObject, ObservableObject {
+    private enum CentralMode: Equatable {
+        case idle
+        case qrPairing
+        case persistentDevice
+    }
+
     fileprivate static let serviceUUID = CBUUID(string: ConfigPairingPayload.serviceUUID)
+    private static let persistentDeviceServiceUUID = CBUUID(string: ConfigPairingPayload.persistentDeviceServiceUUID)
     private static let commandUUID = CBUUID(string: ConfigPairingPayload.commandUUID)
     private static let responseUUID = CBUUID(string: ConfigPairingPayload.responseUUID)
     private static let sessionLifetimeSeconds: TimeInterval = 300
@@ -35,12 +42,20 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     private var responseCharacteristic: CBMutableCharacteristic?
 
     private var centralManager: CBCentralManager?
+    private var centralMode: CentralMode = .idle
     private var pairingTarget: ConfigPairingPayload.PairingTarget?
     private var connectedPeripheral: CBPeripheral?
+    private var persistentDeviceScanning = false
+    private var discoveredPersistentDevices: [UUID: CBPeripheral] = [:]
+    private var selectedPersistentDeviceID = ""
     private var centralCommandCharacteristic: CBCharacteristic?
     private var centralResponseCharacteristic: CBCharacteristic?
     private var centralChunkAccumulators: [String: ConfigPairingPayload.ChunkAccumulator] = [:]
     private var targetChunkAccumulators: [String: ConfigPairingPayload.ChunkAccumulator] = [:]
+    private var centralWritePackets: [Data] = []
+    private weak var centralWritePeripheral: CBPeripheral?
+    private weak var centralWriteCharacteristic: CBCharacteristic?
+    private var centralWriteInFlight = false
 
     private var eventHandler: (([String: Any]) -> Void)?
     private var settingsProvider: () -> [String: Any] = { AppSettings.shared.configurationSnapshot() }
@@ -101,10 +116,17 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
             return ConfigPairingPayload.errorResponse(request: request, action: "configPairingConnect", error: "Invalid config pairing payload.")
         }
 
+        if let peripheral = connectedPeripheral {
+            centralManager?.cancelPeripheralConnection(peripheral)
+        }
+        centralManager?.stopScan()
+        centralMode = .qrPairing
+        persistentDeviceScanning = false
         pairingTarget = target
         centralCommandCharacteristic = nil
         centralResponseCharacteristic = nil
         connectedPeripheral = nil
+        resetCentralWriteQueue()
 
         if centralManager == nil {
             centralManager = CBCentralManager(delegate: self, queue: .main)
@@ -120,13 +142,137 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
             centralManager?.cancelPeripheralConnection(peripheral)
         }
         centralManager?.stopScan()
+        centralMode = .idle
+        persistentDeviceScanning = false
         pairingTarget = nil
         connectedPeripheral = nil
         centralCommandCharacteristic = nil
         centralResponseCharacteristic = nil
         centralChunkAccumulators.removeAll()
+        resetCentralWriteQueue()
 
         return ConfigPairingPayload.acknowledgementResponse(request: request, action: "configPairingDisconnect")
+    }
+
+    func startPersistentDeviceScan(request: [String: Any]) -> [String: Any] {
+        if let peripheral = connectedPeripheral {
+            centralManager?.cancelPeripheralConnection(peripheral)
+        }
+        centralMode = .persistentDevice
+        pairingTarget = nil
+        connectedPeripheral = nil
+        selectedPersistentDeviceID = ""
+        centralCommandCharacteristic = nil
+        centralResponseCharacteristic = nil
+        centralChunkAccumulators.removeAll()
+        resetCentralWriteQueue()
+        discoveredPersistentDevices.removeAll()
+        persistentDeviceScanning = true
+
+        if centralManager == nil {
+            centralManager = CBCentralManager(delegate: self, queue: .main)
+        } else {
+            startCentralScanIfReady()
+        }
+
+        var response = ConfigPairingPayload.baseResponse(request: request, action: "configDeviceScanStart")
+        response["success"] = true
+        response["state"] = "scanning"
+        response["serviceUUID"] = Self.persistentDeviceServiceUUID.uuidString
+        return response
+    }
+
+    func stopPersistentDeviceScan(request: [String: Any]) -> [String: Any] {
+        persistentDeviceScanning = false
+        centralManager?.stopScan()
+        return ConfigPairingPayload.acknowledgementResponse(request: request, action: "configDeviceScanStop")
+    }
+
+    func connectPersistentDevice(request: [String: Any]) -> [String: Any] {
+        guard let scanIDText = configString(request["scanId"] ?? request["peripheralId"]),
+              let scanID = UUID(uuidString: scanIDText),
+              let peripheral = discoveredPersistentDevices[scanID] else {
+            return ConfigPairingPayload.errorResponse(
+                request: request,
+                action: "configDeviceConnect",
+                error: "Unknown ESP device. Scan again and select a discovered device."
+            )
+        }
+
+        centralMode = .persistentDevice
+        persistentDeviceScanning = false
+        pairingTarget = nil
+        selectedPersistentDeviceID = configString(request["deviceId"]) ?? ""
+        connectedPeripheral = peripheral
+        centralCommandCharacteristic = nil
+        centralResponseCharacteristic = nil
+        centralChunkAccumulators.removeAll()
+        resetCentralWriteQueue()
+        peripheral.delegate = self
+        centralManager?.stopScan()
+        centralManager?.connect(peripheral, options: nil)
+
+        var response = ConfigPairingPayload.baseResponse(request: request, action: "configDeviceConnect")
+        response["success"] = true
+        response["state"] = "connecting"
+        response["scanId"] = scanID.uuidString
+        response["name"] = peripheral.name ?? ""
+        return response
+    }
+
+    func disconnectPersistentDevice(request: [String: Any]) -> [String: Any] {
+        if let peripheral = connectedPeripheral {
+            centralManager?.cancelPeripheralConnection(peripheral)
+        }
+        persistentDeviceScanning = false
+        centralManager?.stopScan()
+        connectedPeripheral = nil
+        selectedPersistentDeviceID = ""
+        centralCommandCharacteristic = nil
+        centralResponseCharacteristic = nil
+        centralChunkAccumulators.removeAll()
+        resetCentralWriteQueue()
+        return ConfigPairingPayload.acknowledgementResponse(request: request, action: "configDeviceDisconnect")
+    }
+
+    func sendPersistentDevice(request: [String: Any]) -> [String: Any] {
+        guard centralMode == .persistentDevice,
+              let peripheral = connectedPeripheral,
+              let characteristic = centralCommandCharacteristic else {
+            return ConfigPairingPayload.errorResponse(
+                request: request,
+                action: "configDeviceSend",
+                error: "No ESP device is ready. Scan, select, and connect first."
+            )
+        }
+
+        let command = ConfigPairingPayload.persistentDeviceCommand(
+            request: request,
+            deviceID: selectedPersistentDeviceID,
+            requestId: ConfigPairingPayload.stringOrGenerated(request["requestId"])
+        )
+        guard let data = try? JSONSerialization.data(withJSONObject: command, options: []) else {
+            return ConfigPairingPayload.errorResponse(request: request, action: "configDeviceSend", error: "Could not serialize ESP command.")
+        }
+
+        let writeResult = writeCentralCommandData(data, peripheral: peripheral, characteristic: characteristic)
+        guard writeResult.success else {
+            return ConfigPairingPayload.errorResponse(
+                request: request,
+                action: "configDeviceSend",
+                error: writeResult.error ?? "Could not write ESP command."
+            )
+        }
+
+        var response = ConfigPairingPayload.sendResponse(
+            request: request,
+            command: configString(command["command"]) ?? "statusGet",
+            bytes: data.count,
+            chunks: writeResult.chunks
+        )
+        response["action"] = "configDeviceSend"
+        response["deviceId"] = selectedPersistentDeviceID
+        return response
     }
 
     func send(request: [String: Any]) -> [String: Any] {
@@ -229,19 +375,29 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     }
 
     private func startCentralScanIfReady() {
-        guard let central = centralManager,
-              central.state == .poweredOn,
-              let target = pairingTarget else { return }
+        guard let central = centralManager, central.state == .poweredOn else { return }
+
+        let serviceUUID: CBUUID
+        switch centralMode {
+        case .qrPairing:
+            guard let target = pairingTarget else { return }
+            serviceUUID = CBUUID(string: target.serviceUUID)
+        case .persistentDevice:
+            guard persistentDeviceScanning else { return }
+            serviceUUID = Self.persistentDeviceServiceUUID
+        case .idle:
+            return
+        }
 
         central.stopScan()
-        central.scanForPeripherals(withServices: [CBUUID(string: target.serviceUUID)], options: nil)
+        central.scanForPeripherals(withServices: [serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         emitEvent([
-            "action": "configPairingEvent",
+            "action": centralEventAction(),
             "platform": "ios",
             "role": "configurator",
             "event": "scanning",
             "success": true,
-            "serviceUUID": target.serviceUUID
+            "serviceUUID": serviceUUID.uuidString
         ])
     }
 
@@ -363,23 +519,51 @@ final class ConfigPairingBridge: NSObject, ObservableObject {
     }
 
     private func writeCentralCommandData(_ data: Data, peripheral: CBPeripheral, characteristic: CBCharacteristic) -> (success: Bool, chunks: Int, error: String?) {
+        guard !centralWriteInFlight, centralWritePackets.isEmpty else {
+            return (false, 0, "Another BLE command is still being written.")
+        }
+
         let maxLength = peripheral.maximumWriteValueLength(for: .withResponse)
+        let payloads: [Data]
         if data.count <= maxLength {
-            peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            return (true, 1, nil)
-        }
-
-        guard let payloads = ConfigPairingPayload.chunkPayloads(for: data, maxLength: maxLength) else {
-            return (false, 0, "Config command is too large for the negotiated BLE write length.")
-        }
-
-        for (index, payloadData) in payloads.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.03) { [weak peripheral, weak characteristic] in
-                guard let peripheral, let characteristic else { return }
-                peripheral.writeValue(payloadData, for: characteristic, type: .withResponse)
+            payloads = [data]
+        } else {
+            guard let chunkPayloads = ConfigPairingPayload.chunkPayloads(for: data, maxLength: maxLength) else {
+                return (false, 0, "Config command is too large for the negotiated BLE write length.")
             }
+            payloads = chunkPayloads
         }
+
+        centralWritePackets = payloads
+        centralWritePeripheral = peripheral
+        centralWriteCharacteristic = characteristic
+        writeNextCentralCommandPacket()
         return (true, payloads.count, nil)
+    }
+
+    private func writeNextCentralCommandPacket() {
+        guard !centralWriteInFlight else { return }
+        guard !centralWritePackets.isEmpty else {
+            centralWritePeripheral = nil
+            centralWriteCharacteristic = nil
+            return
+        }
+        guard let peripheral = centralWritePeripheral,
+              let characteristic = centralWriteCharacteristic,
+              peripheral.state == .connected else {
+            resetCentralWriteQueue()
+            return
+        }
+
+        centralWriteInFlight = true
+        peripheral.writeValue(centralWritePackets.removeFirst(), for: characteristic, type: .withResponse)
+    }
+
+    private func resetCentralWriteQueue() {
+        centralWritePackets.removeAll()
+        centralWritePeripheral = nil
+        centralWriteCharacteristic = nil
+        centralWriteInFlight = false
     }
 
     private func commandIsPaired(_ command: [String: Any]) -> Bool {
@@ -578,7 +762,7 @@ extension ConfigPairingBridge: CBCentralManagerDelegate {
             startCentralScanIfReady()
         } else {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "bluetoothState",
@@ -589,6 +773,24 @@ extension ConfigPairingBridge: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        if centralMode == .persistentDevice {
+            guard persistentDeviceScanning else { return }
+            discoveredPersistentDevices[peripheral.identifier] = peripheral
+            let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+            emitEvent([
+                "action": "configDeviceEvent",
+                "platform": "ios",
+                "role": "configurator",
+                "event": "discovered",
+                "success": true,
+                "scanId": peripheral.identifier.uuidString,
+                "name": advertisedName ?? peripheral.name ?? "ESP32",
+                "rssi": RSSI,
+                "connectable": advertisementData[CBAdvertisementDataIsConnectable] as? Bool ?? true
+            ])
+            return
+        }
+
         guard connectedPeripheral == nil else { return }
         connectedPeripheral = peripheral
         peripheral.delegate = self
@@ -606,21 +808,23 @@ extension ConfigPairingBridge: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        peripheral.discoverServices([CBUUID(string: pairingTarget?.serviceUUID ?? ConfigPairingPayload.serviceUUID)])
+        peripheral.discoverServices([activeCentralServiceUUID()])
         emitEvent([
-            "action": "configPairingEvent",
+            "action": centralEventAction(),
             "platform": "ios",
             "role": "configurator",
             "event": "connected",
             "success": true,
-            "name": peripheral.name ?? ""
+            "name": peripheral.name ?? "",
+            "scanId": peripheral.identifier.uuidString
         ])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         connectedPeripheral = nil
+        resetCentralWriteQueue()
         emitEvent([
-            "action": "configPairingEvent",
+            "action": centralEventAction(),
             "platform": "ios",
             "role": "configurator",
             "event": "connectFailed",
@@ -635,8 +839,9 @@ extension ConfigPairingBridge: CBCentralManagerDelegate {
         centralCommandCharacteristic = nil
         centralResponseCharacteristic = nil
         centralChunkAccumulators.removeAll()
+        resetCentralWriteQueue()
         emitEvent([
-            "action": "configPairingEvent",
+            "action": centralEventAction(),
             "platform": "ios",
             "role": "configurator",
             "event": "disconnected",
@@ -650,7 +855,7 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if let error {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "serviceDiscoveryFailed",
@@ -660,7 +865,7 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
             return
         }
 
-        for service in peripheral.services ?? [] where service.uuid == CBUUID(string: pairingTarget?.serviceUUID ?? ConfigPairingPayload.serviceUUID) {
+        for service in peripheral.services ?? [] where service.uuid == activeCentralServiceUUID() {
             peripheral.discoverCharacteristics([Self.commandUUID, Self.responseUUID], for: service)
         }
     }
@@ -668,7 +873,7 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         if let error {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "characteristicDiscoveryFailed",
@@ -688,21 +893,37 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
             }
         }
 
-        if centralCommandCharacteristic != nil {
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard characteristic.uuid == Self.responseUUID else { return }
+        if let error {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
-                "event": "ready",
-                "success": true
+                "event": "notificationSetupFailed",
+                "success": false,
+                "error": error.localizedDescription
             ])
+            return
         }
+
+        guard characteristic.isNotifying, centralCommandCharacteristic != nil else { return }
+        emitEvent([
+            "action": centralEventAction(),
+            "platform": "ios",
+            "role": "configurator",
+            "event": "ready",
+            "success": true,
+            "scanId": peripheral.identifier.uuidString
+        ])
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "responseError",
@@ -715,7 +936,7 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
         guard let data = characteristic.value,
               let object = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "responseParseFailed",
@@ -728,28 +949,34 @@ extension ConfigPairingBridge: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error {
+            resetCentralWriteQueue()
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "writeFailed",
                 "success": false,
                 "error": error.localizedDescription
             ])
+            return
         }
+        guard characteristic.uuid == Self.commandUUID else { return }
+        centralWriteInFlight = false
+        writeNextCentralCommandPacket()
     }
 }
 
 private extension ConfigPairingBridge {
     func handleCentralResponseObject(_ object: [String: Any]) {
         guard configString(object["action"]) == "configPairingChunk" else {
+            updateSelectedPersistentDeviceID(from: object)
             emitEvent(object)
             return
         }
 
         guard let chunk = ConfigPairingPayload.chunkData(from: object) else {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "chunkParseFailed",
@@ -768,7 +995,7 @@ private extension ConfigPairingBridge {
         let assembled = accumulator.assembled
         guard let object = try? JSONSerialization.jsonObject(with: assembled, options: []) as? [String: Any] else {
             emitEvent([
-                "action": "configPairingEvent",
+                "action": centralEventAction(),
                 "platform": "ios",
                 "role": "configurator",
                 "event": "chunkAssemblyFailed",
@@ -776,7 +1003,32 @@ private extension ConfigPairingBridge {
             ])
             return
         }
+        updateSelectedPersistentDeviceID(from: object)
         emitEvent(object)
+    }
+
+    func updateSelectedPersistentDeviceID(from object: [String: Any]) {
+        guard centralMode == .persistentDevice else { return }
+        if let deviceID = configString(object["deviceId"]), !deviceID.isEmpty {
+            selectedPersistentDeviceID = deviceID
+            return
+        }
+        if let deviceInfo = object["deviceInfo"] as? [String: Any],
+           let deviceID = configString(deviceInfo["id"]),
+           !deviceID.isEmpty {
+            selectedPersistentDeviceID = deviceID
+        }
+    }
+
+    func centralEventAction() -> String {
+        centralMode == .persistentDevice ? "configDeviceEvent" : "configPairingEvent"
+    }
+
+    func activeCentralServiceUUID() -> CBUUID {
+        if centralMode == .persistentDevice {
+            return Self.persistentDeviceServiceUUID
+        }
+        return CBUUID(string: pairingTarget?.serviceUUID ?? ConfigPairingPayload.serviceUUID)
     }
 }
 

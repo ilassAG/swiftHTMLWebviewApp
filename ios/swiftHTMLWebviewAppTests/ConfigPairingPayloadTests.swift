@@ -87,6 +87,36 @@ final class ConfigPairingPayloadTests: XCTestCase {
         XCTAssertEqual(defaultCommand["requestId"] as? String, "generated")
     }
 
+    func testPersistentDeviceCommandPreservesDeviceFieldsAndRemovesBridgeRoutingFields() {
+        XCTAssertNotEqual(ConfigPairingPayload.persistentDeviceServiceUUID, ConfigPairingPayload.serviceUUID)
+
+        let command = ConfigPairingPayload.persistentDeviceCommand(
+            request: [
+                "action": "configDeviceSend",
+                "scanId": "scan-1",
+                "command": "wifiConfigure",
+                "token": "secret",
+                "ssid": "Workshop",
+                "passphrase": "wifi-pass",
+                "persist": true
+            ],
+            deviceID: "device-123",
+            requestId: "req-123"
+        )
+
+        XCTAssertNil(command["action"])
+        XCTAssertNil(command["scanId"])
+        XCTAssertEqual(command["protocol"] as? String, "swiftHTML-config/1")
+        XCTAssertEqual(command["role"] as? String, "persistentDevice")
+        XCTAssertEqual(command["deviceId"] as? String, "device-123")
+        XCTAssertEqual(command["requestId"] as? String, "req-123")
+        XCTAssertEqual(command["command"] as? String, "wifiConfigure")
+        XCTAssertEqual(command["token"] as? String, "secret")
+        XCTAssertEqual(command["ssid"] as? String, "Workshop")
+        XCTAssertEqual(command["passphrase"] as? String, "wifi-pass")
+        XCTAssertEqual(command["persist"] as? Bool, true)
+    }
+
     func testResponseErrorAndEventPayloadsUseBridgeContractShape() {
         let request: [String: Any] = ["requestId": "req-show"]
         let show = ConfigPairingPayload.showResponse(

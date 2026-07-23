@@ -290,6 +290,11 @@
       "delivery": "window.handleNativeResult",
       "requiredFields": ["action", "role", "event"]
     },
+    "configDeviceEvent": {
+      "source": "persistent device configuration",
+      "delivery": "window.handleNativeResult",
+      "requiredFields": ["action", "role", "event"]
+    },
     "configPairingChunk": {
       "source": "config pairing",
       "delivery": "native BLE transport",
@@ -379,6 +384,11 @@
     { "name": "configPairingConnect", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing", "emits": ["configPairingEvent"] },
     { "name": "configPairingDisconnect", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing" },
     { "name": "configPairingSend", "ios": "implemented", "android": "implemented", "responseProfile": "configPairing", "emits": ["configPairingChunk", "configPairingResponse", "configPairingEvent"] },
+    { "name": "configDeviceScanStart", "ios": "implemented", "android": "unavailable", "responseProfile": "configPairing", "emits": ["configDeviceEvent"] },
+    { "name": "configDeviceScanStop", "ios": "implemented", "android": "unavailable", "responseProfile": "configPairing" },
+    { "name": "configDeviceConnect", "ios": "implemented", "android": "unavailable", "responseProfile": "configPairing", "emits": ["configDeviceEvent"] },
+    { "name": "configDeviceDisconnect", "ios": "implemented", "android": "unavailable", "responseProfile": "configPairing", "emits": ["configDeviceEvent"] },
+    { "name": "configDeviceSend", "ios": "implemented", "android": "unavailable", "responseProfile": "configPairing", "emits": ["configPairingChunk", "configPairingResponse", "configDeviceEvent"] },
     { "name": "reload", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
     { "name": "launchConfetti", "ios": "implemented", "android": "implemented", "responseProfile": "nativeCommand" },
     { "name": "tapToPayAvailability", "ios": "optional", "android": "optional", "responseProfile": "tapToPayAvailability" },

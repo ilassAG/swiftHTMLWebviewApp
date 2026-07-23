@@ -7,6 +7,7 @@ import Foundation
 
 enum ConfigPairingPayload {
     static let serviceUUID = "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A01"
+    static let persistentDeviceServiceUUID = "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48B01"
     static let commandUUID = "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A02"
     static let responseUUID = "6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48A03"
     static let chunkPayloadSize = 32
@@ -177,6 +178,19 @@ enum ConfigPairingPayload {
         if let joinOnce = request["joinOnce"] as? Bool {
             command["joinOnce"] = joinOnce
         }
+        return command
+    }
+
+    static func persistentDeviceCommand(request: [String: Any], deviceID: String, requestId: String) -> [String: Any] {
+        var command = request
+        command.removeValue(forKey: "action")
+        command.removeValue(forKey: "scanId")
+        command.removeValue(forKey: "peripheralId")
+        command["protocol"] = "swiftHTML-config/1"
+        command["role"] = "persistentDevice"
+        command["deviceId"] = deviceID
+        command["requestId"] = requestId
+        command["command"] = string(request["command"] ?? request["configCommand"]) ?? "statusGet"
         return command
     }
 

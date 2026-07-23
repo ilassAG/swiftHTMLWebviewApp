@@ -142,7 +142,9 @@ See [docs/native-bridge.md](docs/native-bridge.md) for the bridge contract.
   `notificationCancel`, `notificationCancelAll`, `notificationList`,
   `idleTimerStart`, `idleTimerReset`, `idleTimerStop`, `soundPlay`.
 - External setup and pairing: `configPairingShow`, `configPairingStop`,
-  `configPairingConnect`, `configPairingDisconnect`, `configPairingSend`.
+  `configPairingConnect`, `configPairingDisconnect`, `configPairingSend`, plus
+  iOS persistent ESP discovery through `configDeviceScanStart`,
+  `configDeviceConnect`, and `configDeviceSend`.
 - Effects, payment, and printing: `launchConfetti`, `tapToPayAvailability`,
   `tapToPayCollect`, `printerDiscover`, `printerHelloWorld`, `printerPrint`,
   `printerEpsonHelloWorld`.

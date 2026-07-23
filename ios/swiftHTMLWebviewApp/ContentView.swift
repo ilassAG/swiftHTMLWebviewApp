@@ -583,6 +583,28 @@ struct ContentView: View {
             webViewStore.sendResultToWebView(result: configPairingBridge.send(request: message))
             currentRequest = nil
         }
+        .on("configDeviceScanStart") { message in
+            configureConfigPairingBridge()
+            webViewStore.sendResultToWebView(result: configPairingBridge.startPersistentDeviceScan(request: message))
+            currentRequest = nil
+        }
+        .on("configDeviceScanStop") { message in
+            webViewStore.sendResultToWebView(result: configPairingBridge.stopPersistentDeviceScan(request: message))
+            currentRequest = nil
+        }
+        .on("configDeviceConnect") { message in
+            configureConfigPairingBridge()
+            webViewStore.sendResultToWebView(result: configPairingBridge.connectPersistentDevice(request: message))
+            currentRequest = nil
+        }
+        .on("configDeviceDisconnect") { message in
+            webViewStore.sendResultToWebView(result: configPairingBridge.disconnectPersistentDevice(request: message))
+            currentRequest = nil
+        }
+        .on("configDeviceSend") { message in
+            webViewStore.sendResultToWebView(result: configPairingBridge.sendPersistentDevice(request: message))
+            currentRequest = nil
+        }
         .on("settingsGet") { message in
             webViewStore.sendResultToWebView(result: settingsGetResponse(request: message))
             currentRequest = nil

@@ -505,6 +505,11 @@
         "contractPlatform": "android",
         "enabledOptionalModules": [],
         "unavailableActions": [
+          "configDeviceConnect",
+          "configDeviceDisconnect",
+          "configDeviceScanStart",
+          "configDeviceScanStop",
+          "configDeviceSend",
           "arPositionStart",
           "arPositionStop",
           "arGuidedMeasurementStart",

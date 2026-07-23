@@ -54,6 +54,11 @@
         "arPositionStop",
         "arReplayClose",
         "arReplayOpen",
+        "configDeviceConnect",
+        "configDeviceDisconnect",
+        "configDeviceScanStart",
+        "configDeviceScanStop",
+        "configDeviceSend",
         "roomPlanScanExport",
         "roomPlanScanStart",
         "roomPlanScanStop"

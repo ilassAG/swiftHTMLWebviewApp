@@ -60,6 +60,8 @@ Implemented:
   config-pairing identity payloads.
 - BLE config pairing as target and config device through `configPairingShow`,
   `configPairingConnect`, and `configPairingSend`.
+- The five `configDevice*` persistent ESP actions are recognized for bridge
+  parity but currently return a structured unavailable response on Android.
 - `wifiStatusGet` mirrors the iOS response shape for `ssidAvailable`, `ssid`,
   `bssid`, `securityType`, `securityTypeRawValue`, `ipAddresses`, and
   `wifiIpAddresses`. Android requires location permission before SSID/BSSID

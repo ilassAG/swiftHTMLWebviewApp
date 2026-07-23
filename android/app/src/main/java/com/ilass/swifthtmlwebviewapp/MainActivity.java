@@ -1577,6 +1577,16 @@ public class MainActivity extends ComponentActivity implements ConfettiView.Acti
                 return configPairingBridge.disconnect(request);
             case "configPairingSend":
                 return configPairingBridge.send(request);
+            case "configDeviceScanStart":
+            case "configDeviceScanStop":
+            case "configDeviceConnect":
+            case "configDeviceDisconnect":
+            case "configDeviceSend":
+                return AndroidConfigPairingProtocol.errorResponse(
+                        request,
+                        action,
+                        "Persistent ESP device management is not available on Android yet."
+                );
             default:
                 return AndroidConfigPairingProtocol.unknownActionResponse(request);
         }

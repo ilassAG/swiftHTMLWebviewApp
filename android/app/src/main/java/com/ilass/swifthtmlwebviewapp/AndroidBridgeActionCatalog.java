@@ -48,7 +48,12 @@ final class AndroidBridgeActionCatalog {
             "configPairingStop",
             "configPairingConnect",
             "configPairingDisconnect",
-            "configPairingSend"
+            "configPairingSend",
+            "configDeviceScanStart",
+            "configDeviceScanStop",
+            "configDeviceConnect",
+            "configDeviceDisconnect",
+            "configDeviceSend"
     };
 
     static final Set<String> PUBLIC_ACTIONS = stringSet(
@@ -129,6 +134,11 @@ final class AndroidBridgeActionCatalog {
             "configPairingConnect",
             "configPairingDisconnect",
             "configPairingSend",
+            "configDeviceScanStart",
+            "configDeviceScanStop",
+            "configDeviceConnect",
+            "configDeviceDisconnect",
+            "configDeviceSend",
             "reload",
             "launchConfetti",
             "tapToPayAvailability",

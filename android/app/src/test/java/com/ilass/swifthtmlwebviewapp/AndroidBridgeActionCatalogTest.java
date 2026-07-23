@@ -90,6 +90,11 @@ public class AndroidBridgeActionCatalogTest {
                 "configPairingConnect",
                 "configPairingDisconnect",
                 "configPairingSend",
+                "configDeviceScanStart",
+                "configDeviceScanStop",
+                "configDeviceConnect",
+                "configDeviceDisconnect",
+                "configDeviceSend",
                 "reload",
                 "launchConfetti",
                 "tapToPayAvailability",
@@ -145,7 +150,12 @@ public class AndroidBridgeActionCatalogTest {
                         "configPairingStop",
                         "configPairingConnect",
                         "configPairingDisconnect",
-                        "configPairingSend"
+                        "configPairingSend",
+                        "configDeviceScanStart",
+                        "configDeviceScanStop",
+                        "configDeviceConnect",
+                        "configDeviceDisconnect",
+                        "configDeviceSend"
                 },
                 AndroidBridgeActionCatalog.CONFIG_PAIRING_ACTIONS
         );

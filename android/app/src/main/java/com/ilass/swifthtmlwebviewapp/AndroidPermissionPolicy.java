@@ -55,6 +55,9 @@ final class AndroidPermissionPolicy {
     }
 
     static String[] configPairingPermissions(String action, int sdkInt) {
+        if (action != null && action.startsWith("configDevice")) {
+            return new String[0];
+        }
         if ("configPairingStop".equals(action) || "configPairingDisconnect".equals(action)) {
             return new String[0];
         }

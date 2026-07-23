@@ -103,6 +103,9 @@ before platform builds.
 - `configPairingShow` / `configPairingStop`
 - `configPairingConnect` / `configPairingDisconnect`
 - `configPairingSend`
+- `configDeviceScanStart` / `configDeviceScanStop`
+- `configDeviceConnect` / `configDeviceDisconnect`
+- `configDeviceSend`
 - `reload`
 - `launchConfetti`
 - `tapToPayAvailability` (optional Stripe module)
@@ -421,6 +424,46 @@ window.webkit.messageHandlers.swiftBridge.postMessage({
 Large commands and large target responses are split into `configPairingChunk`
 BLE messages by native code and reassembled by the receiving side before the web
 app receives the final `configPairingResponse`.
+
+## Persistent ESP device configuration
+
+iOS can also discover and select permanently advertising ESP devices. This mode
+uses the dedicated service UUID `6D8E0F22-9C2D-4E8E-A7D7-2B1D49F48B01` so an
+ESP cannot be mistaken for a short-lived wrapper QR-pairing target. Command and
+response characteristics, chunk envelopes, and response delivery remain shared
+with Config Pairing.
+
+```js
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configDeviceScanStart'
+});
+
+// Choose scanId from a configDeviceEvent/discovered event.
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configDeviceConnect',
+  scanId: 'CORE-BLUETOOTH-PERIPHERAL-UUID'
+});
+
+window.webkit.messageHandlers.swiftBridge.postMessage({
+  action: 'configDeviceSend',
+  command: 'wifiConfigure',
+  token: 'optional-current-device-token',
+  ssid: 'Workshop',
+  passphrase: 'secret',
+  persist: true
+});
+```
+
+Discovery emits `configDeviceEvent` values with `event: "discovered"`, a native
+`scanId`, name, and RSSI. Connection emits `connected`, then `ready` after the
+response notification subscription is active. ESP responses use
+`configPairingResponse` with `role: "persistentDevice"` and are forwarded to
+`window.handleNativeResult`.
+
+Supported ESP commands are device-defined. The reference ESP implementation
+supports `statusGet`, `settingsGet`, `settingsSet`, `identify`,
+`wifiConfigure`, `factoryResetWifi`, and `reload`. Android currently returns a
+structured unavailable response for the five `configDevice*` actions.
 
 Supported `configPairingSend.command` values:
 

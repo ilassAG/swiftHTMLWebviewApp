@@ -151,6 +151,9 @@ a private temporary file while the iOS NATS client is connected.
 - `configPairingShow` / `configPairingStop`
 - `configPairingConnect` / `configPairingDisconnect`
 - `configPairingSend`
+- `configDeviceScanStart` / `configDeviceScanStop`
+- `configDeviceConnect` / `configDeviceDisconnect`
+- `configDeviceSend`
 
 `wifiConfigure` uses `NEHotspotConfigurationManager` and needs Apple's Hotspot
 Configuration capability for production use. `wifiStatusGet` uses
@@ -197,3 +200,12 @@ accept `appConfig` or `store` objects; URL/query payloads accept
 persistent non-sensitive JSON object in `UserDefaults` and is returned by
 `settingsGet`. `appUUID` values in incoming config payloads are ignored because
 the native app owns that immutable installation identifier.
+
+## Persistent ESP devices
+
+The configurator can scan continuously advertising ESP devices independently of
+the QR pairing overlay. Start `configDeviceScanStart`, select the `scanId` from
+`configDeviceEvent`, call `configDeviceConnect`, wait for `event: "ready"`, and
+send commands through `configDeviceSend`. The bundled demo page contains the
+complete scan, status/IP, identity/token, identify, Wi-Fi, reset, and restart
+workflow.
